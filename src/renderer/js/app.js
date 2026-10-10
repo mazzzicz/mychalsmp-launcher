@@ -495,18 +495,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    function updateSliderVisuals(slider, badgeEl) {
+    function updateSliderVisuals(slider, badgeEl, forceSnap = false) {
         if (!slider) return;
         const min = parseFloat(slider.min) !== undefined && !isNaN(parseFloat(slider.min)) ? parseFloat(slider.min) : 2;
         const max = parseFloat(slider.max) !== undefined && !isNaN(parseFloat(slider.max)) ? parseFloat(slider.max) : 16;
-        const val = parseFloat(slider.value) !== undefined && !isNaN(parseFloat(slider.value)) ? parseFloat(slider.value) : min;
+        let val = parseFloat(slider.value) !== undefined && !isNaN(parseFloat(slider.value)) ? parseFloat(slider.value) : min;
+
+        if (forceSnap) {
+            val = Math.round(val);
+            slider.value = val;
+        }
+
         const pct = max > min ? Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100)) : 0;
         slider.style.setProperty('--slider-fill', `${pct.toFixed(2)}%`);
+
         if (badgeEl) {
-            badgeEl.textContent = `${slider.value} GB`;
-            badgeEl.classList.remove('badge-bump');
-            void badgeEl.offsetWidth;
-            badgeEl.classList.add('badge-bump');
+            const intVal = Math.round(val);
+            const targetText = `${intVal} GB`;
+            if (badgeEl.textContent !== targetText) {
+                badgeEl.textContent = targetText;
+                badgeEl.classList.remove('badge-bump');
+                void badgeEl.offsetWidth;
+                badgeEl.classList.add('badge-bump');
+            }
         }
     }
 
@@ -4828,19 +4839,51 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     if (ramSlider && ramValueBadge) {
-        ramSlider.addEventListener('input', (e) => {
-            updateSliderVisuals(ramSlider, ramValueBadge);
+        ramSlider.addEventListener('input', () => {
+            updateSliderVisuals(ramSlider, ramValueBadge, false);
             autoSaveSettings(false);
         });
-        ramSlider.addEventListener('change', () => {
+        const finalizeRam = () => {
+            updateSliderVisuals(ramSlider, ramValueBadge, true);
             autoSaveSettings(true);
-        });
+        };
+        ramSlider.addEventListener('change', finalizeRam);
+        ramSlider.addEventListener('pointerup', finalizeRam);
     }
 
-    // Global listener ensuring all range sliders keep dynamic track progress updated
+    // Global listener ensuring all range sliders keep dynamic track progress updated smoothly
     document.addEventListener('input', (e) => {
         if (e.target && e.target.type === 'range' && e.target.classList.contains('slider')) {
-            updateSliderVisuals(e.target);
+            updateSliderVisuals(e.target, null, false);
+        }
+    });
+
+    document.addEventListener('pointerup', (e) => {
+        if (e.target && e.target.type === 'range' && e.target.classList.contains('slider')) {
+            updateSliderVisuals(e.target, null, true);
+        }
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.target && e.target.type === 'range' && e.target.classList.contains('slider')) {
+            if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                const min = parseFloat(e.target.min) || 2;
+                const max = parseFloat(e.target.max) || 16;
+                const nextVal = Math.min(max, Math.round(parseFloat(e.target.value) || min) + 1);
+                e.target.value = nextVal;
+                updateSliderVisuals(e.target, null, true);
+                e.target.dispatchEvent(new Event('input', { bubbles: true }));
+                e.target.dispatchEvent(new Event('change', { bubbles: true }));
+            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                const min = parseFloat(e.target.min) || 2;
+                const prevVal = Math.max(min, Math.round(parseFloat(e.target.value) || min) - 1);
+                e.target.value = prevVal;
+                updateSliderVisuals(e.target, null, true);
+                e.target.dispatchEvent(new Event('input', { bubbles: true }));
+                e.target.dispatchEvent(new Event('change', { bubbles: true }));
+            }
         }
     });
 
@@ -5548,8 +5591,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (newProfileRamSlider && newProfileRamValueBadge) {
         newProfileRamSlider.addEventListener('input', () => {
-            updateSliderVisuals(newProfileRamSlider, newProfileRamValueBadge);
+            updateSliderVisuals(newProfileRamSlider, newProfileRamValueBadge, false);
         });
+        const finalizeNewProfRam = () => {
+            updateSliderVisuals(newProfileRamSlider, newProfileRamValueBadge, true);
+        };
+        newProfileRamSlider.addEventListener('change', finalizeNewProfRam);
+        newProfileRamSlider.addEventListener('pointerup', finalizeNewProfRam);
     }
 
     const iconButtons = document.querySelectorAll('#newProfileIconPicker .icon-picker-item');
@@ -5873,8 +5921,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (profileRamSlider && profileRamValueBadge) {
         profileRamSlider.addEventListener('input', () => {
-            updateSliderVisuals(profileRamSlider, profileRamValueBadge);
+            updateSliderVisuals(profileRamSlider, profileRamValueBadge, false);
         });
+        const finalizeProfileRam = () => {
+            updateSliderVisuals(profileRamSlider, profileRamValueBadge, true);
+        };
+        profileRamSlider.addEventListener('change', finalizeProfileRam);
+        profileRamSlider.addEventListener('pointerup', finalizeProfileRam);
     }
 
     function openProfileSettingsModal(pid) {
