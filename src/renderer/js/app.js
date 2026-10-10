@@ -379,7 +379,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     btnApplyRecommendedRam.onclick = () => {
                         if (ramSlider && ramValueBadge) {
                             ramSlider.value = sysInfo.recommendedRamGB;
-                            ramValueBadge.textContent = `${sysInfo.recommendedRamGB} GB`;
+                            updateSliderVisuals(ramSlider, ramValueBadge);
                             currentConfig.ramMax = sysInfo.recommendedRamGB;
                             autoSaveSettings(true);
                             showToast(`Nastavena optimální paměť: ${sysInfo.recommendedRamGB} GB RAM`, 'success');
@@ -410,7 +410,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             // RAM
             if (ramSlider && ramValueBadge && currentConfig.ramMax) {
                 ramSlider.value = currentConfig.ramMax;
-                ramValueBadge.textContent = `${currentConfig.ramMax} GB`;
+                updateSliderVisuals(ramSlider, ramValueBadge);
             }
 
             // Java
@@ -495,6 +495,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    function updateSliderVisuals(slider, badgeEl) {
+        if (!slider) return;
+        const min = parseFloat(slider.min) !== undefined && !isNaN(parseFloat(slider.min)) ? parseFloat(slider.min) : 2;
+        const max = parseFloat(slider.max) !== undefined && !isNaN(parseFloat(slider.max)) ? parseFloat(slider.max) : 16;
+        const val = parseFloat(slider.value) !== undefined && !isNaN(parseFloat(slider.value)) ? parseFloat(slider.value) : min;
+        const pct = max > min ? Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100)) : 0;
+        slider.style.setProperty('--slider-fill', `${pct.toFixed(2)}%`);
+        if (badgeEl) {
+            badgeEl.textContent = `${slider.value} GB`;
+            badgeEl.classList.remove('badge-bump');
+            void badgeEl.offsetWidth;
+            badgeEl.classList.add('badge-bump');
+        }
+    }
+
     function renderRamSliderMarks(maxGb) {
         const marksContainer = document.getElementById('ramSliderMarks') || document.querySelector('.slider-marks');
         if (!marksContainer) return;
@@ -542,7 +557,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const val = parseInt(mark.dataset.ramVal, 10);
                 if (!isNaN(val) && ramSlider) {
                     ramSlider.value = val;
-                    if (ramValueBadge) ramValueBadge.textContent = `${val} GB`;
+                    updateSliderVisuals(ramSlider, ramValueBadge);
                     autoSaveSettings(true);
                 }
             });
@@ -1500,7 +1515,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                             try {
                                 await window.api.restartLauncher();
                             } catch (e) {
-                                window.location.reload();
+                                console.error('[UPDATER] Chyba restartu launcheru:', e);
+                                showToast('Chyba při restartu launcheru: ' + (e.message || e), 'error');
+                                isUpdatingCurrently = false;
+                                if (updateCountdownContainer) updateCountdownContainer.style.display = 'none';
+                                if (updateModalFoot) updateModalFoot.style.display = 'flex';
                             }
                         }
                     }, 1000);
@@ -4810,13 +4829,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (ramSlider && ramValueBadge) {
         ramSlider.addEventListener('input', (e) => {
-            ramValueBadge.textContent = `${e.target.value} GB`;
+            updateSliderVisuals(ramSlider, ramValueBadge);
             autoSaveSettings(false);
         });
         ramSlider.addEventListener('change', () => {
             autoSaveSettings(true);
         });
     }
+
+    // Global listener ensuring all range sliders keep dynamic track progress updated
+    document.addEventListener('input', (e) => {
+        if (e.target && e.target.type === 'range' && e.target.classList.contains('slider')) {
+            updateSliderVisuals(e.target);
+        }
+    });
 
     if (btnOpenGameDir) {
         btnOpenGameDir.addEventListener('click', () => window.api.openGameDir());
@@ -5348,7 +5374,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         currentConfig = updatedCfg;
                         if (ramSlider && updatedCfg.ramMax) {
                             ramSlider.value = updatedCfg.ramMax;
-                            if (ramValueBadge) ramValueBadge.textContent = `${updatedCfg.ramMax} GB`;
+                            updateSliderVisuals(ramSlider, ramValueBadge);
                         }
                         if (javaPathInput && updatedCfg.javaPath) {
                             javaPathInput.value = updatedCfg.javaPath;
@@ -5521,8 +5547,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const dropdownNewLoader = setupCustomDropdown('dropdownNewProfileLoader');
 
     if (newProfileRamSlider && newProfileRamValueBadge) {
-        newProfileRamSlider.addEventListener('input', (e) => {
-            newProfileRamValueBadge.textContent = `${e.target.value} GB`;
+        newProfileRamSlider.addEventListener('input', () => {
+            updateSliderVisuals(newProfileRamSlider, newProfileRamValueBadge);
         });
     }
 
@@ -5543,7 +5569,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (newProfileRamSlider && newProfileRamValueBadge) {
             newProfileRamSlider.value = 4;
-            newProfileRamValueBadge.textContent = '4 GB';
+            updateSliderVisuals(newProfileRamSlider, newProfileRamValueBadge);
         }
         dropdownNewVersion?.setValue('26.2');
         dropdownNewLoader?.setValue('vanilla');
@@ -5846,8 +5872,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnDeleteCurrentProfile = document.getElementById('btnDeleteCurrentProfile');
 
     if (profileRamSlider && profileRamValueBadge) {
-        profileRamSlider.addEventListener('input', (e) => {
-            profileRamValueBadge.textContent = `${e.target.value} GB`;
+        profileRamSlider.addEventListener('input', () => {
+            updateSliderVisuals(profileRamSlider, profileRamValueBadge);
         });
     }
 
@@ -5878,7 +5904,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (profileRamSlider && profileRamValueBadge) {
             profileRamSlider.value = profile.ramMax || currentConfig.ramMax || 4;
-            profileRamValueBadge.textContent = `${profileRamSlider.value} GB`;
+            updateSliderVisuals(profileRamSlider, profileRamValueBadge);
         }
 
         if (deleteSec) {

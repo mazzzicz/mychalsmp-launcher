@@ -271,9 +271,6 @@
                                             Vytvořit profil
                                         </span>
                                     </button>
-                                    <div class="edition-badges">
-                                        <span class="edition-badge active">Java Edition</span>
-                                    </div>
                                 </div>
                             </div>
 
@@ -1585,12 +1582,9 @@
 
                 <div class="form-group">
                     <label>Alokace RAM pro tento profil</label>
-                    <div class="ram-slider-row" style="display: flex; align-items: center; gap: 12px;">
-                        <input type="range" min="2" max="16" step="1" value="4" class="slider" id="newProfileRamSlider"
-                            style="flex: 1;">
-                        <span class="badge-accent" id="newProfileRamValueBadge"
-                            style="background: rgba(10, 103, 229, 0.2); color: #38bdf8; border: 1px solid rgba(10, 103, 229, 0.4); padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 13px;">4
-                            GB</span>
+                    <div class="ram-slider-row">
+                        <input type="range" min="2" max="16" step="1" value="4" class="slider" id="newProfileRamSlider">
+                        <span class="slider-value-badge" id="newProfileRamValueBadge">4 GB</span>
                     </div>
                 </div>
 
@@ -1936,12 +1930,9 @@
 
                 <div class="form-group">
                     <label>Paměť RAM</label>
-                    <div class="ram-slider-row" style="display: flex; align-items: center; gap: 12px;">
-                        <input type="range" min="2" max="16" step="1" value="4" class="slider" id="profileRamSlider"
-                            style="flex: 1;">
-                        <span class="badge-accent" id="profileRamValueBadge"
-                            style="background: rgba(10, 103, 229, 0.2); color: #38bdf8; border: 1px solid rgba(10, 103, 229, 0.4); padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 13px;">4
-                            GB</span>
+                    <div class="ram-slider-row">
+                        <input type="range" min="2" max="16" step="1" value="4" class="slider" id="profileRamSlider">
+                        <span class="slider-value-badge" id="profileRamValueBadge">4 GB</span>
                     </div>
                 </div>
 

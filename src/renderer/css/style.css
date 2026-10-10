@@ -2570,21 +2570,83 @@ input[type="radio"]:checked::after {
     box-shadow: 0 0 6px var(--brand-blue);
 }
 
+/* ── High-End Custom Text Inputs ────────────────────────────────────────── */
+.text-input,
 .input-text {
-    background: var(--surface2);
-    border: 1px solid var(--surface-border);
-    border-radius: var(--radius-sm);
-    padding: 8px 12px;
-    color: #fff;
-    font-family: var(--font-body);
-    font-size: 13px;
+    width: 100%;
+    background: #0d101d;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 9px;
+    padding: 10px 14px;
+    color: #f1f5f9;
+    font-family: var(--font-body, system-ui, sans-serif);
+    font-size: 13.5px;
+    font-weight: 500;
+    line-height: 1.4;
     outline: none;
-    transition: var(--transition);
+    box-sizing: border-box;
+    transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25);
 }
 
+.text-input::placeholder,
+.input-text::placeholder {
+    color: rgba(255, 255, 255, 0.32);
+    font-weight: 400;
+}
+
+.text-input:hover,
+.input-text:hover {
+    background: #12162a;
+    border-color: rgba(10, 103, 229, 0.45);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25), 0 0 12px rgba(10, 103, 229, 0.12);
+}
+
+.text-input:focus,
 .input-text:focus {
-    border-color: var(--brand-blue);
-    box-shadow: 0 0 10px var(--brand-blue-glow);
+    background: #14192f;
+    border-color: var(--brand-blue, #0a67e5);
+    box-shadow: 0 0 0 3px rgba(10, 103, 229, 0.25), 0 4px 18px rgba(10, 103, 229, 0.2);
+    color: #ffffff;
+}
+
+.text-input:disabled,
+.text-input[readonly],
+.input-text:disabled,
+.input-text[readonly] {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: rgba(255, 255, 255, 0.03);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: none;
+}
+
+/* Specific prominent styling for Profile Name inputs */
+#newProfileNameInput,
+#profileSettingsNameInput {
+    font-size: 14.5px;
+    font-weight: 600;
+    letter-spacing: 0.25px;
+    padding: 11px 16px;
+    background: #0f1324;
+    border: 1.5px solid rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+#newProfileNameInput:hover,
+#profileSettingsNameInput:hover {
+    background: #13182e;
+    border-color: rgba(10, 103, 229, 0.55);
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.3), 0 0 14px rgba(10, 103, 229, 0.18);
+}
+
+#newProfileNameInput:focus,
+#profileSettingsNameInput:focus {
+    background: #151b34;
+    border-color: var(--brand-blue, #0a67e5);
+    box-shadow: 0 0 0 3px rgba(10, 103, 229, 0.3), 0 6px 22px rgba(10, 103, 229, 0.25);
+    color: #ffffff;
 }
 
 .input-hint {
@@ -3062,39 +3124,156 @@ input[type="radio"]:checked::after {
     align-items: center;
 }
 
-.setting-value-badge {
-    background: rgba(10, 103, 229, 0.2);
-    color: #60a5fa;
-    padding: 3px 10px;
-    border-radius: 6px;
-    font-weight: 700;
-    font-family: var(--font-mono);
-    font-size: 13px;
-    border: 1px solid rgba(10, 103, 229, 0.35);
+/* ── High-End Gaming Slider Styling & Micro-Animations ────────────────── */
+.ram-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
 }
 
-.slider {
+.setting-value-badge,
+.slider-value-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 62px;
+    height: 32px;
+    padding: 0 12px;
+    border-radius: 8px;
+    font-weight: 700;
+    font-family: var(--font-mono, 'Consolas', monospace);
+    font-size: 13px;
+    color: #38bdf8;
+    background: linear-gradient(135deg, rgba(10, 103, 229, 0.22) 0%, rgba(14, 165, 233, 0.12) 100%);
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 12px rgba(10, 103, 229, 0.15);
+    user-select: none;
+    flex-shrink: 0;
+    transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1),
+                border-color 0.18s ease,
+                box-shadow 0.18s ease,
+                color 0.18s ease;
+}
+
+.setting-value-badge:hover,
+.slider-value-badge:hover {
+    border-color: rgba(56, 189, 248, 0.65);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4), 0 0 18px rgba(10, 103, 229, 0.35);
+    color: #7dd3fc;
+    transform: translateY(-1px);
+}
+
+@keyframes badgeBump {
+    0% {
+        transform: scale(1);
+    }
+    45% {
+        transform: scale(1.15);
+        border-color: #38bdf8;
+        box-shadow: 0 0 20px rgba(56, 189, 248, 0.6), 0 0 10px #0a67e5;
+        color: #ffffff;
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+.badge-bump {
+    animation: badgeBump 0.24s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+}
+
+input[type="range"].slider {
+    -webkit-appearance: none;
+    appearance: none;
     width: 100%;
-    accent-color: var(--brand-blue);
+    height: 28px;
+    background: transparent;
     cursor: pointer;
+    margin: 0;
+    padding: 0;
+    outline: none;
+    position: relative;
+    --slider-fill: 25%;
+}
+
+input[type="range"].slider:focus {
+    outline: none;
+}
+
+/* Custom Runnable Track */
+input[type="range"].slider::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 8px;
+    border-radius: 999px;
+    background: linear-gradient(
+        to right,
+        var(--brand-blue, #0a67e5) 0%,
+        #38bdf8 var(--slider-fill, 25%),
+        rgba(255, 255, 255, 0.08) var(--slider-fill, 25%),
+        rgba(255, 255, 255, 0.08) 100%
+    );
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.2);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+input[type="range"].slider:hover::-webkit-slider-runnable-track {
+    border-color: rgba(56, 189, 248, 0.35);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5), 0 0 12px rgba(10, 103, 229, 0.25);
+}
+
+/* Custom Glowing Interactive Thumb */
+input[type="range"].slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 22px;
+    height: 22px;
+    margin-top: -7px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #ffffff 0%, #dbeafe 65%, #bfdbfe 100%);
+    border: 3.5px solid var(--brand-blue, #0a67e5);
+    box-shadow: 0 0 12px rgba(10, 103, 229, 0.7), 0 2px 6px rgba(0, 0, 0, 0.5);
+    cursor: grab;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+                box-shadow 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+                border-color 0.2s ease,
+                background 0.2s ease;
+}
+
+input[type="range"].slider:hover::-webkit-slider-thumb {
+    transform: scale(1.18);
+    border-color: #38bdf8;
+    box-shadow: 0 0 18px rgba(10, 103, 229, 0.95), 0 0 32px rgba(56, 189, 248, 0.45), 0 3px 8px rgba(0, 0, 0, 0.6);
+}
+
+input[type="range"].slider:active::-webkit-slider-thumb {
+    cursor: grabbing;
+    transform: scale(1.32);
+    border-color: #60a5fa;
+    background: radial-gradient(circle at 35% 35%, #ffffff 0%, #eff6ff 100%);
+    box-shadow: 0 0 0 5px rgba(10, 103, 229, 0.28), 0 0 24px rgba(10, 103, 229, 1), 0 0 42px rgba(56, 189, 248, 0.7), 0 5px 12px rgba(0, 0, 0, 0.7);
 }
 
 .slider-marks {
     position: relative;
     width: 100%;
-    height: 18px;
-    margin-top: 6px;
+    height: 20px;
+    margin-top: 8px;
 }
 
 .slider-mark {
     position: absolute;
     transform: translateX(-50%);
     font-size: 11px;
+    font-weight: 500;
     color: var(--text-muted);
     white-space: nowrap;
     cursor: pointer;
     user-select: none;
-    transition: color 0.15s ease;
+    transition: all 0.18s ease;
+    padding: 2px 4px;
+    border-radius: 4px;
 }
 
 .slider-mark.mark-start {
@@ -3110,11 +3289,22 @@ input[type="radio"]:checked::after {
 
 .slider-mark:hover {
     color: #38bdf8;
+    transform: translateX(-50%) translateY(-1px);
+    text-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+}
+
+.slider-mark.mark-start:hover {
+    transform: translateY(-1px);
+}
+
+.slider-mark.mark-end:hover {
+    transform: translateY(-1px);
 }
 
 .slider-mark.recommended {
     color: #21DE00;
-    font-weight: 600;
+    font-weight: 700;
+    text-shadow: 0 0 8px rgba(33, 222, 0, 0.35);
 }
 
 .input-with-button {
