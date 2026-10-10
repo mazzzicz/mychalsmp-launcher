@@ -206,7 +206,8 @@ class DiscordRpcClient {
      * Updates Discord Rich Presence state
      * @param {Object} options
      * @param {string} options.username Player username
-     * @param {string} options.server Name or IP of server (e.g. 'mychalsmp.xyz' or 'Singleplayer')
+     * @param {string} options.server Name or IP of server (e.g. 'mychalsmp.xyz', 'mc.hypixel.net', 'Singleplayer', 'menu')
+     * @param {string} [options.serverIcon] Optional explicit URL to server favicon
      * @param {string} options.profileName Active profile name (e.g. 'Minecraft 26.2')
      * @param {boolean} options.isPlaying Whether the game is actively running
      * @param {number} [options.startTime] Game session start timestamp ms
@@ -215,51 +216,121 @@ class DiscordRpcClient {
         const {
             username = 'Hráč',
             server = 'mychalsmp.xyz',
+            serverIcon = null,
             profileName = 'Minecraft 26.2',
             isPlaying = false,
             startTime = null
         } = options;
 
+        const safeStr = (str, maxLen = 128) => {
+            if (!str) return '';
+            const s = String(str).trim();
+            return s.length > maxLen ? s.substring(0, maxLen - 1) + '…' : s;
+        };
+
+        const isLocalOrPrivate = (host) => {
+            if (!host) return false;
+            const h = host.toLowerCase().trim().replace(/:\d+$/, '');
+            if (h === 'localhost' || h === '127.0.0.1' || h.startsWith('127.')) return true;
+            if (h.startsWith('192.168.') || h.startsWith('10.')) return true;
+            if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(h)) return true;
+            return false;
+        };
+
+        const MYCHAL_ICON = 'https://raw.githubusercontent.com/mychalVidea/mychalsmp-launcher/main/src/renderer/assets/server-icon.png';
+        const LOGO_ICON = 'https://raw.githubusercontent.com/mychalVidea/mychalsmp-launcher/main/src/renderer/assets/logo.png';
+
+        const sRaw = (server || '').toString().trim();
+        const sLower = sRaw.toLowerCase();
+        const isSingleplayer = sLower === 'singleplayer' || sLower === 'režim jednoho hráče' || sLower === 'sp';
+        const isMenu = !sRaw || sLower === 'menu' || sLower === 'main_menu';
+        const isMychal = !isSingleplayer && !isMenu && (sLower.includes('mychalsmp') || sLower === '130.61.89.37');
+
         let activity = null;
 
         if (isPlaying) {
-            const isMychal = !server || server.toLowerCase().includes('mychalsmp');
-            const serverLabel = isMychal ? 'mychalsmp.xyz' : server;
+            let detailsText = '';
+            let largeImageUrl = LOGO_ICON;
+            let largeImageText = `SMPClient (${profileName})`;
+            let smallImageUrl = LOGO_ICON;
+            let smallImageText = `SMPClient (${profileName})`;
+
+            if (isMychal) {
+                const sLabel = 'mychalsmp.xyz';
+                detailsText = `Hraje na: ${sLabel}`;
+                largeImageUrl = MYCHAL_ICON;
+                largeImageText = `MYCHAL SMP (${sLabel})`;
+                smallImageUrl = LOGO_ICON;
+                smallImageText = `SMPClient (${profileName})`;
+            } else if (isSingleplayer) {
+                detailsText = 'Hraje: Singleplayer';
+                largeImageUrl = LOGO_ICON;
+                largeImageText = `Singleplayer (${profileName})`;
+                smallImageUrl = MYCHAL_ICON;
+                smallImageText = 'MYCHAL SMP';
+            } else if (isMenu) {
+                detailsText = 'V hlavním menu hry';
+                largeImageUrl = LOGO_ICON;
+                largeImageText = `SMPClient (${profileName})`;
+                smallImageUrl = MYCHAL_ICON;
+                smallImageText = 'MYCHAL SMP';
+            } else {
+                // Hraní na libovolném jiném Minecraft serveru (Hypixel, CubeCraft, atd.)
+                detailsText = `Hraje na: ${sRaw}`;
+                largeImageText = `Server: ${sRaw}`;
+
+                // Pokusíme se načíst reálnou ikonu serveru:
+                // 1) Explicitní ikona předaná přes options
+                // 2) Pokud server není na lokální/LAN síti, použijeme ověřený mcstatus.io CDN endpoint pro favicon
+                // 3) Pro LAN/offline fallbackujeme na launcher logo
+                if (serverIcon && typeof serverIcon === 'string' && serverIcon.startsWith('http')) {
+                    largeImageUrl = serverIcon;
+                } else if (!isLocalOrPrivate(sRaw)) {
+                    largeImageUrl = `https://api.mcstatus.io/v2/icon/${encodeURIComponent(sRaw)}`;
+                } else {
+                    largeImageUrl = LOGO_ICON;
+                }
+
+                smallImageUrl = LOGO_ICON;
+                smallImageText = `SMPClient (${profileName})`;
+            }
 
             activity = {
-                details: `Hraje na: ${serverLabel}`,
-                state: `Hráč: ${username} • ${profileName}`,
+                details: safeStr(detailsText),
+                state: safeStr(`Hráč: ${username} • ${profileName}`),
                 timestamps: {
                     start: startTime || Date.now()
                 },
                 assets: {
-                    large_image: isMychal ? 'https://raw.githubusercontent.com/mychalVidea/mychalsmp-launcher/main/src/renderer/assets/server-icon.png' : 'https://raw.githubusercontent.com/mychalVidea/mychalsmp-launcher/main/src/renderer/assets/logo.png',
-                    large_text: isMychal ? `MYCHAL SMP (${serverLabel})` : `Server: ${serverLabel}`,
-                    small_image: 'https://raw.githubusercontent.com/mychalVidea/mychalsmp-launcher/main/src/renderer/assets/logo.png',
-                    small_text: `SMPLauncher (${profileName})`
+                    large_image: largeImageUrl,
+                    large_text: safeStr(largeImageText),
+                    small_image: smallImageUrl,
+                    small_text: safeStr(smallImageText)
                 },
-                buttons: [
+                buttons: isMychal ? [
                     { label: '🎮 Jak se připojit', url: 'https://join.mychalsmp.xyz/howto' },
                     { label: '🌐 Oficiální web', url: 'https://mychalsmp.xyz' }
+                ] : [
+                    { label: '🌐 Oficiální web', url: 'https://mychalsmp.xyz' },
+                    { label: '🎮 Jak se připojit', url: 'https://join.mychalsmp.xyz/howto' }
                 ]
             };
         } else {
-            const isMychal = !server || server.toLowerCase().includes('mychalsmp');
-            const serverLabel = isMychal ? 'mychalsmp.xyz' : server;
+            const serverLabel = isMychal ? 'mychalsmp.xyz' : (isMenu || isSingleplayer ? 'mychalsmp.xyz' : sRaw);
 
             const assets = {
-                large_image: 'https://raw.githubusercontent.com/mychalVidea/mychalsmp-launcher/main/src/renderer/assets/logo.png',
+                large_image: LOGO_ICON,
                 large_text: 'SMPLauncher'
             };
 
             if (isMychal) {
-                assets.small_image = 'https://raw.githubusercontent.com/mychalVidea/mychalsmp-launcher/main/src/renderer/assets/server-icon.png';
+                assets.small_image = MYCHAL_ICON;
                 assets.small_text = `Server: ${serverLabel}`;
             }
 
             activity = {
                 details: 'V aplikaci SMPLauncher',
-                state: `Vybraný server: ${serverLabel}`,
+                state: safeStr(`Vybraný server: ${serverLabel}`),
                 assets,
                 buttons: [
                     { label: '🌐 Oficiální web', url: 'https://mychalsmp.xyz' },

@@ -1260,7 +1260,7 @@ function checkAndResumeActiveSession() {
                 if (cfg.enableDiscordRpc !== false) {
                     discordRpc.updateActivity({
                         username: cfg.username || 'Hráč',
-                        server: cfg.serverIp || 'mychalsmp.xyz',
+                        server: session.currentServerIp || 'menu',
                         profileName: session.profileName || 'Minecraft',
                         isPlaying: true,
                         startTime: session.startTime || Date.now()
@@ -1447,10 +1447,12 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
     try {
         const currentCfg = loadConfig();
         if (currentCfg.enableDiscordRpc !== false) {
-            const isMychal = !serverIp || serverIp.toLowerCase().includes('mychalsmp');
+            const initialServer = serverIp
+                ? (serverIp.toLowerCase().includes('mychalsmp') || serverIp === '130.61.89.37' ? 'mychalsmp.xyz' : serverIp)
+                : 'menu';
             discordRpc.updateActivity({
                 username: authData?.name || currentCfg.username || 'Hráč',
-                server: isMychal ? 'mychalsmp.xyz' : serverIp,
+                server: initialServer,
                 profileName: profile ? profile.name : 'Minecraft 26.2',
                 isPlaying: true,
                 startTime: gameSessionStart
@@ -1476,12 +1478,33 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
                 }
 
                 // Detekce připojení na herní server z konzole Minecraftu
-                const connMatch = logLine.match(/Connecting to\s+([a-zA-Z0-9.-]+)(?:,\s*|\:)(\d+)/i);
+                const connMatch = logLine.match(/Connecting to\s+(?:server\s+)?\[?([a-zA-Z0-9_.-]+)\]?(?:(?:,\s*|\:)(\d+))?/i);
                 if (connMatch && connMatch[1]) {
-                    const detectedHost = connMatch[1].toLowerCase().trim();
+                    const detectedHost = connMatch[1].trim();
+                    const detectedPort = connMatch[2] ? parseInt(connMatch[2], 10) : 25565;
+                    const isMychal = (detectedHost.toLowerCase().includes('mychalsmp') || detectedHost === '130.61.89.37');
+                    const serverLabel = isMychal
+                        ? 'mychalsmp.xyz'
+                        : (detectedPort && detectedPort !== 25565 ? `${detectedHost}:${detectedPort}` : detectedHost);
+
                     if (activeSessionData) {
-                        activeSessionData.currentServerIp = detectedHost;
+                        activeSessionData.currentServerIp = serverLabel;
                     }
+
+                    // Okamžitá aktualizace Discord Rich Presence s přesnou IP serveru a načtením jeho ikony
+                    try {
+                        const curCfg = loadConfig();
+                        if (curCfg.enableDiscordRpc !== false) {
+                            discordRpc.updateActivity({
+                                username: authData?.name || curCfg.username || 'Hráč',
+                                server: serverLabel,
+                                profileName: profile ? profile.name : 'Minecraft 26.2',
+                                isPlaying: true,
+                                startTime: gameSessionStart
+                            });
+                        }
+                    } catch (_) { }
+
                     try {
                         const curCfg = loadConfig();
                         let srvChanged = false;
@@ -1489,8 +1512,8 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
                             const ip = (s.ip || '').toLowerCase();
                             const sub = (s.subdomain || '').toLowerCase();
                             const backup = (s.backupIp || '').toLowerCase();
-                            const isMychal = (detectedHost.includes('mychalsmp') || detectedHost === '130.61.89.37') && (s.id === 'mychalsmp' || s.ip === 'mychalsmp.xyz');
-                            if (ip === detectedHost || sub === detectedHost || backup === detectedHost || isMychal) {
+                            const checkHost = detectedHost.toLowerCase();
+                            if (ip === checkHost || sub === checkHost || backup === checkHost || (isMychal && (s.id === 'mychalsmp' || s.ip === 'mychalsmp.xyz'))) {
                                 srvChanged = true;
                                 return {
                                     ...s,
@@ -1507,6 +1530,47 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
                             }
                         }
                     } catch (_) { }
+                }
+
+                // Detekce spuštění Singleplayer světa
+                if (logLine.includes('Starting integrated minecraft server') ||
+                    logLine.includes('[Integrated server/INFO]') ||
+                    /Preparing start region for dimension/i.test(logLine)) {
+                    if (activeSessionData && activeSessionData.currentServerIp !== 'Singleplayer') {
+                        activeSessionData.currentServerIp = 'Singleplayer';
+                        try {
+                            const curCfg = loadConfig();
+                            if (curCfg.enableDiscordRpc !== false) {
+                                discordRpc.updateActivity({
+                                    username: authData?.name || curCfg.username || 'Hráč',
+                                    server: 'Singleplayer',
+                                    profileName: profile ? profile.name : 'Minecraft 26.2',
+                                    isPlaying: true,
+                                    startTime: gameSessionStart
+                                });
+                            }
+                        } catch (_) { }
+                    }
+                }
+
+                // Detekce odpojení / návratu do hlavního menu hry
+                if (logLine.includes('Stopping integrated server') ||
+                    /Lost connection to server|Client disconnected with reason|Disconnected from server/i.test(logLine)) {
+                    if (activeSessionData && activeSessionData.currentServerIp && activeSessionData.currentServerIp !== 'menu') {
+                        activeSessionData.currentServerIp = 'menu';
+                        try {
+                            const curCfg = loadConfig();
+                            if (curCfg.enableDiscordRpc !== false) {
+                                discordRpc.updateActivity({
+                                    username: authData?.name || curCfg.username || 'Hráč',
+                                    server: 'menu',
+                                    profileName: profile ? profile.name : 'Minecraft 26.2',
+                                    isPlaying: true,
+                                    startTime: gameSessionStart
+                                });
+                            }
+                        } catch (_) { }
+                    }
                 }
             },
             (exitCode) => {

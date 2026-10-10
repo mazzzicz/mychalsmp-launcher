@@ -156,7 +156,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (skinViewer) {
             skinViewer.renderPaused = (tabId !== 'character');
             if (tabId === 'character') {
-                skinViewer.setSize(220, 310);
+                skinViewer.setSize(200, 235);
             }
         }
 
@@ -1537,20 +1537,75 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (foundPref) return foundPref.id;
         }
 
-        // 1. Profil, který má uživatel vybraný v launcheru (aktivní profil)
+        // 1. Profil, který právě běží (isRunning)
+        if (isRunning && currentConfig.activeProfileId) {
+            const runningProf = profiles.find(p => p.id === currentConfig.activeProfileId);
+            if (runningProf) return runningProf.id;
+        }
+
+        // 2. Profil, který má uživatel vybraný v launcheru (aktivní profil)
+        if (hasUserManuallySelectedProfile && currentConfig.activeProfileId) {
+            const activeProf = profiles.find(p => p.id === currentConfig.activeProfileId);
+            if (activeProf) return activeProf.id;
+        }
+
+        // 3. Profil, který uživatel naposledy hrál (s nejnovějším lastPlayed timestampem)
+        const playedProfiles = profiles.filter(p => {
+            const ts = (typeof p.lastPlayed === 'number' && p.lastPlayed > 0) ? p.lastPlayed : (parseInt(p.lastPlayed, 10) || 0);
+            return ts > 0;
+        });
+        if (playedProfiles.length > 0) {
+            const mostRecentPlayed = [...playedProfiles].sort((a, b) => {
+                const aTs = (typeof a.lastPlayed === 'number' && a.lastPlayed > 0) ? a.lastPlayed : (parseInt(a.lastPlayed, 10) || 0);
+                const bTs = (typeof b.lastPlayed === 'number' && b.lastPlayed > 0) ? b.lastPlayed : (parseInt(b.lastPlayed, 10) || 0);
+                return bTs - aTs;
+            })[0];
+            if (mostRecentPlayed) return mostRecentPlayed.id;
+        }
+
+        // 4. Defaultní serverový profil MYCHALSMP, pokud existuje
+        const foundMychal = profiles.find(p => p.id === 'mychalsmp-26.2' || p.id === 'mychalsmp');
+        if (foundMychal) return foundMychal.id;
+
         if (currentConfig.activeProfileId) {
             const activeProf = profiles.find(p => p.id === currentConfig.activeProfileId);
             if (activeProf) return activeProf.id;
         }
 
-        // 2. Profil, který uživatel naposledy hrál
-        const playedProfiles = profiles.filter(p => typeof p.lastPlayed === 'number' && p.lastPlayed > 0);
-        if (playedProfiles.length > 0) {
-            const mostRecentPlayed = [...playedProfiles].sort((a, b) => b.lastPlayed - a.lastPlayed)[0];
-            if (mostRecentPlayed) return mostRecentPlayed.id;
-        }
-
         return profiles[0].id;
+    }
+
+    // Seřadí profily přesně podle reality hraní: 1. Běžící hra, 2. Čas posledního hraní (lastPlayed), 3. Herní čas
+    function getSortedProfiles() {
+        const profiles = currentConfig.profiles || [];
+        if (!Array.isArray(profiles) || profiles.length === 0) return [];
+
+        const activeId = currentConfig.activeProfileId;
+
+        return [...profiles].sort((a, b) => {
+            // 1. Profil, který právě běží (isRunning), je VŽDY na 1. místě
+            const aRunning = isRunning && (a.id === activeId);
+            const bRunning = isRunning && (b.id === activeId);
+            if (aRunning && !bRunning) return -1;
+            if (!aRunning && bRunning) return 1;
+
+            // 2. Čas posledního hraní (lastPlayed timestamp v ms) – nejnovější nahoře
+            const aLast = (typeof a.lastPlayed === 'number' && a.lastPlayed > 0) ? a.lastPlayed : (parseInt(a.lastPlayed, 10) || 0);
+            const bLast = (typeof b.lastPlayed === 'number' && b.lastPlayed > 0) ? b.lastPlayed : (parseInt(b.lastPlayed, 10) || 0);
+            if (aLast !== bLast) {
+                return bLast - aLast;
+            }
+
+            // 3. Celkový odehraný čas (playtimeSeconds) – profily s více odehraným časem nahoře
+            const aPlaytime = Number(a.playtimeSeconds) || 0;
+            const bPlaytime = Number(b.playtimeSeconds) || 0;
+            if (aPlaytime !== bPlaytime) {
+                return bPlaytime - aPlaytime;
+            }
+
+            // 4. Stabilní abecední pořadí podle názvu
+            return (a.name || '').localeCompare(b.name || '');
+        });
     }
 
     // ── Profile List Rendering & Interactive Selection ──────────────────────
@@ -1591,7 +1646,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 : '<svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--blue" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="4"></rect><line x1="6" y1="12" x2="10" y2="12"></line><line x1="8" y1="10" x2="8" y2="14"></line><line x1="15" y1="11" x2="15.01" y2="11"></line><line x1="18" y1="13" x2="18.01" y2="13"></line></svg>';
         }
 
-        list.innerHTML = profiles.map(p => {
+        const sortedProfiles = getSortedProfiles();
+
+        list.innerHTML = sortedProfiles.map(p => {
             const isActive = p.id === activeId;
             const getIconSvg = (icon) => {
                 switch (icon) {
@@ -2156,6 +2213,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         document.querySelectorAll('.v-card-progress').forEach(p => p.style.display = 'none');
         refreshVersionStatuses();
+        renderProfilesList();
     }
 
     // ── Správa Módů v Profilech & Modrinth Katalog ──────────────────────────
@@ -3955,13 +4013,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             skinViewer = new window.skinview3d.SkinViewer({
                 canvas: canvas3D,
-                width: 220,
-                height: 310,
+                width: 200,
+                height: 235,
                 model: currentConfig.customSkinVariant === 'slim' ? 'slim' : 'default'
             });
 
             skinViewer.camera.position.set(0, 0, 70);
-            skinViewer.zoom = 0.95;
+            skinViewer.zoom = 0.92;
             skinViewer.fov = 48;
             skinViewer.controls.enableRotate = true;
             skinViewer.controls.enableZoom = true;
@@ -4049,7 +4107,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!skinViewer) {
             initSkinViewer3D();
         } else {
-            skinViewer.setSize(220, 310);
+            skinViewer.setSize(200, 235);
         }
         const isMicrosoft = currentConfig.authType === 'microsoft';
         const effectiveSkin = currentConfig.customSkinPath || (isMicrosoft && currentConfig.microsoftAccount ? currentConfig.microsoftAccount.skinUrl : null);
