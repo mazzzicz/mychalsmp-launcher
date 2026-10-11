@@ -1767,6 +1767,151 @@ async function ensureFabricProfile(centralRootDir, targetVersion, onLog = consol
 }
 
 /**
+ * ⚡ Pre-flight kontrola závislostí módů pro Fabric profily.
+ * Pokud mód v mods/ vyžaduje chybějící doplněk (např. particle_core vyžaduje fzzy_config),
+ * launcher jej automaticky stáhne z Modrinthu ještě před spuštěním hry!
+ * Pokud se stažení nezdaří, jako bezpečný fallback mód dočasně deaktivuje (.disabled),
+ * aby nedošlo k pádu Minecraftu na "Incompatible mods found!".
+ */
+async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
+    if (!config || !config.loader || config.loader.toLowerCase() !== 'fabric') return;
+    const modsDir = path.join(gameInstanceDir, 'mods');
+    if (!fs.existsSync(modsDir)) return;
+
+    let AdmZip = null;
+    try { AdmZip = require('adm-zip'); } catch (_) { return; }
+
+    let files = [];
+    try { files = fs.readdirSync(modsDir); } catch (_) { return; }
+    const jarFiles = files.filter(f => f.toLowerCase().endsWith('.jar'));
+    if (jarFiles.length === 0) return;
+
+    let downloadModOrPack, isModInstalledInDir;
+    try {
+        const modrinthModule = require('./modrinth');
+        downloadModOrPack = modrinthModule.downloadModOrPack;
+        isModInstalledInDir = modrinthModule.isModInstalledInDir;
+    } catch (_) {
+        return;
+    }
+
+    const installedModIds = new Set();
+    const parsedMods = [];
+
+    for (const f of jarFiles) {
+        const fullPath = path.join(modsDir, f);
+        try {
+            const zip = new AdmZip(fullPath);
+            const fabEntry = zip.getEntry('fabric.mod.json');
+            if (fabEntry) {
+                const fab = JSON.parse(fabEntry.getData().toString('utf8'));
+                if (fab.id) {
+                    const idLower = fab.id.toLowerCase();
+                    installedModIds.add(idLower);
+                    installedModIds.add(idLower.replace(/_/g, '-'));
+                    installedModIds.add(idLower.replace(/-/g, '_'));
+                }
+                if (fab.depends && typeof fab.depends === 'object') {
+                    parsedMods.push({
+                        filename: f,
+                        fullPath,
+                        modName: fab.name || fab.id,
+                        modId: fab.id,
+                        depends: fab.depends
+                    });
+                }
+            }
+        } catch (_) {}
+    }
+
+    const ignoredDeps = new Set([
+        'minecraft', 'java', 'fabricloader', 'fabric-loader', 'fabric',
+        'quilt_loader', 'quiltloader'
+    ]);
+
+    const targetVersion = config.version || '26.2';
+
+    for (const pm of parsedMods) {
+        for (const [depId, constraint] of Object.entries(pm.depends)) {
+            const normDep = depId.toLowerCase();
+            const normDepHyphen = normDep.replace(/_/g, '-');
+            const normDepUnderscore = normDep.replace(/-/g, '_');
+            if (ignoredDeps.has(normDep) || ignoredDeps.has(normDepHyphen) || ignoredDeps.has(normDepUnderscore)) {
+                continue;
+            }
+
+            // Zkontrolujeme, zda je závislost přítomna mezi JARy nebo v adresáři
+            if (installedModIds.has(normDep) || installedModIds.has(normDepHyphen) || installedModIds.has(normDepUnderscore)) {
+                continue;
+            }
+
+            if (typeof isModInstalledInDir === 'function') {
+                const check = isModInstalledInDir(modsDir, depId);
+                if (check && check.installed) {
+                    if (check.disabled && check.fullPath) {
+                        try {
+                            const enabled = check.fullPath.replace(/\.disabled$/i, '');
+                            fs.renameSync(check.fullPath, enabled);
+                            installedModIds.add(normDep);
+                            if (typeof onLog === 'function') {
+                                onLog(`[ZÁVISLOSTI] ✔ Re-aktivována nalezená závislost: ${check.filename}`);
+                            }
+                        } catch (_) {}
+                    }
+                    continue;
+                }
+            }
+
+            // Závislost chybí! Automaticky se ji pokusíme stáhnout z Modrinthu
+            if (typeof onLog === 'function') {
+                onLog(`[ZÁVISLOSTI] 🔍 Mód "${pm.modName}" vyžaduje "${depId}". Automaticky stahuji z Modrinthu...`);
+            }
+
+            let dlSuccess = false;
+            if (typeof downloadModOrPack === 'function') {
+                try {
+                    const dlRes = await downloadModOrPack({
+                        id: depId,
+                        title: depId,
+                        projectType: 'mod',
+                        version: targetVersion,
+                        loader: 'fabric'
+                    }, gameInstanceDir);
+
+                    if (dlRes && dlRes.success) {
+                        dlSuccess = true;
+                        installedModIds.add(normDep);
+                        if (typeof onLog === 'function') {
+                            onLog(`[ZÁVISLOSTI] ✔ Úspěšně stažena vyžadovaná závislost: ${depId} (${dlRes.filename})`);
+                        }
+                    }
+                } catch (dlErr) {
+                    if (typeof onLog === 'function') {
+                        onLog(`[ZÁVISLOSTI] ⚠️ Nepodařilo se stáhnout závislost "${depId}": ${dlErr.message}`);
+                    }
+                }
+            }
+
+            // Fallback: Pokud se závislost nepodařilo stáhnout, deaktivujeme problematický mód (.disabled),
+            // aby Minecraft nespadl na Fabric FormattedException!
+            if (!dlSuccess) {
+                try {
+                    const disabledPath = pm.fullPath + '.disabled';
+                    if (fs.existsSync(pm.fullPath)) {
+                        fs.renameSync(pm.fullPath, disabledPath);
+                        if (typeof onLog === 'function') {
+                            onLog(`[ZÁVISLOSTI] ⚠️ Závislost "${depId}" není dostupná. Mód "${pm.modName}" (${pm.filename}) byl automaticky deaktivován (.disabled), aby hra nespadla.`);
+                        }
+                    }
+                } catch (disErr) {
+                    console.error('[ZÁVISLOSTI] Chyba při deaktivaci problematického módu:', disErr);
+                }
+            }
+        }
+    }
+}
+
+/**
  * Launches Minecraft with the specified profile & configuration.
  */
 async function launchGame(config, authData, customServer, onProgress, onLog, onExit) {
@@ -1806,6 +1951,9 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
 
     // ⚡ Bleskové převzetí existujících assetů a knihoven ze systému (.minecraft)
     linkOrShareExistingMinecraftData(BASE_DIR, onLog);
+
+    // ⚡ Automatická pre-flight kontrola a stažení chybějících závislostí módů (s fallbackem na .disabled)
+    await ensureProfileModsDependencies(gameInstanceDir, config, onLog);
 
     // JVM Arguments (supports modern Java 25 ZGC and G1GC)
     let jvmArgs = [];

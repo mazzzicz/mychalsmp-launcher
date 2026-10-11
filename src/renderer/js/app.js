@@ -88,7 +88,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const javaPathInput = document.getElementById('javaPathInput');
     const btnDetectJava = document.getElementById('btnDetectJava');
     const javaDetectedList = document.getElementById('javaDetectedList');
-    const autoConnectCheck = document.getElementById('autoConnectCheck');
     const btnOpenGameDir = document.getElementById('btnOpenGameDir');
     const consoleOutput = document.getElementById('consoleOutput');
     const btnClearLog = document.getElementById('btnClearLog');
@@ -443,10 +442,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 javaPathInput.value = currentConfig.javaPath;
             }
 
-            // Auto connect
-            if (autoConnectCheck) {
-                autoConnectCheck.checked = currentConfig.autoConnectServer === true;
-            }
 
             // Resolution
             if (currentConfig.resolution) {
@@ -5059,7 +5054,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return {
             ramMax: (ramSliderController ? ramSliderController.getTarget() : parseInt(ramSlider?.value || '4', 10)),
             javaPath: javaPathInput?.value.trim() || null,
-            autoConnectServer: autoConnectCheck?.checked ?? false,
+            autoConnectServer: false,
             resolution: resObj,
             enableGameMode: checkGameMode ? checkGameMode.checked : true,
             enableDiscreteGpu: checkDiscreteGpu ? checkDiscreteGpu.checked : true,
@@ -5180,9 +5175,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const checkDiscordRpcEl = document.getElementById('checkDiscordRpc');
     if (checkDiscordRpcEl) checkDiscordRpcEl.addEventListener('change', () => autoSaveSettings(true));
 
-    if (autoConnectCheck) {
-        autoConnectCheck.addEventListener('change', () => autoSaveSettings(true));
-    }
 
     document.querySelectorAll('input[name="res"]').forEach(radio => {
         radio.addEventListener('change', () => autoSaveSettings(true));
