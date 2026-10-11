@@ -5579,6 +5579,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnKeybindToggleList = document.getElementById('btnKeybindToggleList');
     const keybindKeyboardView = document.getElementById('keybindKeyboardView');
     const keybindListView = document.getElementById('keybindListView');
+    const keybindFilterToolbar = document.getElementById('keybindFilterToolbar');
     const keyboardStage = document.getElementById('keyboardStage');
     const mouseButtonsRow = document.getElementById('mouseButtonsRow');
     const keybindCategoriesContainer = document.getElementById('keybindCategoriesContainer');
@@ -5746,7 +5747,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     function getKeyDisplay(mcKey) {
         if (!mcKey || mcKey === 'key.keyboard.unknown') return '—';
         if (keybindState.keyDefinitions && keybindState.keyDefinitions[mcKey]) {
-            return keybindState.keyDefinitions[mcKey];
+            const def = keybindState.keyDefinitions[mcKey];
+            return typeof def === 'object' && def !== null ? (def.label || def.code || mcKey) : def;
         }
         if (mcKey.startsWith('key.keyboard.')) {
             return mcKey.replace('key.keyboard.', '').toUpperCase();
@@ -5757,11 +5759,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         return mcKey;
     }
 
+    function isDebugKeyAction(action) {
+        if (!action) return false;
+        if (action.isDebug) return true;
+        const id = (action.id || '').toLowerCase();
+        return id.includes('.debug.') || id.includes('debug_') || id.startsWith('key_debug') || id.startsWith('key.debug');
+    }
+
     function recalculateKeybindStats() {
-        const counts = {};
+        const normalCounts = {};
+        const debugCounts = {};
+
         for (const b of keybindState.binds) {
             if (b.key && b.key !== 'key.keyboard.unknown') {
-                counts[b.key] = (counts[b.key] || 0) + 1;
+                const isDbg = isDebugKeyAction(b);
+                b.isDebug = isDbg;
+                if (isDbg) {
+                    debugCounts[b.key] = (debugCounts[b.key] || 0) + 1;
+                } else {
+                    normalCounts[b.key] = (normalCounts[b.key] || 0) + 1;
+                }
             }
         }
         let conflicts = 0;
@@ -5774,7 +5791,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 unbound++;
             } else {
                 bound++;
-                const count = counts[b.key] || 0;
+                // F3 debug zkratky vyžadují držení F3, proto nekolidují s běžnými klávesami
+                const count = b.isDebug ? (debugCounts[b.key] || 0) : (normalCounts[b.key] || 0);
                 b.isConflict = count > 1;
                 if (b.isConflict) conflicts++;
             }
@@ -5868,7 +5886,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 keycap.dataset.key = item.key;
 
                 const boundActions = keybindState.binds.filter(b => b.key === item.key);
-                const isConflict = boundActions.length > 1;
+                const normalBound = boundActions.filter(b => !b.isDebug);
+                const debugBound = boundActions.filter(b => b.isDebug);
+                const isConflict = normalBound.length > 1 || debugBound.length > 1;
                 const isBound = boundActions.length > 0;
 
                 if (isConflict) keycap.classList.add('conflict');
@@ -5881,15 +5901,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // Subtitle preview
                 let subText = '';
                 if (isConflict) {
-                    subText = `⚠️ ${boundActions.length}x`;
+                    const conflictCount = (normalBound.length > 1 ? normalBound.length : 0) + (debugBound.length > 1 ? debugBound.length : 0);
+                    subText = `⚠️ ${conflictCount}x`;
                 } else if (isBound) {
-                    subText = boundActions[0].label;
+                    subText = normalBound.length > 0 ? normalBound[0].label : debugBound[0].label;
                 }
 
                 keycap.innerHTML = `
                     <span class="keycap-label">${escapeHtml(item.label)}</span>
                     <span class="keycap-sub" title="${escapeHtml(subText)}">${escapeHtml(subText)}</span>
-                    ${isConflict ? `<span class="keycap-conflict-badge">${boundActions.length}</span>` : ''}
+                    ${isConflict ? `<span class="keycap-conflict-badge">${normalBound.length > 1 ? normalBound.length : debugBound.length}</span>` : ''}
                 `;
 
                 keycap.addEventListener('click', () => {
@@ -5915,7 +5936,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             keycap.dataset.key = btn.key;
 
             const boundActions = keybindState.binds.filter(b => b.key === btn.key);
-            const isConflict = boundActions.length > 1;
+            const normalBound = boundActions.filter(b => !b.isDebug);
+            const debugBound = boundActions.filter(b => b.isDebug);
+            const isConflict = normalBound.length > 1 || debugBound.length > 1;
             const isBound = boundActions.length > 0;
 
             if (isConflict) keycap.classList.add('conflict');
@@ -5927,7 +5950,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             let subText = btn.defaultDesc;
             if (isConflict) {
-                subText = `⚠️ Konflikt (${boundActions.length} akcí)`;
+                subText = `⚠️ Konflikt`;
             } else if (isBound) {
                 subText = boundActions.map(a => a.label).join(', ');
             }
@@ -5977,6 +6000,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         inspectorActiveContent.style.display = 'block';
 
         const boundActions = keybindState.binds.filter(b => b.key === mcKey);
+        const normalBound = boundActions.filter(b => !b.isDebug);
+        const debugBound = boundActions.filter(b => b.isDebug);
+        const hasConflict = normalBound.length > 1 || debugBound.length > 1;
         const displayLabel = label || getKeyDisplay(mcKey);
 
         inspectorKeyBadge.textContent = displayLabel;
@@ -5985,12 +6011,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (boundActions.length === 0) {
             inspectorKeySubtitle.textContent = 'Volná klávesa (žádná přiřazená akce)';
             inspectorKeySubtitle.style.color = 'var(--text-muted)';
-        } else if (boundActions.length === 1) {
-            inspectorKeySubtitle.textContent = '1 přiřazená akce';
+        } else if (hasConflict) {
+            inspectorKeySubtitle.textContent = `⚠️ Konflikt: více akcí používá tuto klávesu současně`;
+            inspectorKeySubtitle.style.color = 'var(--brand-red)';
+        } else if (normalBound.length === 1 && debugBound.length === 1) {
+            inspectorKeySubtitle.textContent = `1 herní akce + 1 F3 debug zkratka (bez konfliktu)`;
             inspectorKeySubtitle.style.color = 'var(--brand-gray)';
         } else {
-            inspectorKeySubtitle.textContent = `⚠️ Konflikt: ${boundActions.length} akcí používá tuto klávesu současně`;
-            inspectorKeySubtitle.style.color = 'var(--brand-red)';
+            inspectorKeySubtitle.textContent = `${boundActions.length} ${boundActions.length === 1 ? 'přiřazená akce' : (boundActions.length < 5 ? 'přiřazené akce' : 'přiřazených akcí')}`;
+            inspectorKeySubtitle.style.color = 'var(--brand-gray)';
         }
 
         inspectorBindingsList.innerHTML = '';
@@ -6005,12 +6034,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else {
             boundActions.forEach(action => {
                 const row = document.createElement('div');
-                row.className = `inspector-binding-row ${boundActions.length > 1 ? 'is-conflict' : ''}`;
+                row.className = `inspector-binding-row ${action.isConflict ? 'is-conflict' : ''}`;
+
+                const tagText = action.isDebug 
+                    ? `F3 Debug zkratka • ${action.id}` 
+                    : `${action.modName || action.category} • ${action.id}`;
 
                 row.innerHTML = `
                     <div class="inspector-binding-info">
                         <span class="inspector-binding-title">${escapeHtml(action.label)}</span>
-                        <span class="inspector-binding-tag">${escapeHtml(action.modName || action.category)} • <code>${escapeHtml(action.id)}</code></span>
+                        <span class="inspector-binding-tag">${escapeHtml(tagText)}</span>
                     </div>
                     <div class="inspector-binding-controls">
                         <button type="button" class="mc-btn mc-btn-primary btn-sm btn-rebind-action">

@@ -364,33 +364,61 @@ function getKeybinds(profileId = null) {
         actionMap.set(act.id, { ...act });
     }
 
-    // Projdeme nalezené klíče ze souborů: pokud některý není v DEFAULT_ACTIONS (pochází z módu), vytvoříme pro něj položku
+    // Projdeme nalezené klíče ze souborů: pokud některý není v DEFAULT_ACTIONS (pochází z módu nebo debug zkratek), vytvoříme pro něj položku
     for (const [keyId, keyVal] of Object.entries(mergedFileBinds)) {
         if (!actionMap.has(keyId)) {
-            // Extrahujeme rozumný název z ID (např. key_voice_chat.whisper -> Whisper)
             const cleanName = keyId.replace(/^key_/, '').replace(/^key\./, '');
             const parts = cleanName.split('.');
-            const label = parts[parts.length - 1]
+            const rawLabel = parts[parts.length - 1]
                 .replace(/_/g, ' ')
                 .replace(/\b\w/g, l => l.toUpperCase());
 
+            const isDebug = cleanName.toLowerCase().includes('debug') || keyId.toLowerCase().includes('debug');
+            let label = `Mód: ${rawLabel}`;
+            let category = 'mods';
+            let modName = parts.length > 1 ? parts[0] : 'Nainstalovaný mód';
+
+            if (isDebug) {
+                category = 'misc';
+                modName = 'F3 Debug';
+                if (cleanName.includes('clearChat')) {
+                    label = 'F3 + D (Smazat chat)';
+                } else if (cleanName.includes('reloadChunks')) {
+                    label = 'F3 + A (Znovu načíst chunky)';
+                } else if (cleanName.includes('showHitboxes')) {
+                    label = 'F3 + B (Zobrazit hitboxy)';
+                } else if (cleanName.includes('copyCoordinates')) {
+                    label = 'F3 + C (Kopírovat souřadnice)';
+                } else if (cleanName.includes('cycleRenderDistance')) {
+                    label = 'F3 + F (Změnit dohled)';
+                } else if (cleanName.includes('chunkBoundaries')) {
+                    label = 'F3 + G (Hranice chunků)';
+                } else if (cleanName.includes('advancedTooltips')) {
+                    label = 'F3 + H (Pokročilé popisky)';
+                } else {
+                    label = `F3 + ${rawLabel}`;
+                }
+            }
+
             actionMap.set(keyId, {
                 id: keyId,
-                label: `Mód: ${label}`,
-                category: 'mods',
-                modName: parts.length > 1 ? parts[0] : 'Nainstalovaný mód',
-                defaultKey: keyVal
+                label,
+                category,
+                modName,
+                defaultKey: keyVal,
+                isDebug
             });
         }
     }
 
     // 4. Přiřadíme aktuální klávesy
     const bindList = [];
-    const keyUsageMap = new Map(); // key -> [actionId]
+    const keyUsageMap = new Map(); // scopeKey -> [actionItems]
 
     for (const [id, act] of actionMap.entries()) {
         const currentKey = mergedFileBinds[id] || act.defaultKey || 'key.keyboard.unknown';
         const keyDef = KEY_DEFINITIONS[currentKey] || { label: getKeyDisplay(currentKey), code: 'Custom' };
+        const isDebug = Boolean(act.isDebug || id.toLowerCase().includes('debug'));
 
         const bindItem = {
             id,
@@ -401,22 +429,26 @@ function getKeybinds(profileId = null) {
             key: currentKey,
             keyDisplay: keyDef.label,
             keyCode: keyDef.code,
+            isDebug,
             hasConflict: false,
             conflictsWith: []
         };
 
         bindList.push(bindItem);
 
-        // Zaznamenáme použití klávesy pro detekci konfliktů (kromě neobsazených)
+        // Zaznamenáme použití klávesy pro detekci konfliktů (kromě neobsazených).
+        // F3 debug zkratky mají vlastní namespace 'debug:', protože vyžadují držení klávesy F3
+        // a NEKOLIDUJÍ s běžnými herními klávesami (např. D pro chůzi vs F3+D pro smazání chatu).
         if (currentKey && currentKey !== 'key.keyboard.unknown') {
-            if (!keyUsageMap.has(currentKey)) {
-                keyUsageMap.set(currentKey, []);
+            const usageKey = `${isDebug ? 'debug:' : 'normal:'}${currentKey}`;
+            if (!keyUsageMap.has(usageKey)) {
+                keyUsageMap.set(usageKey, []);
             }
-            keyUsageMap.get(currentKey).push(bindItem);
+            keyUsageMap.get(usageKey).push(bindItem);
         }
     }
 
-    // 5. Vyhodnocení konfliktů (pokud má klávesa >= 2 akce)
+    // 5. Vyhodnocení konfliktů (pouze pokud stejná klávesa koliduje v rámci stejné skupiny)
     let conflictCount = 0;
     for (const [k, items] of keyUsageMap.entries()) {
         if (items.length > 1) {
@@ -502,8 +534,9 @@ function resetKeybindsToDefaults() {
 
 /**
  * Synchronizuje globální klávesové zkratky do konkrétního profilu před spuštěním hry
+ * @param {string} targetDirOrProfileId Profil ID nebo přímo absolutní cesta k instanci
  */
-function syncKeybindsToProfile(profileId) {
+function syncKeybindsToProfile(targetDirOrProfileId) {
     try {
         const curConfig = loadConfig();
         const globalBinds = curConfig.globalKeybinds;
@@ -511,19 +544,26 @@ function syncKeybindsToProfile(profileId) {
             return { success: true, message: 'Žádné globální bindy k synchronizaci' };
         }
 
-        const profileDir = path.join(BASE_DIR, 'profiles', profileId);
-        if (!fs.existsSync(profileDir)) {
-            fs.mkdirSync(profileDir, { recursive: true });
+        let targetDir = BASE_DIR;
+        if (targetDirOrProfileId) {
+            if (path.isAbsolute(targetDirOrProfileId)) {
+                targetDir = targetDirOrProfileId;
+            } else {
+                targetDir = path.join(BASE_DIR, 'profiles', targetDirOrProfileId);
+            }
+        }
+        if (!fs.existsSync(targetDir)) {
+            fs.mkdirSync(targetDir, { recursive: true });
         }
 
-        const optPath = path.join(profileDir, 'options.txt');
+        const optPath = path.join(targetDir, 'options.txt');
         const existingContent = fs.existsSync(optPath) ? fs.readFileSync(optPath, 'utf-8') : '';
         const newContent = updateOptionsContent(existingContent, globalBinds);
         fs.writeFileSync(optPath, newContent, 'utf-8');
 
         return { success: true, synced: true };
     } catch (err) {
-        console.warn(`[KEYBINDS] Chyba synchronizace do profilu ${profileId}:`, err.message);
+        console.warn('[KEYBINDS] Chyba synchronizace do profilu:', err.message);
         return { success: false, error: err.message };
     }
 }

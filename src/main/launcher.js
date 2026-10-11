@@ -2165,6 +2165,14 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
     injectSMPClientBrandIntoJars(BASE_DIR, targetVersion, versionOpts, onLog);
     onLog(`[KLIENT] 🏷️ Spouštění oficiálního klienta s identifikací: ${clientBrand}`);
 
+    // Synchronizace globálních klávesových zkratek do profilu před startem hry
+    try {
+        const { syncKeybindsToProfile } = require('./keybindManager');
+        if (typeof syncKeybindsToProfile === 'function') {
+            syncKeybindsToProfile(gameInstanceDir);
+        }
+    } catch (_) {}
+
     const opts = {
         config: config,
         authorization: authData,
