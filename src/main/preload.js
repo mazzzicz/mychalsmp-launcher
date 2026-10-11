@@ -123,6 +123,8 @@ contextBridge.exposeInMainWorld('api', {
     getSystemInfo: () => ipcRenderer.invoke('get-system-info'),
     openGameDir: () => ipcRenderer.send('open-game-dir'),
     openUrl: (url) => ipcRenderer.send('open-url', url),
+    copyToClipboard: (text) => ipcRenderer.invoke('copy-to-clipboard', text),
+    getLatestGameLog: () => ipcRenderer.invoke('get-latest-game-log'),
     onAuthStatus: (callback) => {
         ipcRenderer.on('auth-status', (event, status) => callback(status));
     },

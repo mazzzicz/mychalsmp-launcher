@@ -91,6 +91,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnOpenGameDir = document.getElementById('btnOpenGameDir');
     const consoleOutput = document.getElementById('consoleOutput');
     const btnClearLog = document.getElementById('btnClearLog');
+    const btnCopyLog = document.getElementById('btnCopyLog');
+    const btnDownloadLog = document.getElementById('btnDownloadLog');
 
     // State
     let currentConfig = {};
@@ -5433,6 +5435,67 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         consoleOutput.textContent += `${line}\n`;
         consoleOutput.scrollTop = consoleOutput.scrollHeight;
+    }
+
+    async function getFullLogContent() {
+        let content = '';
+        if (consoleOutput && consoleOutput.textContent && consoleOutput.textContent !== 'Čekám na spuštění hry...') {
+            content += '=== LAUNCHER CONSOLE LOG ===\n' + consoleOutput.textContent + '\n\n';
+        }
+        try {
+            if (window.api && typeof window.api.getLatestGameLog === 'function') {
+                const diskLog = await window.api.getLatestGameLog();
+                if (diskLog && diskLog.trim().length > 0) {
+                    content += '=== MINECRAFT LATEST.LOG ===\n' + diskLog;
+                }
+            }
+        } catch (_) {}
+        if (!content.trim()) {
+            content = consoleOutput?.textContent || 'Žádné zaznamenané logy.';
+        }
+        return content;
+    }
+
+    if (btnCopyLog) {
+        btnCopyLog.addEventListener('click', async () => {
+            try {
+                const logText = await getFullLogContent();
+                if (window.api && typeof window.api.copyToClipboard === 'function') {
+                    await window.api.copyToClipboard(logText);
+                } else if (navigator.clipboard) {
+                    await navigator.clipboard.writeText(logText);
+                }
+                showToast('Log byl zkopírován do schránky!', 'success');
+                const orig = btnCopyLog.innerHTML;
+                btnCopyLog.innerHTML = '<svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--green" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg> <span>Zkopírováno!</span>';
+                setTimeout(() => { if (btnCopyLog) btnCopyLog.innerHTML = orig; }, 2000);
+            } catch (err) {
+                console.error('[COPY LOG]', err);
+                showToast('Nepodařilo se zkopírovat log.', 'error');
+            }
+        });
+    }
+
+    if (btnDownloadLog) {
+        btnDownloadLog.addEventListener('click', async () => {
+            try {
+                const logText = await getFullLogContent();
+                const blob = new Blob([logText], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                const dateStr = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+                a.download = `mychalsmp-log-${dateStr}.txt`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast('Log byl úspěšně stažen!', 'success');
+            } catch (err) {
+                console.error('[DOWNLOAD LOG]', err);
+                showToast('Nepodařilo se stáhnout log.', 'error');
+            }
+        });
     }
 
     if (btnClearLog) {

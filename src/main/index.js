@@ -520,6 +520,33 @@ ipcMain.handle('open-keyarts-folder', async () => {
     return await shell.openPath(bundledDir);
 });
 
+ipcMain.handle('copy-to-clipboard', (event, text) => {
+    try {
+        clipboard.writeText(text || '');
+        return true;
+    } catch (_) {
+        return false;
+    }
+});
+
+ipcMain.handle('get-latest-game-log', async () => {
+    try {
+        const config = loadConfig();
+        const activeProfileId = config.activeProfileId || 'minecraft-26.2';
+        const candidatePaths = [
+            path.join(BASE_DIR, 'profiles', activeProfileId, 'logs', 'latest.log'),
+            path.join(BASE_DIR, 'instances', activeProfileId, 'logs', 'latest.log'),
+            path.join(BASE_DIR, 'logs', 'latest.log')
+        ];
+        for (const p of candidatePaths) {
+            if (fs.existsSync(p)) {
+                return fs.readFileSync(p, 'utf8');
+            }
+        }
+    } catch (_) {}
+    return null;
+});
+
 ipcMain.handle('search-modrinth', async (event, query, version, loader, category, projectType, offset, limit) => {
     return await searchModrinth(query, version, loader, category, projectType, offset, limit);
 });

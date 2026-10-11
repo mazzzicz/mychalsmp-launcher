@@ -3788,14 +3788,30 @@ input[type="range"].slider.is-dragging::-webkit-slider-thumb {
     font-weight: 700;
 }
 
+.console-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
 .btn-mini {
-    background: transparent;
+    background: var(--surface2);
     border: 1px solid var(--surface-border);
-    color: var(--text-muted);
-    font-size: 10px;
-    padding: 2px 6px;
+    color: var(--brand-gray);
+    font-size: 11px;
+    padding: 3px 8px;
     border-radius: var(--radius-sm);
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: var(--transition);
+}
+
+.btn-mini:hover {
+    background: var(--surface-hover);
+    border-color: rgba(255, 255, 255, 0.2);
+    color: #ffffff;
 }
 
 .console-body {

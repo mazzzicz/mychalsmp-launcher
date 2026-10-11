@@ -215,16 +215,16 @@ function safeAtomicWriteSync(filePath, content) {
         if (process.platform === 'win32') {
             try {
                 fs.copyFileSync(tmpFile, filePath);
-                try { fs.unlinkSync(tmpFile); } catch (_) {}
+                try { fs.unlinkSync(tmpFile); } catch (_) { }
                 return;
-            } catch (_) {}
+            } catch (_) { }
         }
         fs.renameSync(tmpFile, filePath);
     } catch (err) {
         // Fallback: přímý zápis pokud rename/copy selže
         try {
             fs.writeFileSync(filePath, content, 'utf-8');
-            try { fs.unlinkSync(tmpFile); } catch (_) {}
+            try { fs.unlinkSync(tmpFile); } catch (_) { }
         } catch (e2) {
             console.error(`[CONFIG] Kritická chyba zápisu do ${filePath}:`, e2);
         }
@@ -254,7 +254,7 @@ function saveConfig(newConfig) {
         safeAtomicWriteSync(CONFIG_FILE, JSON.stringify(merged, null, 2));
         try {
             fs.copyFileSync(CONFIG_FILE, `${CONFIG_FILE}.bak`);
-        } catch (e) {}
+        } catch (e) { }
         return { ...merged, baseDir: BASE_DIR };
     } catch (err) {
         console.error('Chyba při ukládání konfigurace launcheru:', err);

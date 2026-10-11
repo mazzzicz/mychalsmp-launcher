@@ -2264,6 +2264,23 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
         }
     }
 
+    // Důkladné pročištění starých grafických proměnných z process.env
+    // Zabrání chybám 'No supported graphics backend was found' a 'VK_ERROR_INITIALIZATION_FAILED'
+    const sensitiveGpuKeys = [
+        '__VK_LAYER_NV_optimus',
+        'MESA_GL_VERSION_OVERRIDE',
+        'MESA_GLSL_VERSION_OVERRIDE',
+        'MESA_LOADER_DRIVER_OVERRIDE',
+        '__NV_PRIME_RENDER_OFFLOAD',
+        '__GLX_VENDOR_LIBRARY_NAME',
+        'DRI_PRIME',
+        '__GL_THREADED_OPTIMIZATIONS',
+        'MESA_GL_THREAD'
+    ];
+    for (const key of sensitiveGpuKeys) {
+        delete process.env[key];
+    }
+
     // Prepare Environment Variables for Game Launch (Wayland, Linux Performance & Prism features)
     const savedEnv = {};
     const setGameEnv = (key, val) => {
@@ -2291,24 +2308,17 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
             }
         }
 
-        // MangoHud Overlay (deaktivováno - nepodporováno)
-        // config.enableMangoHud je trvale vypnuto na žádost uživatele
-
-        // ⚡ Vícevláknová fronta OpenGL příkazů v grafických ovladačích (Mesa i NVIDIA)
-        setGameEnv('MESA_GL_THREAD', 'true');
-        setGameEnv('__GL_THREADED_OPTIMIZATIONS', '1');
-
-        // Discrete GPU (NVIDIA & AMD Prime Offloading)
+        // Discrete GPU (NVIDIA & AMD Prime Offloading pro hybridní notebooky)
+        // DŮLEŽITÉ: NIKDY nenastavovat __VK_LAYER_NV_optimus (rozbíjí Vulkan na desktopech i noteboocích)
         if (config.enableDiscreteGpu) {
-            setGameEnv('DRI_PRIME', '1');
             const hasNvidia = fs.existsSync('/proc/driver/nvidia') || fs.existsSync('/sys/module/nvidia');
             if (hasNvidia) {
                 setGameEnv('__NV_PRIME_RENDER_OFFLOAD', '1');
                 setGameEnv('__GLX_VENDOR_LIBRARY_NAME', 'nvidia');
-                setGameEnv('__VK_LAYER_NV_optimus', 'NVIDIA_only');
-                onLog('[VÝKON] Diskrétní GPU aktivována (DRI_PRIME=1, NVIDIA Prime Render Offload)');
+                onLog('[VÝKON] Diskrétní GPU aktivována (NVIDIA Prime Render Offload)');
             } else {
-                onLog('[VÝKON] Diskrétní GPU aktivována (DRI_PRIME=1, Intel/AMD Prime Offload)');
+                setGameEnv('DRI_PRIME', '1');
+                onLog('[VÝKON] Diskrétní GPU aktivována (DRI_PRIME=1)');
             }
         }
 
