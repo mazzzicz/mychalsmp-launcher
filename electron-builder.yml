@@ -30,6 +30,9 @@ nsis:
   allowToChangeInstallationDirectory: true
   shortcutName: SMPClient
   uninstallDisplayName: SMPClient
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
 
 linux:
   maintainer: "mychalVidea <admin@mychalsmp.xyz>"

@@ -81,6 +81,10 @@ contextBridge.exposeInMainWorld('api', {
     minimizeWindow: () => ipcRenderer.send('window-minimize'),
     maximizeWindow: () => ipcRenderer.send('window-maximize'),
     closeWindow: () => ipcRenderer.send('window-close'),
+    isMaximized: () => ipcRenderer.invoke('window-is-maximized'),
+    onMaximizeChange: (callback) => {
+        ipcRenderer.on('window-maximize-change', (event, isMax) => callback(isMax));
+    },
 
     // File Dialogs & Shell
     selectSkinFile: () => ipcRenderer.invoke('select-skin-file'),

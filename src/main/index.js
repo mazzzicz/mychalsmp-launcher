@@ -54,6 +54,20 @@ try {
     app.commandLine.appendSwitch('ignore-gpu-blocklist');
 } catch (_) { }
 
+// ⚡ Na Windows je nezbytné nastavit AppUserModelId odpovídající appId z electron-builder.yml (xyz.mychalsmp.launcher).
+// Bez tohoto Windows považuje aplikaci za anonymní electron.exe a v hlavním panelu a nabídce Start zobrazuje defaultní atomovou ikonku Electronu.
+if (process.platform === 'win32') {
+    app.setAppUserModelId('xyz.mychalsmp.launcher');
+}
+
+function getAppIconPath() {
+    if (process.platform === 'win32') {
+        const ico = path.join(__dirname, '../renderer/assets/icon.ico');
+        if (fs.existsSync(ico)) return ico;
+    }
+    return path.join(__dirname, '../renderer/assets/logo.png');
+}
+
 let mainWindow = null;
 let splashWindow = null;
 let appTray = null;
@@ -62,7 +76,7 @@ let isQuitting = false;
 function setupTray() {
     if (appTray && !appTray.isDestroyed()) return appTray;
     try {
-        const iconPath = path.join(__dirname, '../renderer/assets/logo.png');
+        const iconPath = getAppIconPath();
         if (fs.existsSync(iconPath)) {
             const icon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
             appTray = new Tray(icon);
@@ -146,7 +160,7 @@ function createSplashWindow() {
         alwaysOnTop: true,
         show: true,
         backgroundColor: '#00000000',
-        icon: path.join(__dirname, '../renderer/assets/logo.png'),
+        icon: getAppIconPath(),
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -180,9 +194,11 @@ function createWindow() {
         minWidth: 980,
         minHeight: 640,
         frame: false, // Custom sleek titlebar
-        backgroundColor: '#0a0b12',
+        transparent: true,
+        backgroundColor: '#00000000',
+        hasShadow: true,
         show: false,
-        icon: path.join(__dirname, '../renderer/assets/logo.png'),
+        icon: getAppIconPath(),
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
@@ -197,6 +213,18 @@ function createWindow() {
         const isLive = checkAndResumeActiveSession();
         if (isLive) {
             mainWindow.webContents.send('game-started');
+        }
+    });
+
+    mainWindow.on('maximize', () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('window-maximize-change', true);
+        }
+    });
+
+    mainWindow.on('unmaximize', () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('window-maximize-change', false);
         }
     });
 
@@ -1462,6 +1490,10 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
     } catch (e) { }
 
     try {
+        let hasExited = false;
+        let earlyExitCode = null;
+        let hideWindowTimeout = null;
+
         const proc = await launchGame(
             launchConfig,
             authData,
@@ -1574,7 +1606,13 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
                     }
                 }
             },
-            (exitCode) => {
+            async (exitCode) => {
+                hasExited = true;
+                earlyExitCode = exitCode;
+                if (hideWindowTimeout) {
+                    clearTimeout(hideWindowTimeout);
+                    hideWindowTimeout = null;
+                }
                 endSessionTracking(exitCode);
 
                 // Reset Discord RPC back to Launcher status
@@ -1600,7 +1638,7 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
                     }
 
                     try {
-                        const crashData = analyzeCrash(launchConfig.baseDir, exitCode, recentGameLogs);
+                        const crashData = await analyzeCrash(launchConfig.baseDir, exitCode, recentGameLogs, launchConfig);
                         if (crashData && (crashData.isCleanShutdown || crashData.hasCrash === false)) {
                             console.log('[LAUNCHER] Detekováno běžné ukončení hry (post-main watchdog), neotevírám dialog pádu.');
                             return;
@@ -1618,12 +1656,52 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
             return { success: false, cancelled: true };
         }
 
+        // ⚡ Kontrola bezprostředního pádu: Pokud proces selhal hned při spuštění
+        if (hasExited || proc.exitCode !== null || proc.killed) {
+            const finalCode = proc.exitCode ?? earlyExitCode ?? 1;
+            console.error(`[LAUNCHER] Proces hry selhal bezprostředně po spuštění (kód: ${finalCode})`);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('game-stopped');
+                if (mainWindow.isMinimized()) mainWindow.restore();
+                mainWindow.show();
+                mainWindow.focus();
+            }
+            return {
+                success: false,
+                error: `Hra byla ukončena ihned po spuštění (kód: ${finalCode}). Zkontroluj záznam v herní konzoli.`
+            };
+        }
+
         if (proc && proc.pid) {
             startSessionTracking(proc.pid, activeId, profile ? profile.name : 'Minecraft', launchConfig.baseDir, serverIp);
         }
 
         // Skrytí launcheru do systémové lišty (Tray) pro nulovou zátěž při běhu hry
         setupTray();
+
+        // ⚡ Grace period 1.5 sekundy: Vyčkáme, zda proces nezkolabuje v prvních okamžicích bootstrapu
+        await new Promise(resolve => {
+            hideWindowTimeout = setTimeout(resolve, 1500);
+        });
+        hideWindowTimeout = null;
+
+        // Pokud během grace periody proces zkolaboval
+        if (hasExited || proc.exitCode !== null || proc.killed) {
+            const finalCode = proc.exitCode ?? earlyExitCode ?? 1;
+            console.error(`[LAUNCHER] Proces hry se neočekávaně ukončil během startu (kód: ${finalCode})`);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('game-stopped');
+                if (mainWindow.isMinimized()) mainWindow.restore();
+                mainWindow.show();
+                mainWindow.focus();
+            }
+            return {
+                success: false,
+                error: `Hra se neotevřela a byla okamžitě ukončena (kód: ${finalCode}). Zkontroluj herní konzoli a crash log.`
+            };
+        }
+
+        // Teprve pokud proces stabilně běží, schováme okno do lišty a pošleme 'game-started'
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('game-started');
             mainWindow.hide();
@@ -2189,6 +2267,10 @@ ipcMain.on('window-maximize', () => {
     }
 });
 
+ipcMain.handle('window-is-maximized', () => {
+    return (mainWindow && !mainWindow.isDestroyed()) ? mainWindow.isMaximized() : false;
+});
+
 ipcMain.on('window-close', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
         setupTray();
@@ -2475,9 +2557,12 @@ ipcMain.handle('restart-launcher', () => {
 ipcMain.handle('apply-crash-fix', async (event, autoFix, profileId) => {
     try {
         const config = loadConfig();
-        const profile = (config.profiles || []).find(p => p.id === profileId) || config.profiles[0];
-        const gameDir = (profile && profile.gameDir) ? profile.gameDir : config.baseDir;
-        return await executeCrashFix(autoFix, gameDir, config, saveConfig, detectJavaPath, downloadAndInstallJava);
+        const effectiveConfig = {
+            ...config,
+            version: profile?.version || config.version || '26.2',
+            loader: profile?.loader || config.loader || 'fabric'
+        };
+        return await executeCrashFix(autoFix, gameDir, effectiveConfig, saveConfig, detectJavaPath, downloadAndInstallJava);
     } catch (err) {
         console.error('Chyba při aplikaci opravy pádu:', err);
         return { success: false, error: err.message };

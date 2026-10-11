@@ -294,6 +294,123 @@ async function downloadToFileWithProgress(url, destPath, onProgress) {
 }
 
 /**
+ * Resolves a mod ID, slug, or dependency reference into a canonical Modrinth project object.
+ */
+async function resolveModrinthProject(rawId) {
+    if (!rawId) return null;
+    const clean = String(rawId).trim();
+    const candidates = [clean, clean.replace(/_/g, '-')];
+    if (clean.toLowerCase() === 'fabric') {
+        candidates.unshift('fabric-api');
+    }
+
+    for (const c of candidates) {
+        try {
+            const res = await fetch(`https://api.modrinth.com/v2/project/${encodeURIComponent(c)}`, {
+                headers: { 'User-Agent': 'mychalVidea/mychalsmp-launcher' },
+                signal: AbortSignal.timeout(4000)
+            });
+            if (res.ok) {
+                const data = await res.json();
+                return {
+                    id: data.id,
+                    slug: data.slug,
+                    title: data.title
+                };
+            }
+        } catch (_) {}
+    }
+
+    // Vyhledání podle dotazu jako fallback
+    try {
+        const query = clean.replace(/[_-]/g, ' ');
+        const sUrl = `https://api.modrinth.com/v2/search?query=${encodeURIComponent(query)}&limit=3`;
+        const sRes = await fetch(sUrl, {
+            headers: { 'User-Agent': 'mychalVidea/mychalsmp-launcher' },
+            signal: AbortSignal.timeout(4000)
+        });
+        if (sRes.ok) {
+            const sData = await sRes.json();
+            if (sData.hits && sData.hits.length > 0) {
+                const hit = sData.hits[0];
+                return {
+                    id: hit.project_id || hit.slug,
+                    slug: hit.slug,
+                    title: hit.title
+                };
+            }
+        }
+    } catch (_) {}
+
+    return null;
+}
+
+/**
+ * Checks if a mod/dependency is already present in destDir (e.g. mods folder)
+ * Returns { installed: boolean, disabled: boolean, filename: string, fullPath: string }
+ */
+function isModInstalledInDir(destDir, modIdentifier) {
+    if (!destDir || !fs.existsSync(destDir) || !modIdentifier) return null;
+
+    const rawId = String(modIdentifier).trim().toLowerCase();
+    const hyphenId = rawId.replace(/_/g, '-');
+    const underscoreId = rawId.replace(/-/g, '_');
+
+    // 1. Zkontrolujeme .mod_meta.json
+    try {
+        const metaPath = path.join(destDir, '.mod_meta.json');
+        if (fs.existsSync(metaPath)) {
+            const metaObj = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+            for (const [fname, meta] of Object.entries(metaObj)) {
+                const mId = (meta.id || '').toLowerCase();
+                const mSlug = (meta.slug || '').toLowerCase();
+                const mTitle = (meta.title || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+                if (
+                    mId === rawId || mId === hyphenId || mId === underscoreId ||
+                    mSlug === rawId || mSlug === hyphenId || mSlug === underscoreId ||
+                    mTitle === rawId.replace(/[^a-z0-9]/g, '')
+                ) {
+                    const fullPath = path.join(destDir, fname);
+                    const disabledPath = fullPath + '.disabled';
+                    if (fs.existsSync(fullPath)) {
+                        return { installed: true, disabled: false, filename: fname, fullPath };
+                    } else if (fs.existsSync(disabledPath)) {
+                        return { installed: true, disabled: true, filename: fname + '.disabled', fullPath: disabledPath };
+                    }
+                }
+            }
+        }
+    } catch (_) {}
+
+    // 2. Prohledáme reálné soubory ve složce
+    try {
+        const files = fs.readdirSync(destDir);
+        for (const f of files) {
+            const lowerF = f.toLowerCase();
+            const cleanF = lowerF.replace(/\.disabled$/i, '').replace(/\.jar$/i, '');
+            const isDisabled = lowerF.endsWith('.disabled');
+
+            if (
+                cleanF === rawId || cleanF === hyphenId || cleanF === underscoreId ||
+                cleanF.startsWith(rawId + '-') || cleanF.startsWith(hyphenId + '-') || cleanF.startsWith(underscoreId + '-') ||
+                cleanF.startsWith(rawId + '_') || cleanF.startsWith(hyphenId + '_') || cleanF.startsWith(underscoreId + '_') ||
+                cleanF.includes(rawId) || cleanF.includes(hyphenId)
+            ) {
+                return {
+                    installed: true,
+                    disabled: isDisabled,
+                    filename: f,
+                    fullPath: path.join(destDir, f)
+                };
+            }
+        }
+    } catch (_) {}
+
+    return null;
+}
+
+/**
  * Downloads a mod, resourcepack, or shader from Modrinth directly into the profile's directory.
  */
 async function downloadModOrPack(options, targetDir) {
@@ -481,19 +598,102 @@ async function downloadModOrPack(options, targetDir) {
         fs.writeFileSync(metaPath, JSON.stringify(metaObj, null, 2), 'utf8');
     } catch (_) {}
 
+    // Automatické stažení vyžadovaných závislostí (dependencies)
+    const dependenciesInstalled = [];
+    if (projectType === 'mod' && Array.isArray(picked.dependencies) && picked.dependencies.length > 0) {
+        const visited = options._visited || new Set();
+        visited.add(String(id).toLowerCase());
+        if (options.slug) visited.add(String(options.slug).toLowerCase());
+        if (picked.project_id) visited.add(String(picked.project_id).toLowerCase());
+
+        const requiredDeps = picked.dependencies.filter(d => d && d.dependency_type === 'required');
+        for (const dep of requiredDeps) {
+            const depProjId = dep.project_id || dep.version_id;
+            if (!depProjId) continue;
+            const normDepId = String(depProjId).toLowerCase();
+
+            // Ignorujeme interní pseudo-závislosti na Minecraftu a launcherech
+            if (['minecraft', 'fabricloader', 'fabric-loader', 'forge', 'neoforge', 'java'].includes(normDepId)) {
+                continue;
+            }
+
+            if (visited.has(normDepId)) {
+                continue;
+            }
+
+            // Ověříme, zda závislost již není přítomna v mods složce
+            const check = isModInstalledInDir(destDir, depProjId);
+            if (check && check.installed) {
+                // Pokud byla závislost pouze deaktivována (.disabled), znovu ji povolíme
+                if (check.disabled && check.fullPath) {
+                    try {
+                        const targetEnabled = check.fullPath.replace(/\.disabled$/i, '');
+                        fs.renameSync(check.fullPath, targetEnabled);
+                        console.log(`[DEPENDENCY] Re-aktivována deaktivovaná závislost: ${check.filename}`);
+                        dependenciesInstalled.push({
+                            id: depProjId,
+                            title: depProjId,
+                            filename: path.basename(targetEnabled),
+                            reEnabled: true
+                        });
+                    } catch (_) {}
+                }
+                visited.add(normDepId);
+                continue;
+            }
+
+            // Vyhledáme závislost na Modrinthu a automaticky ji stáhneme
+            try {
+                const resolved = await resolveModrinthProject(depProjId);
+                if (resolved && !visited.has(resolved.id.toLowerCase()) && !visited.has(resolved.slug.toLowerCase())) {
+                    visited.add(resolved.id.toLowerCase());
+                    visited.add(resolved.slug.toLowerCase());
+
+                    console.log(`[DEPENDENCY] Automaticky stahuji chybějící vyžadovanou závislost: ${resolved.title || resolved.slug} (${depProjId})`);
+                    const depResult = await downloadModOrPack({
+                        id: resolved.id || resolved.slug,
+                        slug: resolved.slug,
+                        title: resolved.title,
+                        projectType: 'mod',
+                        version: version,
+                        loader: resolvedLoader || normLoader,
+                        _visited: visited
+                    }, targetDir);
+
+                    if (depResult && depResult.success) {
+                        dependenciesInstalled.push({
+                            id: resolved.id,
+                            slug: resolved.slug,
+                            title: resolved.title,
+                            filename: depResult.filename
+                        });
+                        if (Array.isArray(depResult.dependenciesInstalled)) {
+                            dependenciesInstalled.push(...depResult.dependenciesInstalled);
+                        }
+                    }
+                }
+            } catch (depErr) {
+                console.warn(`[DEPENDENCY] Nepodařilo se stáhnout závislost ${depProjId}:`, depErr.message);
+            }
+        }
+    }
+
     return {
         success: true,
         filename: file.filename,
         version_number: picked.version_number,
         subfolder,
         destPath,
-        resolvedLoader: projectType === 'mod' ? resolvedLoader : null
+        resolvedLoader: projectType === 'mod' ? resolvedLoader : null,
+        dependenciesInstalled
     };
 }
 
 module.exports = {
     searchModrinth,
     downloadModOrPack,
+    resolveModrinthProject,
+    isModInstalledInDir,
     CURATED_MODS,
     CURATED_PACKS
 };

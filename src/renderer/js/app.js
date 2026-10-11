@@ -82,12 +82,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Settings
     const ramSlider = document.getElementById('ramSlider');
     const ramValueBadge = document.getElementById('ramValueBadge');
+    let ramSliderController = null;
+    let newProfileRamSliderController = null;
+    let profileRamSliderController = null;
     const javaPathInput = document.getElementById('javaPathInput');
     const btnDetectJava = document.getElementById('btnDetectJava');
     const javaDetectedList = document.getElementById('javaDetectedList');
     const autoConnectCheck = document.getElementById('autoConnectCheck');
     const btnOpenGameDir = document.getElementById('btnOpenGameDir');
-    const btnSaveSettings = document.getElementById('btnSaveSettings');
     const consoleOutput = document.getElementById('consoleOutput');
     const btnClearLog = document.getElementById('btnClearLog');
 
@@ -104,10 +106,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         projectType: 'mod'
     };
 
-    // ── Window Controls ─────────────────────────────────────────────────────
+    // ── Window Controls & State ─────────────────────────────────────────────
     if (btnMin) btnMin.addEventListener('click', () => window.api.minimizeWindow());
     if (btnMax) btnMax.addEventListener('click', () => window.api.maximizeWindow());
     if (btnClose) btnClose.addEventListener('click', () => window.api.closeWindow());
+
+    if (window.api && window.api.onMaximizeChange) {
+        window.api.onMaximizeChange((isMax) => {
+            document.body.classList.toggle('is-maximized', isMax);
+            if (btnMax) btnMax.title = isMax ? 'Obnovit velikost' : 'Maximalizovat';
+        });
+        if (typeof window.api.isMaximized === 'function') {
+            window.api.isMaximized().then((isMax) => {
+                if (isMax) {
+                    document.body.classList.add('is-maximized');
+                    if (btnMax) btnMax.title = 'Obnovit velikost';
+                }
+            }).catch(() => {});
+        }
+    }
 
     // ── Tab Navigation ──────────────────────────────────────────────────────
     function switchTab(tabId) {
@@ -378,8 +395,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                     btnApplyRecommendedRam.style.display = 'inline-flex';
                     btnApplyRecommendedRam.onclick = () => {
                         if (ramSlider && ramValueBadge) {
-                            ramSlider.value = sysInfo.recommendedRamGB;
-                            updateSliderVisuals(ramSlider, ramValueBadge);
+                            if (ramSliderController) {
+                                ramSliderController.setTarget(sysInfo.recommendedRamGB, false, true);
+                            } else {
+                                ramSlider.value = sysInfo.recommendedRamGB;
+                                updateSliderVisuals(ramSlider, ramValueBadge);
+                            }
                             currentConfig.ramMax = sysInfo.recommendedRamGB;
                             autoSaveSettings(true);
                             showToast(`Nastavena optimální paměť: ${sysInfo.recommendedRamGB} GB RAM`, 'success');
@@ -409,8 +430,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // RAM
             if (ramSlider && ramValueBadge && currentConfig.ramMax) {
-                ramSlider.value = currentConfig.ramMax;
-                updateSliderVisuals(ramSlider, ramValueBadge);
+                if (ramSliderController) {
+                    ramSliderController.setValue(currentConfig.ramMax, true);
+                } else {
+                    ramSlider.value = currentConfig.ramMax;
+                    updateSliderVisuals(ramSlider, ramValueBadge);
+                }
             }
 
             // Java
@@ -504,6 +529,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (forceSnap) {
             val = Math.round(val);
             slider.value = val;
+            if (slider._smoothController) {
+                slider._smoothController.syncTarget(val);
+            }
         }
 
         const pct = max > min ? Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100)) : 0;
@@ -519,6 +547,218 @@ document.addEventListener('DOMContentLoaded', async () => {
                 badgeEl.classList.add('badge-bump');
             }
         }
+    }
+
+    function setupSmoothSnapSlider(slider, badgeEl, options = {}) {
+        if (!slider) return null;
+
+        const {
+            onSnapChange = null,
+            onFinalize = null,
+        } = options;
+
+        let targetVal = Math.round(parseFloat(slider.value) || 4);
+        let currentVisualVal = parseFloat(slider.value) || targetVal;
+        let animFrameId = null;
+        let isDragging = false;
+
+        function getBounds() {
+            const min = parseFloat(slider.min) !== undefined && !isNaN(parseFloat(slider.min)) ? parseFloat(slider.min) : 2;
+            const max = parseFloat(slider.max) !== undefined && !isNaN(parseFloat(slider.max)) ? parseFloat(slider.max) : 16;
+            return { min, max };
+        }
+
+        function syncVisuals() {
+            updateSliderVisuals(slider, badgeEl, false);
+        }
+
+        function animateToTarget(immediate = false) {
+            if (immediate) {
+                if (animFrameId) {
+                    cancelAnimationFrame(animFrameId);
+                    animFrameId = null;
+                }
+                currentVisualVal = targetVal;
+                slider.value = targetVal;
+                syncVisuals();
+                return;
+            }
+
+            if (animFrameId) return;
+
+            let lastTime = performance.now();
+
+            function step(now) {
+                const dt = Math.min(0.05, Math.max(0.001, (now - lastTime) / 1000));
+                lastTime = now;
+
+                const diff = targetVal - currentVisualVal;
+                if (Math.abs(diff) < 0.008) {
+                    currentVisualVal = targetVal;
+                    slider.value = targetVal;
+                    syncVisuals();
+                    animFrameId = null;
+                    return;
+                }
+
+                // Smooth exponential spring glide (~160ms)
+                const factor = 1 - Math.exp(-24 * dt);
+                currentVisualVal += diff * factor;
+                slider.value = currentVisualVal.toFixed(3);
+                syncVisuals();
+
+                animFrameId = requestAnimationFrame(step);
+            }
+
+            animFrameId = requestAnimationFrame(step);
+        }
+
+        function setTarget(newVal, immediate = false, triggerChange = false) {
+            const { min, max } = getBounds();
+            const clamped = Math.max(min, Math.min(max, Math.round(Number(newVal) || min)));
+            const changed = clamped !== targetVal;
+            targetVal = clamped;
+
+            if (badgeEl) {
+                const targetText = `${targetVal} GB`;
+                if (badgeEl.textContent !== targetText) {
+                    badgeEl.textContent = targetText;
+                    badgeEl.classList.remove('badge-bump');
+                    void badgeEl.offsetWidth;
+                    badgeEl.classList.add('badge-bump');
+                }
+            }
+
+            if (changed && typeof onSnapChange === 'function') {
+                onSnapChange(targetVal);
+            }
+
+            animateToTarget(immediate);
+
+            if (triggerChange) {
+                slider.dispatchEvent(new Event('input', { bubbles: true }));
+                slider.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        }
+
+        function calculatePointerTarget(clientX) {
+            const rect = slider.getBoundingClientRect();
+            if (!rect.width) return targetVal;
+
+            const thumbRadius = 11;
+            const trackWidth = Math.max(1, rect.width - thumbRadius * 2);
+            const pointerOffset = Math.max(0, Math.min(trackWidth, clientX - rect.left - thumbRadius));
+            const ratio = pointerOffset / trackWidth;
+
+            const { min, max } = getBounds();
+            const rawVal = min + ratio * (max - min);
+
+            // Hysteresis deadzone to prevent fluttering at borders
+            let candidate = targetVal;
+            if (rawVal > targetVal + 0.56) {
+                candidate = Math.round(rawVal);
+            } else if (rawVal < targetVal - 0.56) {
+                candidate = Math.round(rawVal);
+            }
+            return Math.max(min, Math.min(max, candidate));
+        }
+
+        function onPointerMove(e) {
+            if (!isDragging) return;
+            const newTarget = calculatePointerTarget(e.clientX);
+            if (newTarget !== targetVal) {
+                setTarget(newTarget, false, false);
+            }
+        }
+
+        function onPointerUp() {
+            if (!isDragging) return;
+            isDragging = false;
+            slider.classList.remove('is-dragging');
+
+            window.removeEventListener('pointermove', onPointerMove);
+            window.removeEventListener('pointerup', onPointerUp);
+            window.removeEventListener('pointercancel', onPointerUp);
+
+            animateToTarget(false);
+
+            if (typeof onFinalize === 'function') {
+                onFinalize(targetVal);
+            }
+
+            slider.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        slider.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            slider.focus();
+            isDragging = true;
+            slider.classList.add('is-dragging');
+
+            const newTarget = calculatePointerTarget(e.clientX);
+            setTarget(newTarget, false, false);
+
+            window.addEventListener('pointermove', onPointerMove);
+            window.addEventListener('pointerup', onPointerUp);
+            window.addEventListener('pointercancel', onPointerUp);
+        });
+
+        // Keyboard navigation (Arrow keys)
+        slider.addEventListener('keydown', (e) => {
+            const { min, max } = getBounds();
+            if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                const next = Math.min(max, targetVal + 1);
+                if (next !== targetVal) {
+                    setTarget(next, false, true);
+                    if (typeof onFinalize === 'function') onFinalize(next);
+                }
+            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                const prev = Math.max(min, targetVal - 1);
+                if (prev !== targetVal) {
+                    setTarget(prev, false, true);
+                    if (typeof onFinalize === 'function') onFinalize(prev);
+                }
+            }
+        });
+
+        // Mouse wheel adjustment
+        slider.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const { min, max } = getBounds();
+            if (e.deltaY < 0 || e.deltaX > 0) {
+                const next = Math.min(max, targetVal + 1);
+                if (next !== targetVal) {
+                    setTarget(next, false, true);
+                    if (typeof onFinalize === 'function') onFinalize(next);
+                }
+            } else if (e.deltaY > 0 || e.deltaX < 0) {
+                const prev = Math.max(min, targetVal - 1);
+                if (prev !== targetVal) {
+                    setTarget(prev, false, true);
+                    if (typeof onFinalize === 'function') onFinalize(prev);
+                }
+            }
+        }, { passive: false });
+
+        const controller = {
+            setTarget,
+            setValue: (v, imm = false) => setTarget(v, imm, false),
+            getTarget: () => targetVal,
+            syncVisuals,
+            isDragging: () => isDragging,
+            syncTarget: (v) => {
+                const { min, max } = getBounds();
+                const clamped = Math.max(min, Math.min(max, Math.round(Number(v) || min)));
+                targetVal = clamped;
+                currentVisualVal = clamped;
+            }
+        };
+
+        slider._smoothController = controller;
+        return controller;
     }
 
     function renderRamSliderMarks(maxGb) {
@@ -566,10 +806,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         marksContainer.querySelectorAll('.slider-mark').forEach(mark => {
             mark.addEventListener('click', () => {
                 const val = parseInt(mark.dataset.ramVal, 10);
-                if (!isNaN(val) && ramSlider) {
-                    ramSlider.value = val;
-                    updateSliderVisuals(ramSlider, ramValueBadge);
-                    autoSaveSettings(true);
+                if (!isNaN(val)) {
+                    if (ramSliderController) {
+                        ramSliderController.setTarget(val, false, true);
+                        currentConfig.ramMax = val;
+                        autoSaveSettings(true);
+                    } else if (ramSlider) {
+                        ramSlider.value = val;
+                        updateSliderVisuals(ramSlider, ramValueBadge, true);
+                        currentConfig.ramMax = val;
+                        autoSaveSettings(true);
+                    }
                 }
             });
         });
@@ -603,7 +850,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const panelMs = document.getElementById('panelMicrosoftSkin');
         const panelOff = document.getElementById('panelOfflineSkin');
-        const badgePill = document.getElementById('skinAccountTypeBadge');
         const skinPathLabel = document.getElementById('offlineSkinPathLabel');
         const capePathLabel = document.getElementById('offlineCapePathLabel');
 
@@ -612,20 +858,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             authOfflineBtn?.classList.remove('active');
             if (panelMs) panelMs.style.display = 'flex';
             if (panelOff) panelOff.style.display = 'none';
-            if (badgePill) {
-                badgePill.innerHTML = '<span class="status-dot online"></span> Microsoft Účet';
-                badgePill.className = 'skin-badge-pill pill-microsoft';
-            }
             loadMojangCapes();
         } else {
             authOfflineBtn?.classList.add('active');
             authMicrosoftBtn?.classList.remove('active');
             if (panelMs) panelMs.style.display = 'none';
             if (panelOff) panelOff.style.display = 'flex';
-            if (badgePill) {
-                badgePill.innerHTML = '<span class="status-dot" style="background:#eab308; box-shadow:0 0 6px rgba(234,179,8,0.5);"></span> Offline Profil (Uloženo lokálně)';
-                badgePill.className = 'skin-badge-pill';
-            }
             const offCapeSec = document.getElementById('offlineCapesSection');
             if (offCapeSec) offCapeSec.style.display = 'none';
             const equippedBadge = document.getElementById('equippedCapeBadge');
@@ -712,7 +950,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const label = statusBadge.querySelector('.v-status-label') || statusBadge;
                     if (isThisRunning) {
                         statusBadge.className = 'v-status-badge running';
-                        label.innerHTML = '<svg class="ui-icon-svg ui-icon-svg--xs ui-icon-pulse" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg> Spuštěno';
+                        label.innerHTML = '<svg class="ui-icon-svg ui-icon-svg--xs ui-icon-pulse" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor"></polygon></svg> Spuštěno';
                     } else if (isThisLaunching) {
                         statusBadge.className = 'v-status-badge downloading';
                         label.innerHTML = '<svg class="ui-icon-svg ui-icon-svg--xs ui-icon-spin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="12"></circle></svg> Příprava / Stahování...';
@@ -1689,13 +1927,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                     case 'chest':
                         return '<svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>';
                     case 'upgrade':
-                        return '<svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--gold" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>';
+                        return '<svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--blue" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="16 12 12 8 8 12"></polyline><line x1="12" y1="16" x2="12" y2="8"></line></svg>';
                     case 'import':
                         return '<svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--green" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>';
                     case 'shield':
                         return '<svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--blue" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>';
                     case 'rocket':
-                        return '<svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--blue" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"></path><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"></path></svg>';
+                        return '<svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--blue" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"></path><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"></path><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"></path><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"></path><circle cx="15" cy="9" r="1"></circle></svg>';
                     default:
                         return '<svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--blue" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="4"></rect><line x1="6" y1="12" x2="10" y2="12"></line><line x1="8" y1="10" x2="8" y2="14"></line><line x1="15" y1="11" x2="15.01" y2="11"></line><line x1="18" y1="13" x2="18.01" y2="13"></line></svg>';
                 }
@@ -1715,7 +1953,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const canUpgrade = p.version !== '26.3' && p.version !== '26.4';
             const upgradeBtnHtml = canUpgrade ? `
                 <button class="btn-upgrade-profile" data-profile-id="${escapeHtml(p.id)}" title="Upgradovat profil a stáhnout nové verze módů">
-                    <svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--gold" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg> Upgrade
+                    <svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--gold" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="16 12 12 8 8 12"></polyline><line x1="12" y1="16" x2="12" y2="8"></line></svg> Upgrade
                 </button>
             ` : '';
 
@@ -4304,11 +4542,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         const container = document.getElementById('mojangCapesList');
         const equippedBadge = document.getElementById('equippedCapeBadge');
         const equippedName = document.getElementById('equippedCapeName');
+        const countPill = document.getElementById('mojangCapesCount');
+        const btnHideCape = document.getElementById('btnHideMojangCape');
         if (!container) return;
 
         if (currentConfig.authType !== 'microsoft') {
             container.innerHTML = '';
             if (equippedBadge) equippedBadge.style.display = 'none';
+            if (countPill) countPill.style.display = 'none';
+            if (btnHideCape) btnHideCape.style.display = 'none';
             return;
         }
 
@@ -4331,7 +4573,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (capes.length === 0) {
                     container.innerHTML = '<div class="cape-loading-hint">Na tomto Mojang účtu nemáš žádné oficiální pláště.</div>';
                     if (equippedBadge) equippedBadge.style.display = 'none';
+                    if (countPill) countPill.style.display = 'none';
+                    if (btnHideCape) btnHideCape.style.display = 'none';
                     return;
+                }
+
+                if (countPill) {
+                    countPill.textContent = `${capes.length} ${capes.length === 1 ? 'plášť' : capes.length < 5 ? 'pláště' : 'plášťů'}`;
+                    countPill.style.display = 'inline-block';
                 }
 
                 let activeCapeFound = null;
@@ -4363,12 +4612,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                         activeMojangCapeUrl = activeCapeFound.url;
                         updateSkinViewer3D(targetSkin, activeCapeFound.url, isSlimArm);
                         updateHeroSkinViewer3D(targetSkin, activeCapeFound.url, isSlimArm);
+                        if (btnHideCape) btnHideCape.style.display = 'inline-flex';
                     } else {
                         equippedBadge.style.display = 'none';
                         activeMojangCapeUrl = null;
                         updateSkinViewer3D(targetSkin, null, isSlimArm);
                         updateHeroSkinViewer3D(targetSkin, null, isSlimArm);
+                        if (btnHideCape) btnHideCape.style.display = 'none';
                     }
+                } else if (btnHideCape) {
+                    btnHideCape.style.display = activeCapeFound ? 'inline-flex' : 'none';
                 }
 
                 // Bind click to equip cape on Mojang account
@@ -4386,6 +4639,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     });
                 });
             } else if (res && res.expired) {
+                if (countPill) countPill.style.display = 'none';
+                if (btnHideCape) btnHideCape.style.display = 'none';
                 container.innerHTML = `
                     <div style="text-align: center; padding: 10px 4px;">
                         <div class="cape-loading-hint" style="color: #f51515; margin-bottom: 8px;">
@@ -4402,9 +4657,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
                 if (equippedBadge) equippedBadge.style.display = 'none';
             } else {
+                if (countPill) countPill.style.display = 'none';
+                if (btnHideCape) btnHideCape.style.display = 'none';
                 container.innerHTML = `<div class="cape-loading-hint">Pláště nelze načíst (${res?.error || 'Nepřihlášen'}).</div>`;
             }
         } catch (e) {
+            if (countPill) countPill.style.display = 'none';
+            if (btnHideCape) btnHideCape.style.display = 'none';
             container.innerHTML = `<div class="cape-loading-hint">Chyba při načítání plášťů.</div>`;
         }
     }
@@ -4798,7 +5057,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const customEnvVarsInput = document.getElementById('customEnvVarsInput');
 
         return {
-            ramMax: parseInt(ramSlider?.value || '4', 10),
+            ramMax: (ramSliderController ? ramSliderController.getTarget() : parseInt(ramSlider?.value || '4', 10)),
             javaPath: javaPathInput?.value.trim() || null,
             autoConnectServer: autoConnectCheck?.checked ?? false,
             resolution: resObj,
@@ -4826,6 +5085,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const updated = collectCurrentSettings();
                 currentConfig = { ...currentConfig, ...updated };
                 await window.api.saveConfig(updated);
+                const saveBadge = document.getElementById('settingsAutoSaveStatus');
+                if (saveBadge) {
+                    saveBadge.style.display = 'inline-flex';
+                    saveBadge.style.opacity = '1';
+                    clearTimeout(saveBadge._fadeTimer);
+                    saveBadge._fadeTimer = setTimeout(() => {
+                        saveBadge.style.opacity = '0';
+                        setTimeout(() => {
+                            if (saveBadge.style.opacity === '0') saveBadge.style.display = 'none';
+                        }, 300);
+                    }, 1800);
+                }
             } catch (err) {
                 console.error('[CONFIG] Chyba automatického ukládání nastavení:', err);
             }
@@ -4839,33 +5110,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     if (ramSlider && ramValueBadge) {
-        ramSlider.addEventListener('input', () => {
-            updateSliderVisuals(ramSlider, ramValueBadge, false);
-            autoSaveSettings(false);
+        ramSliderController = setupSmoothSnapSlider(ramSlider, ramValueBadge, {
+            onFinalize: (val) => {
+                currentConfig.ramMax = val;
+                autoSaveSettings(true);
+            }
         });
-        const finalizeRam = () => {
-            updateSliderVisuals(ramSlider, ramValueBadge, true);
-            autoSaveSettings(true);
-        };
-        ramSlider.addEventListener('change', finalizeRam);
-        ramSlider.addEventListener('pointerup', finalizeRam);
     }
 
     // Global listener ensuring all range sliders keep dynamic track progress updated smoothly
     document.addEventListener('input', (e) => {
-        if (e.target && e.target.type === 'range' && e.target.classList.contains('slider')) {
+        if (e.target && e.target.type === 'range' && e.target.classList.contains('slider') && !e.target._smoothController) {
             updateSliderVisuals(e.target, null, false);
         }
     });
 
     document.addEventListener('pointerup', (e) => {
-        if (e.target && e.target.type === 'range' && e.target.classList.contains('slider')) {
+        if (e.target && e.target.type === 'range' && e.target.classList.contains('slider') && !e.target._smoothController) {
             updateSliderVisuals(e.target, null, true);
         }
     });
 
     document.addEventListener('keydown', (e) => {
-        if (e.target && e.target.type === 'range' && e.target.classList.contains('slider')) {
+        if (e.target && e.target.type === 'range' && e.target.classList.contains('slider') && !e.target._smoothController) {
             if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
                 e.preventDefault();
                 const min = parseFloat(e.target.min) || 2;
@@ -4936,15 +5203,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (customEnvVarsEl) {
         customEnvVarsEl.addEventListener('input', () => autoSaveSettings(false));
         customEnvVarsEl.addEventListener('change', () => autoSaveSettings(true));
-    }
-
-    if (btnSaveSettings) {
-        btnSaveSettings.addEventListener('click', async () => {
-            await autoSaveSettings(true);
-            appendLog('[CONFIG] Nastavení bylo uloženo.');
-            temporaryButtonText(btnSaveSettings, '<svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> <span>Nastavení uloženo</span>');
-            showToast('Nastavení uloženo.', 'success');
-        });
     }
 
     const btnPresetZgc = document.getElementById('btnPresetZgc');
@@ -5346,7 +5604,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             if (subElem) {
                 subElem.textContent = isAutoFixed
-                    ? 'Nekompatibilní mód byl vyřazen'
+                    ? (crashData.title?.includes('závislost') ? 'Chybějící závislost byla automaticky doinstalována' : 'Nekompatibilní mód byl vyřazen')
                     : `Chyba při běhu (kód: ${crashData.exitCode || 1})`;
             }
             if (badgeElem) {
@@ -5373,7 +5631,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const cleanLabel = (crashData.autoFix.label || (isAutoFixed ? 'Spustit hru znovu' : 'Automatická oprava')).replace(/^[⚡⚠️🔧\s]+/u, '');
                         const iconHtml = isAutoFixed
                             ? '<svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--green" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>'
-                            : '<svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--gold ui-icon-pulse" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>';
+                            : '<svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--gold ui-icon-pulse" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>';
                         fixTextElem.innerHTML = `${iconHtml} <span>${escapeHtml(cleanLabel)}</span>`;
                     }
                 } else {
@@ -5416,8 +5674,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (updatedCfg) {
                         currentConfig = updatedCfg;
                         if (ramSlider && updatedCfg.ramMax) {
-                            ramSlider.value = updatedCfg.ramMax;
-                            updateSliderVisuals(ramSlider, ramValueBadge);
+                            if (ramSliderController) {
+                                ramSliderController.setValue(updatedCfg.ramMax, true);
+                            } else {
+                                ramSlider.value = updatedCfg.ramMax;
+                                updateSliderVisuals(ramSlider, ramValueBadge);
+                            }
                         }
                         if (javaPathInput && updatedCfg.javaPath) {
                             javaPathInput.value = updatedCfg.javaPath;
@@ -5439,7 +5701,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 showToast('Chyba: ' + err.message, 'error');
             } finally {
                 btnApplyCrashFix.disabled = false;
-                btnApplyCrashFix.innerHTML = '<span id="btnApplyCrashFixText"><svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--gold ui-icon-pulse" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg> <span>Automatická oprava</span></span>';
+                btnApplyCrashFix.innerHTML = '<span id="btnApplyCrashFixText"><svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--gold ui-icon-pulse" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg> <span>Automatická oprava</span></span>';
             }
         });
     }
@@ -5590,14 +5852,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const dropdownNewLoader = setupCustomDropdown('dropdownNewProfileLoader');
 
     if (newProfileRamSlider && newProfileRamValueBadge) {
-        newProfileRamSlider.addEventListener('input', () => {
-            updateSliderVisuals(newProfileRamSlider, newProfileRamValueBadge, false);
-        });
-        const finalizeNewProfRam = () => {
-            updateSliderVisuals(newProfileRamSlider, newProfileRamValueBadge, true);
-        };
-        newProfileRamSlider.addEventListener('change', finalizeNewProfRam);
-        newProfileRamSlider.addEventListener('pointerup', finalizeNewProfRam);
+        newProfileRamSliderController = setupSmoothSnapSlider(newProfileRamSlider, newProfileRamValueBadge);
     }
 
     const iconButtons = document.querySelectorAll('#newProfileIconPicker .icon-picker-item');
@@ -5615,7 +5870,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (newProfileNameInput) {
             newProfileNameInput.value = `Nový profil ${count}`;
         }
-        if (newProfileRamSlider && newProfileRamValueBadge) {
+        if (newProfileRamSliderController) {
+            newProfileRamSliderController.setValue(4, true);
+        } else if (newProfileRamSlider && newProfileRamValueBadge) {
             newProfileRamSlider.value = 4;
             updateSliderVisuals(newProfileRamSlider, newProfileRamValueBadge);
         }
@@ -5644,7 +5901,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const ver = dropdownNewVersion ? dropdownNewVersion.getValue() : '26.2';
             const ldr = dropdownNewLoader ? dropdownNewLoader.getValue() : 'vanilla';
-            const ram = parseInt(newProfileRamSlider?.value || '4', 10);
+            const ram = newProfileRamSliderController ? newProfileRamSliderController.getTarget() : parseInt(newProfileRamSlider?.value || '4', 10);
             const newId = 'profile-' + Date.now();
 
             const newProf = {
@@ -5820,7 +6077,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (upgradeProgressArea) upgradeProgressArea.style.display = 'none';
         if (btnConfirmUpgrade) {
             btnConfirmUpgrade.disabled = false;
-            btnConfirmUpgrade.innerHTML = '<span><svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"></path><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"></path></svg> Spustit upgrade</span>';
+            btnConfirmUpgrade.innerHTML = '<span><svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="16 12 12 8 8 12"></polyline><line x1="12" y1="16" x2="12" y2="8"></line></svg> Spustit upgrade</span>';
         }
 
         if (modalUpgradeProfile) modalUpgradeProfile.style.display = 'flex';
@@ -5898,7 +6155,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 alert('Chyba při upgradu: ' + e.message);
             } finally {
                 btnConfirmUpgrade.disabled = false;
-                btnConfirmUpgrade.innerHTML = '<span><svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"></path><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"></path></svg> Spustit upgrade</span>';
+                btnConfirmUpgrade.innerHTML = '<span><svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="16 12 12 8 8 12"></polyline><line x1="12" y1="16" x2="12" y2="8"></line></svg> Spustit upgrade</span>';
             }
         });
     }
@@ -5920,14 +6177,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnDeleteCurrentProfile = document.getElementById('btnDeleteCurrentProfile');
 
     if (profileRamSlider && profileRamValueBadge) {
-        profileRamSlider.addEventListener('input', () => {
-            updateSliderVisuals(profileRamSlider, profileRamValueBadge, false);
-        });
-        const finalizeProfileRam = () => {
-            updateSliderVisuals(profileRamSlider, profileRamValueBadge, true);
-        };
-        profileRamSlider.addEventListener('change', finalizeProfileRam);
-        profileRamSlider.addEventListener('pointerup', finalizeProfileRam);
+        profileRamSliderController = setupSmoothSnapSlider(profileRamSlider, profileRamValueBadge);
     }
 
     function openProfileSettingsModal(pid) {
@@ -5955,8 +6205,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
 
-        if (profileRamSlider && profileRamValueBadge) {
-            profileRamSlider.value = profile.ramMax || currentConfig.ramMax || 4;
+        const pRam = profile.ramMax || currentConfig.ramMax || 4;
+        if (profileRamSliderController) {
+            profileRamSliderController.setValue(pRam, true);
+        } else if (profileRamSlider && profileRamValueBadge) {
+            profileRamSlider.value = pRam;
             updateSliderVisuals(profileRamSlider, profileRamValueBadge);
         }
 
@@ -6072,7 +6325,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const nameInput = document.getElementById('profileSettingsNameInput');
             const loaderSelect = document.getElementById('profileSettingsLoaderSelect');
             const newName = nameInput ? nameInput.value.trim() : '';
-            const newRam = profileRamSlider ? parseInt(profileRamSlider.value, 10) : 4;
+            const newRam = profileRamSliderController ? profileRamSliderController.getTarget() : (profileRamSlider ? parseInt(profileRamSlider.value, 10) : 4);
             const newLoader = loaderSelect ? loaderSelect.value : 'fabric';
 
             await window.api.updateProfileSettings(activeSettingsProfileId, {

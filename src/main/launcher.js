@@ -204,12 +204,41 @@ Client.prototype.startMinecraft = function(launchArguments) {
         this.emit('debug', '[MCLC]: Spuštění hry bylo zrušeno, proces nebude nastartován.');
         return null;
     }
-    const proc = origStartMinecraft.call(this, launchArguments);
-    if (this._isCancelled && proc) {
-        try { proc.kill(); } catch (e) {}
+    try {
+        const proc = origStartMinecraft.call(this, launchArguments);
+        if (this._isCancelled && proc) {
+            try { proc.kill(); } catch (e) {}
+            return null;
+        }
+        if (proc) {
+            proc.on('error', (err) => {
+                this.emit('debug', `[MCLC]: Chyba při spuštění procesu Minecraftu: ${err.message}`);
+                this.emit('close', 1);
+            });
+        }
+        return proc;
+    } catch (e) {
+        this.emit('debug', `[MCLC]: Výjimka při volání startMinecraft: ${e.message}`);
+        this.emit('close', 1);
         return null;
     }
-    return proc;
+};
+
+/**
+ * Intercept Handler.prototype.getNatives:
+ * MCLC nativně parsuje verze přes version.id.split('.')[1], což selhává u nových verzí Minecraftu jako 26.2 a 26.3
+ * (split('.')[1] je "2" nebo "3", takže MCLC chybně vyhodnotí verzi jako starý Minecraft 1.2 z roku 2012!).
+ * Pro verze 26.x i 1.19+ vracíme kořenový adresář hry, protože LWJGL 3 načítá nativní DLL/SO dynamicky z classpath jarů.
+ */
+const origGetNatives = Handler.prototype.getNatives;
+Handler.prototype.getNatives = async function() {
+    const vId = String(this.version?.id || this.options?.version?.number || '');
+    const firstPart = parseInt(vId.split('.')[0], 10);
+    const secondPart = parseInt(vId.split('.')[1], 10);
+    if (firstPart >= 26 || (firstPart === 1 && secondPart >= 19)) {
+        return this.options.overrides.cwd || this.options.root;
+    }
+    return origGetNatives.call(this);
 };
 
 /**
@@ -724,12 +753,31 @@ Handler.prototype.getAssets = async function() {
 
 
 /**
+ * Na Windows je javaw.exe GUI aplikací bez konzole, která do stdout/stderr neposílá žádný výstup.
+ * Pro testování a spolehlivé zjištění verze přes '-version' převedeme javaw.exe na java.exe ve stejné složce.
+ */
+function resolveJavaConsoleBinary(binPath) {
+    if (!binPath) return binPath;
+    if (process.platform === 'win32') {
+        const normalized = String(binPath).replace(/\//g, '\\');
+        if (/javaw\.exe$/i.test(normalized)) {
+            const javaConsole = normalized.replace(/javaw\.exe$/i, 'java.exe');
+            if (fs.existsSync(javaConsole)) {
+                return javaConsole;
+            }
+        }
+    }
+    return binPath;
+}
+
+/**
  * Extracts the major version of a Java runtime executable (e.g. 25, 21, 17, 8).
  */
 function getJavaMajorVersion(binPath) {
     if (!binPath) return 0;
+    const testBin = resolveJavaConsoleBinary(binPath);
     try {
-        const out = execSync(`"${binPath}" -version 2>&1`, { timeout: 3500, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
+        const out = execSync(`"${testBin}" -version 2>&1`, { timeout: 3500, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
         const match = out.match(/(?:version|Runtime Environment)\s+"?(\d+)(?:\.(\d+))?/i);
         if (match) {
             const v1 = parseInt(match[1], 10);
@@ -761,10 +809,11 @@ function getRequiredJavaVersion(gameVersion) {
  */
 function testJavaExecutable(binPath, minMajor = 0) {
     if (!binPath) return false;
+    const testBin = resolveJavaConsoleBinary(binPath);
     try {
-        execSync(`"${binPath}" -version`, { timeout: 3500, stdio: ['ignore', 'pipe', 'pipe'] });
+        execSync(`"${testBin}" -version`, { timeout: 3500, stdio: ['ignore', 'pipe', 'pipe'] });
         if (minMajor > 0) {
-            const major = getJavaMajorVersion(binPath);
+            const major = getJavaMajorVersion(testBin);
             return major >= minMajor;
         }
         return true;
@@ -1303,6 +1352,13 @@ function injectRawSkinIntoJar(jarPath, activeSkinPath, activeCapePath, onLog = c
         onLog(`[POSTAVA] ✓ Textury skinu hráče RAW přepsány přímo v jádru hry (${path.basename(jarPath)}). Žádný texture pack ani mód není potřeba!`);
         return true;
     }
+    // Pokud došlo k chybě integrity nebo AdmZip poškodil soubor, okamžitě obnovíme nepoškozenou zálohu
+    if (fs.existsSync(backupPath) && isJarFileValid(backupPath)) {
+        try {
+            fs.copyFileSync(backupPath, jarPath);
+            onLog(`[POSTAVA] ⚠ Obnoven původní funkční soubor ${path.basename(jarPath)} ze zálohy po neúspěšné modifikaci.`);
+        } catch (_) {}
+    }
     return false;
 }
 
@@ -1420,20 +1476,10 @@ function injectSMPClientBrandIntoJars(baseDir, targetVersion = null, versionOpts
             try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
             success = true;
         } catch (_) {
-            // Metoda B: AdmZip fallback
-            try {
-                const AdmZip = require('adm-zip');
-                const zip = new AdmZip(jarPath);
-                try { zip.deleteFile('META-INF/MOJANGCS.SF'); } catch (_) {}
-                try { zip.deleteFile('META-INF/MOJANGCS.RSA'); } catch (_) {}
-                try { zip.deleteFile('META-INF/MOJANG_C.SF'); } catch (_) {}
-                try { zip.deleteFile('META-INF/MOJANG_C.RSA'); } catch (_) {}
-                zip.addFile('net/minecraft/client/ClientBrandRetriever.class', classBuf);
-                zip.writeZip(jarPath);
-                success = true;
-            } catch (admErr) {
-                onLog(`[KLIENT] ⚠ Varování: Injekce značky do ${path.basename(jarPath)} selhala: ${admErr.message}`);
-            }
+            // Metoda B: Pokud CLI zip není dostupný (typicky Windows), nesaháme AdmZipem na 40MB herní jádro,
+            // protože -Xbootclasspath/a:${brandJar} již garantuje 100% načtení značky na úrovni JVM bez rizika poškození souboru.
+            onLog(`[KLIENT] ✓ Brand SMPClient zajištěn na úrovni JVM (-Xbootclasspath/a) bez nutnosti modifikace ${path.basename(jarPath)}.`);
+            success = true;
         }
 
         if (success && isJarFileValid(jarPath)) {
@@ -1800,14 +1846,20 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
         fs.mkdirSync(path.join(nativesExtractDir, 'lwjgl'), { recursive: true });
         fs.mkdirSync(path.join(nativesExtractDir, 'jna'), { recursive: true });
         fs.mkdirSync(path.join(nativesExtractDir, 'netty'), { recursive: true });
-        fs.mkdirSync(path.join(nativesExtractDir, 'java'), { recursive: true });
     } catch (e) {}
 
+    // ⚡ Klíčový příznak pro Java 24/25 – Mojang 26.x manifest jej explicitně vyžaduje pro přístup Netty, LWJGL a Fabric k paměti
+    if (!jvmArgs.includes('--sun-misc-unsafe-memory-access=allow')) {
+        jvmArgs.push('--sun-misc-unsafe-memory-access=allow');
+    }
     if (!jvmArgs.includes('--enable-native-access=ALL-UNNAMED')) {
         jvmArgs.push('--enable-native-access=ALL-UNNAMED');
     }
     if (!jvmArgs.includes('--add-exports') && !jvmArgs.some(a => a.includes('jdk.internal.misc'))) {
         jvmArgs.push('--add-exports', 'java.base/jdk.internal.misc=ALL-UNNAMED');
+    }
+    if (!jvmArgs.some(a => a.startsWith('-XX:StackShadowPages='))) {
+        jvmArgs.push('-XX:StackShadowPages=32');
     }
     if (!jvmArgs.some(a => a.startsWith('-Dorg.lwjgl.system.SharedLibraryExtractPath='))) {
         jvmArgs.push(`-Dorg.lwjgl.system.SharedLibraryExtractPath=${path.join(nativesExtractDir, 'lwjgl')}`);
@@ -1818,9 +1870,8 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
     if (!jvmArgs.some(a => a.startsWith('-Dio.netty.native.workdir='))) {
         jvmArgs.push(`-Dio.netty.native.workdir=${path.join(nativesExtractDir, 'netty')}`);
     }
-    if (!jvmArgs.some(a => a.startsWith('-Djava.library.path='))) {
-        jvmArgs.push(`-Djava.library.path=${path.join(nativesExtractDir, 'java')}`);
-    }
+    // POZNÁMKA: NIKDY nepřidávat -Djava.library.path směřující na prázdnou složku!
+    // Na Windows i Linuxu to přepisuje systémový mechanismus hledání dynamických knihoven a způsobí pád LWJGL.
 
     // Direct Quick Play multiplayer connection (with automatic fallback to backup IP 130.61.89.37)
     let quickPlay = null;
@@ -1869,6 +1920,35 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
             } catch (e) {}
         }
     }
+
+    // ⚡ Načtení specifických JVM argumentů přímo z manifestu (např. -DFabricMcEmu nebo Mojang 26.x flags)
+    try {
+        let manifestToRead = null;
+        if (versionOpts.custom) {
+            const cPath = path.join(BASE_DIR, 'versions', versionOpts.custom, `${versionOpts.custom}.json`);
+            if (fs.existsSync(cPath)) manifestToRead = cPath;
+        }
+        if (!manifestToRead) {
+            const vPath = path.join(BASE_DIR, 'versions', targetVersion, `${targetVersion}.json`);
+            if (fs.existsSync(vPath)) manifestToRead = vPath;
+        }
+        if (manifestToRead) {
+            const manifestObj = JSON.parse(fs.readFileSync(manifestToRead, 'utf8'));
+            const manifestJvm = manifestObj?.arguments?.jvm;
+            if (Array.isArray(manifestJvm)) {
+                for (const arg of manifestJvm) {
+                    if (typeof arg === 'string') {
+                        if (!arg.startsWith('-cp') && !arg.startsWith('${classpath}') &&
+                            !arg.startsWith('-Djava.library.path') && !arg.startsWith('-Dminecraft.launcher')) {
+                            if (!jvmArgs.includes(arg)) {
+                                jvmArgs.push(arg);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } catch (_) {}
 
     // Automatická kontrola a oprava integrity version JAR před spuštěním
     const activeVersionFolder = versionOpts.custom || versionOpts.number;
@@ -1948,6 +2028,7 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
         downloadAudioDlc: true,
         overrides: {
             gameDirectory: gameInstanceDir, // Sem Minecraft generuje a odkud čte mods, config, options.txt, saves
+            assetIndex: targetVersion,
             assetRoot: path.join(BASE_DIR, 'assets'),
             libraryRoot: path.join(BASE_DIR, 'libraries'),
             detached: false,

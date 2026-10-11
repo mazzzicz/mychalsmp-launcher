@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const { shell } = require('electron');
+const { downloadModOrPack, resolveModrinthProject, isModInstalledInDir } = require('./modrinth');
 
 /**
  * Intelligent Crash Analyzer for MYCHAL SMP Launcher
@@ -70,9 +71,201 @@ function readLatestLogTail(gameDir, maxLines = 300) {
 }
 
 /**
- * Detects incompatible, conflicting, or broken mods, extracts culprit mod IDs and titles,
- * locates their JAR files in gameDir/mods, and automatically disables them (.jar.disabled)
- * so that subsequent game launches succeed smoothly without user intervention.
+ * Extracts all missing mod dependencies from the crash log or latest.log output.
+ */
+function extractMissingDependencies(combinedText) {
+    const missing = [];
+
+    // 1. Fabric: "Mod 'A' (a) requires ... of mod 'B' (b), which is missing!"
+    const r1 = /Mod '([^']+)' \(([^)]+)\)[^\n\r]*requires (?:version [^\n\r]+ of |any version [^\n\r]+ of )?mod '([^']+)' \(([^)]+)\), which is missing/gi;
+    let m;
+    while ((m = r1.exec(combinedText)) !== null) {
+        const modName = m[1];
+        const modId = m[2];
+        const depName = m[3];
+        const depId = m[4];
+        if (!['minecraft', 'java', 'fabricloader', 'fabric-loader'].includes(depId.toLowerCase())) {
+            const existing = missing.find(d => d.depId.toLowerCase() === depId.toLowerCase());
+            if (existing) {
+                if (modName && (!existing.modName || existing.modName === 'Neznámý mód')) existing.modName = modName;
+                if (modId && !existing.modId) existing.modId = modId;
+            } else {
+                missing.push({ modName, modId, depName, depId });
+            }
+        }
+    }
+
+    // 2. Fabric recommended solution: "Install mod 'Fzzy Config' (fzzy_config) 0.6.0 or later."
+    const rInstall = /Install mod '([^']+)' \(([^)]+)\)/gi;
+    while ((m = rInstall.exec(combinedText)) !== null) {
+        const depName = m[1];
+        const depId = m[2];
+        if (!['minecraft', 'java', 'fabricloader', 'fabric-loader'].includes(depId.toLowerCase())) {
+            const existing = missing.find(d => d.depId.toLowerCase() === depId.toLowerCase());
+            if (!existing) {
+                missing.push({ modName: '', modId: '', depName, depId });
+            }
+        }
+    }
+
+    // 3. Fabric generic: "requires ... of mod 'DepName' (depId), which is missing"
+    const r2 = /requires (?:version [^\n\r]+ of |any version [^\n\r]+ of )?mod '([^']+)' \(([^)]+)\), which is missing/gi;
+    while ((m = r2.exec(combinedText)) !== null) {
+        const depName = m[1];
+        const depId = m[2];
+        if (!['minecraft', 'java', 'fabricloader', 'fabric-loader'].includes(depId.toLowerCase())) {
+            const existing = missing.find(d => d.depId.toLowerCase() === depId.toLowerCase());
+            if (!existing) {
+                missing.push({ modName: '', modId: '', depName, depId });
+            }
+        }
+    }
+
+    // 4. Fabric: "requires ... of 'depId', which is missing"
+    const r3 = /requires (?:version [^\n\r]+ of |any version [^\n\r]+ of )?'([^']+)', which is missing/gi;
+    while ((m = r3.exec(combinedText)) !== null) {
+        const depId = m[1];
+        if (!['minecraft', 'java', 'fabricloader', 'fabric-loader'].includes(depId.toLowerCase())) {
+            const existing = missing.find(d => d.depId.toLowerCase() === depId.toLowerCase());
+            if (!existing) {
+                missing.push({ modName: '', modId: '', depName: depId, depId });
+            }
+        }
+    }
+
+    // 5. NeoForge / Forge: "Mod ID: 'depId', requested by 'modId', is not installed"
+    const r4 = /Mod ID: '([^']+)', requested by '([^']+)', is not installed/gi;
+    while ((m = r4.exec(combinedText)) !== null) {
+        const depId = m[1];
+        const modId = m[2];
+        if (!['minecraft', 'java', 'forge', 'neoforge'].includes(depId.toLowerCase())) {
+            const existing = missing.find(d => d.depId.toLowerCase() === depId.toLowerCase());
+            if (!existing) {
+                missing.push({ modName: modId, modId, depName: depId, depId });
+            }
+        }
+    }
+
+    // 6. Forge: "Mod 'X' requires 'Y' ... which is not installed"
+    const r5 = /Mod '([^']+)' requires '([^']+)'[^\n\r]*which is not installed/gi;
+    while ((m = r5.exec(combinedText)) !== null) {
+        const modName = m[1];
+        const depId = m[2];
+        if (!['minecraft', 'java', 'forge', 'neoforge'].includes(depId.toLowerCase())) {
+            const existing = missing.find(d => d.depId.toLowerCase() === depId.toLowerCase());
+            if (!existing) {
+                missing.push({ modName, modId: modName, depName: depId, depId });
+            }
+        }
+    }
+
+    return missing;
+}
+
+/**
+ * Automatically resolves missing dependencies by:
+ * 1. Re-enabling any disabled (.disabled) matching files in mods directory
+ * 2. Downloading missing dependencies from Modrinth API
+ */
+async function autoResolveMissingDependencies(gameDir, combinedText, launchConfig = {}) {
+    const modsDir = path.join(gameDir, 'mods');
+    if (!fs.existsSync(modsDir)) {
+        return null;
+    }
+
+    const missingDeps = extractMissingDependencies(combinedText);
+    if (!missingDeps || missingDeps.length === 0) {
+        return null;
+    }
+
+    const reEnabled = [];
+    const stillMissing = [];
+
+    // 1. Nejprve zkontrolujeme, zda již závislost ve složce mods není (např. dříve deaktivovaná jako .disabled)
+    for (const dep of missingDeps) {
+        const check = isModInstalledInDir(modsDir, dep.depId);
+        if (check && check.installed) {
+            if (check.disabled && check.fullPath) {
+                try {
+                    const targetEnabled = check.fullPath.replace(/\.disabled$/i, '');
+                    fs.renameSync(check.fullPath, targetEnabled);
+                    console.log(`[CRASH AUTO-RESOLVE] Re-aktivována nalezená závislost: ${check.filename}`);
+                    reEnabled.push({
+                        depId: dep.depId,
+                        depName: dep.depName || dep.depId,
+                        filename: path.basename(targetEnabled)
+                    });
+                } catch (e) {
+                    stillMissing.push(dep);
+                }
+            }
+        } else {
+            stillMissing.push(dep);
+        }
+    }
+
+    // 2. Chybějící závislosti automaticky stáhneme z Modrinthu
+    const downloaded = [];
+    const failedToDownload = [];
+    const targetVersion = launchConfig.version || '26.2';
+    const targetLoader = launchConfig.loader || 'fabric';
+
+    for (const dep of stillMissing) {
+        try {
+            console.log(`[CRASH AUTO-RESOLVE] Automaticky stahuji chybějící závislost ${dep.depName || dep.depId} z Modrinthu...`);
+            const dlRes = await downloadModOrPack({
+                id: dep.depId,
+                title: dep.depName || dep.depId,
+                projectType: 'mod',
+                version: targetVersion,
+                loader: targetLoader
+            }, gameDir);
+
+            if (dlRes && dlRes.success) {
+                downloaded.push({
+                    depId: dep.depId,
+                    depName: dep.depName || dep.depId,
+                    filename: dlRes.filename
+                });
+            } else {
+                failedToDownload.push(dep);
+            }
+        } catch (dlErr) {
+            console.warn(`[CRASH AUTO-RESOLVE] Nepodařilo se stáhnout závislost ${dep.depId}:`, dlErr.message);
+            failedToDownload.push(dep);
+        }
+    }
+
+    // Vytáhneme výňatek z logu pro zobrazení
+    let excerpt = '';
+    const incompIdx = combinedText.indexOf('Incompatible mods found!');
+    if (incompIdx !== -1) {
+        excerpt = combinedText.substring(incompIdx, incompIdx + 900).trim();
+    } else {
+        const formattedIdx = combinedText.indexOf('FormattedException:');
+        if (formattedIdx !== -1) {
+            excerpt = combinedText.substring(formattedIdx, formattedIdx + 900).trim();
+        }
+    }
+
+    const totalFixed = reEnabled.length + downloaded.length;
+    const isFullyFixed = totalFixed > 0 && failedToDownload.length === 0;
+
+    return {
+        detected: true,
+        fixed: isFullyFixed,
+        missingDeps,
+        reEnabled,
+        downloaded,
+        failedToDownload,
+        logExcerpt: excerpt
+    };
+}
+
+/**
+ * Detects strictly incompatible, conflicting, or broken mods (Mixin error, Entrypoint failure,
+ * wrong Minecraft version) and disables ONLY those broken mods (.jar.disabled).
+ * Never disables mods that are merely missing a dependency!
  */
 function autoResolveIncompatibleMods(gameDir, combinedText) {
     const modsDir = path.join(gameDir, 'mods');
@@ -86,12 +279,9 @@ function autoResolveIncompatibleMods(gameDir, combinedText) {
         /Replace mod '[^']+'/i.test(combinedText) ||
         /Mod '[^']+' \([^)]+\) requires .*? but only the wrong version is present/i.test(combinedText) ||
         /Mod '[^']+' \([^)]+\) is incompatible with mod/i.test(combinedText) ||
-        /net\.fabricmc\.loader\.impl\.FormattedException/i.test(combinedText) ||
         /Could not execute entrypoint stage '[^']+' due to errors, provided by '[^']+'/i.test(combinedText) ||
         /in\s+\[[a-zA-Z0-9_\-]+\.mixins\.json/i.test(combinedText) ||
-        /MissingMandatoryDependenciesException/i.test(combinedText) ||
-        /IncompatibleModException/i.test(combinedText) ||
-        /ModLoadingException/i.test(combinedText);
+        /IncompatibleModException/i.test(combinedText);
 
     if (!isIncompatible) {
         return null;
@@ -150,25 +340,7 @@ function autoResolveIncompatibleMods(gameDir, combinedText) {
         }
     }
 
-    // 4. Fabric missing dependency: "Mod 'A' (a) requires ... of mod 'B' (b), which is missing!"
-    const missingDepRegex = /Mod '([^']+)' \(([^)]+)\)[^\n\r]*requires (?:version [^\n\r]+ of )?mod '([^']+)' \(([^)]+)\), which is missing/gi;
-    while ((m = missingDepRegex.exec(combinedText)) !== null) {
-        const name = m[1];
-        const id = m[2];
-        const depName = m[3];
-        const depId = m[4];
-        if (depId.toLowerCase() !== 'fabric' && depId.toLowerCase() !== 'fabric-api') {
-            if (!culprits.some(c => c.id.toLowerCase() === id.toLowerCase())) {
-                culprits.push({
-                    name,
-                    id,
-                    reason: `vyžaduje chybějící doplněk ${depName} (${depId})`
-                });
-            }
-        }
-    }
-
-    // 5. Entrypoint provider: "Could not execute entrypoint stage 'main' due to errors, provided by 'modid'"
+    // 4. Entrypoint provider: "Could not execute entrypoint stage 'main' due to errors, provided by 'modid'"
     const entrypointRegex = /Could not execute entrypoint stage '[^']+' due to errors, provided by '([^']+)'/gi;
     while ((m = entrypointRegex.exec(combinedText)) !== null) {
         const id = m[1];
@@ -181,7 +353,7 @@ function autoResolveIncompatibleMods(gameDir, combinedText) {
         }
     }
 
-    // 6. Mixin crash: "in [modid.mixins.json:...]"
+    // 5. Mixin crash: "in [modid.mixins.json:...]"
     const mixinRegex = /in\s+\[([a-zA-Z0-9_\-]+)\.mixins\.json/gi;
     while ((m = mixinRegex.exec(combinedText)) !== null) {
         const id = m[1];
@@ -194,16 +366,8 @@ function autoResolveIncompatibleMods(gameDir, combinedText) {
         }
     }
 
-    // Fallback if generic message exists
     if (culprits.length === 0) {
-        const genericModMatch = combinedText.match(/Mod '([^']+)' \(([^)]+)\)/i);
-        if (genericModMatch) {
-            culprits.push({
-                name: genericModMatch[1],
-                id: genericModMatch[2],
-                reason: 'nekompatibilita se hrou'
-            });
-        }
+        return null;
     }
 
     // Read all jar files in mods directory
@@ -369,7 +533,7 @@ function autoResolveDuplicateMods(gameDir, combinedText) {
 /**
  * Analyzes the crash and determines the Czech diagnosis and 1-click fix
  */
-function analyzeCrash(gameDir, exitCode = 1, recentMemoryLogs = []) {
+async function analyzeCrash(gameDir, exitCode = 1, recentMemoryLogs = [], launchConfig = {}) {
     let reportContent = '';
     let reportPath = findLatestCrashReport(gameDir);
 
@@ -429,6 +593,58 @@ function analyzeCrash(gameDir, exitCode = 1, recentMemoryLogs = []) {
             description: 'Minecraft byl hráčem úspěšně ukončen.',
             recommendation: ''
         };
+    }
+
+    // ── Diagnostic Rule: Missing Mod Dependencies (Smart Auto-Download) ──────
+    const missingDepResult = await autoResolveMissingDependencies(gameDir, combinedText, launchConfig);
+    if (missingDepResult && missingDepResult.detected) {
+        if (missingDepResult.fixed) {
+            const allItems = [
+                ...missingDepResult.downloaded.map(d => `${d.depName || d.depId} (${d.filename})`),
+                ...missingDepResult.reEnabled.map(d => `${d.depName || d.depId} (re-aktivováno)`)
+            ];
+            const names = allItems.join(', ');
+
+            return {
+                hasCrash: true,
+                exitCode,
+                reportPath,
+                fixed: true,
+                autoFixed: true,
+                title: 'Hra opravena – Chybějící závislost stažena',
+                severity: 'warning',
+                description: `Detekována chybějící závislost módu. Launcher automaticky stáhl a nainstaloval potřebné doplňky: ${names}. Hra je připravena ke spuštění!`,
+                recommendation: 'Vyžadované modifikace byly úspěšně doplněny. Můžeš hru ihned spustit znovu.',
+                logExcerpt: missingDepResult.logExcerpt || logExcerpt,
+                autoFix: {
+                    id: 'RELAUNCH_GAME',
+                    label: 'Spustit hru znovu',
+                    description: 'Spustí instanci se staženými závislostmi.'
+                }
+            };
+        } else {
+            const neededList = missingDepResult.failedToDownload.length > 0 ? missingDepResult.failedToDownload : missingDepResult.missingDeps;
+            const neededNames = neededList.map(d => d.depName || d.depId).join(', ');
+            const forMod = missingDepResult.missingDeps[0]?.modName ? ` (pro ${missingDepResult.missingDeps[0].modName})` : '';
+
+            return {
+                hasCrash: true,
+                exitCode,
+                reportPath,
+                fixed: false,
+                title: `Chybí závislost: ${neededNames}`,
+                severity: 'warning',
+                description: `Mód v profilu${forMod} vyžaduje chybějící doplněk: ${neededNames}. Bez něj se Minecraft nemůže spustit.`,
+                recommendation: 'Klikni na tlačítko níže pro automatické vyhledání a stažení z Modrinthu a spuštění hry.',
+                logExcerpt: missingDepResult.logExcerpt || logExcerpt,
+                autoFix: {
+                    id: 'INSTALL_MISSING_DEPENDENCIES',
+                    missingDeps: neededList,
+                    label: `Stáhnout závislost (${neededNames})`,
+                    description: 'Automaticky vyhledá a stáhne chybějící knihovny z Modrinthu a spustí hru.'
+                }
+            };
+        }
     }
 
     // ── Diagnostic Rule 0: Incompatible / Conflicting Mods (Smart Auto-Fix) ────
@@ -1035,6 +1251,47 @@ async function executeCrashFix(autoFix, gameDir, config, saveConfigFn, detectJav
             };
         }
 
+        case 'INSTALL_MISSING_DEPENDENCIES': {
+            const missing = autoFix.missingDeps || [];
+            const targetVersion = config.version || '26.2';
+            const targetLoader = config.loader || 'fabric';
+            const downloadedNames = [];
+
+            for (const item of missing) {
+                const depId = item.depId || item.id;
+                if (!depId) continue;
+                try {
+                    const resolved = await resolveModrinthProject(depId);
+                    const dlId = resolved?.id || resolved?.slug || depId;
+                    const dlTitle = resolved?.title || item.depName || depId;
+
+                    const dlRes = await downloadModOrPack({
+                        id: dlId,
+                        title: dlTitle,
+                        projectType: 'mod',
+                        version: targetVersion,
+                        loader: targetLoader
+                    }, gameDir);
+
+                    if (dlRes && dlRes.success) {
+                        downloadedNames.push(dlTitle);
+                    }
+                } catch (dlErr) {
+                    console.error(`[CRASH FIX] Chyba při stahování závislosti ${depId}:`, dlErr);
+                }
+            }
+
+            if (downloadedNames.length > 0) {
+                return {
+                    success: true,
+                    relaunch: true,
+                    message: `Úspěšně staženo a nainstalováno: ${downloadedNames.join(', ')}. Spouštím hru!`
+                };
+            }
+
+            throw new Error('Nepodařilo se automaticky stáhnout chybějící závislosti z Modrinthu.');
+        }
+
         case 'OPEN_CRASH_REPORT': {
             const targetPath = autoFix.reportPath || findLatestCrashReport(gameDir);
             if (targetPath && fs.existsSync(targetPath)) {
@@ -1073,6 +1330,9 @@ async function executeCrashFix(autoFix, gameDir, config, saveConfigFn, detectJav
 module.exports = {
     findLatestCrashReport,
     readLatestLogTail,
+    extractMissingDependencies,
+    autoResolveMissingDependencies,
+    autoResolveIncompatibleMods,
     analyzeCrash,
     executeCrashFix
 };
