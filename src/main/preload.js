@@ -57,6 +57,11 @@ contextBridge.exposeInMainWorld('api', {
         ipcRenderer.on('optimization-progress', (event, data) => callback(data));
     },
 
+    // Keybinds Management
+    getKeybinds: (profileId) => ipcRenderer.invoke('get-keybinds', profileId),
+    saveKeybinds: (binds, profileId) => ipcRenderer.invoke('save-keybinds', binds, profileId),
+    resetKeybindsDefault: () => ipcRenderer.invoke('reset-keybinds-default'),
+
     // Event Listeners
     onProgress: (callback) => {
         ipcRenderer.on('launch-progress', (event, data) => callback(data));

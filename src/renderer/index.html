@@ -208,8 +208,9 @@
                         </div>
 
                         <!-- Quick Launcher Tools / Shortcuts Toolbar -->
+                        <!-- Quick Launcher Tools / Shortcuts Toolbar -->
                         <div class="dash-quick-actions" id="dashQuickActions">
-                            <button class="mc-btn mc-btn-primary dash-action-chip" id="btnManageProfiles" title="Správa verzí a módů">
+                            <button class="mc-btn mc-btn-primary dash-action-chip" id="btnQuickMods" title="Správa verzí a módů">
                                 <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
                                     <path
                                         d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
@@ -217,22 +218,7 @@
                                     <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
                                     <line x1="12" y1="22.08" x2="12" y2="12"></line>
                                 </svg>
-                                <span class="action-btn-label">Verze hry</span>
-                            </button>
-                            <button class="mc-btn mc-btn-secondary dash-action-chip" id="btnImportProfileModalOpen" title="Importovat profil ze ZIP / složky">
-                                <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
-                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                    <polyline points="7 10 12 15 17 10"></polyline>
-                                    <line x1="12" y1="15" x2="12" y2="1"></line>
-                                </svg>
-                                <span class="action-btn-label">Import profilu</span>
-                            </button>
-                            <button class="mc-btn mc-btn-secondary dash-action-chip" id="btnAddModsShortcut" title="Katalog Modrinth">
-                                <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
-                                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                                </svg>
-                                <span class="action-btn-label">Katalog</span>
+                                <span class="action-btn-label">Módy</span>
                             </button>
                             <button class="mc-btn mc-btn-secondary dash-action-chip" id="btnOpenScreenshotsModal"
                                 title="Galerie screenshotů ze hry">
@@ -242,6 +228,30 @@
                                     <polyline points="21 15 16 10 5 21" />
                                 </svg>
                                 <span class="action-btn-label">Screenshoty</span>
+                            </button>
+                            <button class="mc-btn mc-btn-secondary dash-action-chip" id="btnOpenKeybindEditor"
+                                title="Editor herních kláves a ovládání">
+                                <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
+                                    <rect x="2" y="4" width="20" height="16" rx="2.5" ry="2.5"/>
+                                    <line x1="6" y1="8" x2="6.01" y2="8"/>
+                                    <line x1="10" y1="8" x2="10.01" y2="8"/>
+                                    <line x1="14" y1="8" x2="14.01" y2="8"/>
+                                    <line x1="18" y1="8" x2="18.01" y2="8"/>
+                                    <line x1="6" y1="12" x2="6.01" y2="12"/>
+                                    <line x1="10" y1="12" x2="10.01" y2="12"/>
+                                    <line x1="14" y1="12" x2="14.01" y2="12"/>
+                                    <line x1="18" y1="12" x2="18.01" y2="12"/>
+                                    <line x1="7" y1="16" x2="17" y2="16"/>
+                                </svg>
+                                <span class="action-btn-label">Klávesy</span>
+                            </button>
+                            <button class="mc-btn mc-btn-secondary dash-action-chip" id="btnImportProfileModalOpen" title="Importovat profil ze ZIP / složky">
+                                <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                    <polyline points="7 10 12 15 17 10"></polyline>
+                                    <line x1="12" y1="15" x2="12" y2="1"></line>
+                                </svg>
+                                <span class="action-btn-label">Import profilu</span>
                             </button>
                         </div>
 
@@ -1343,7 +1353,180 @@
         </div>
     </div>
 
-    <!-- Modal 0: Vytvořit nový profil (New Profile) -->
+    <!-- Modal: Editor herních kláves a ovládání -->
+    <div class="launcher-modal-overlay" id="modalKeybindEditor" style="display: none;">
+        <div class="launcher-modal-card modal-card-wide keybind-modal-card" style="max-width: 1100px; width: 95%; max-height: 92vh; display: flex; flex-direction: column;">
+            <div class="modal-header keybind-modal-header">
+                <div class="modal-title-box">
+                    <span class="modal-icon">
+                        <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
+                            <rect x="2" y="4" width="20" height="16" rx="2.5" ry="2.5"/>
+                            <line x1="6" y1="8" x2="6.01" y2="8"/>
+                            <line x1="10" y1="8" x2="10.01" y2="8"/>
+                            <line x1="14" y1="8" x2="14.01" y2="8"/>
+                            <line x1="18" y1="8" x2="18.01" y2="8"/>
+                            <line x1="6" y1="12" x2="6.01" y2="12"/>
+                            <line x1="10" y1="12" x2="10.01" y2="12"/>
+                            <line x1="14" y1="12" x2="14.01" y2="12"/>
+                            <line x1="18" y1="12" x2="18.01" y2="12"/>
+                            <line x1="7" y1="16" x2="17" y2="16"/>
+                        </svg>
+                    </span>
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <h3 style="margin: 0;">Klávesy a ovládání</h3>
+                            <span class="keybind-global-badge">Globální synchronizace</span>
+                        </div>
+                        <p class="modal-subtitle" style="margin: 2px 0 0 0; font-size: 0.8rem; color: var(--text-muted);">
+                            Automaticky ukládá změny pro všechny profily a načítá bindy nainstalovaných módů
+                        </p>
+                    </div>
+                </div>
+
+                <div class="keybind-header-actions">
+                    <div id="keybindConflictPill" class="keybind-conflict-chip clean" title="Stav konfliktů kláves">
+                        <span class="conflict-dot"></span>
+                        <span id="keybindConflictText">0 konfliktů</span>
+                    </div>
+
+                    <div class="keybind-view-toggle">
+                        <button type="button" class="view-toggle-btn active" id="btnKeybindToggleKeyboard" title="Vizuální klávesnice">
+                            <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M7 16h10"/></svg>
+                            <span>Klávesnice</span>
+                        </button>
+                        <button type="button" class="view-toggle-btn" id="btnKeybindToggleList" title="Kategorizovaný seznam">
+                            <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                            <span>Seznam</span>
+                        </button>
+                    </div>
+
+                    <button type="button" class="mc-btn mc-btn-secondary btn-sm" id="btnResetKeybinds" title="Obnovit výchozí klávesy">
+                        <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                        <span>Resetovat</span>
+                    </button>
+
+                    <button class="modal-close-btn" id="btnCloseKeybindEditorModal">
+                        <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Toolbar: Search and Category Filtering -->
+            <div class="keybind-filter-toolbar">
+                <div class="keybind-search-box">
+                    <svg class="ui-icon-svg ui-icon-svg--xs keybind-search-icon" viewBox="0 0 24 24">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" id="keybindSearchInput" class="keybind-search-input" placeholder="Hledat akci nebo klávesu (např. W, Sprint, Zoom, Voice)...">
+                    <button type="button" id="btnClearKeybindSearch" class="keybind-clear-search" style="display: none;">✕</button>
+                </div>
+
+                <div class="keybind-category-chips" id="keybindCategoryChips">
+                    <button type="button" class="cat-chip active" data-category="all">Vše</button>
+                    <button type="button" class="cat-chip" data-category="movement">🏃 Pohyb</button>
+                    <button type="button" class="cat-chip" data-category="gameplay">⚔️ Hratelnost</button>
+                    <button type="button" class="cat-chip" data-category="inventory">🎒 Inventář</button>
+                    <button type="button" class="cat-chip" data-category="multiplayer">💬 Multiplayer</button>
+                    <button type="button" class="cat-chip" data-category="misc">⚙️ Různé</button>
+                    <button type="button" class="cat-chip" data-category="mods">🧩 Módy</button>
+                    <button type="button" class="cat-chip chip-conflicts" data-category="conflicts" id="chipOnlyConflicts" style="display: none;">⚠️ Jen konflikty</button>
+                </div>
+            </div>
+
+            <div class="modal-body keybind-modal-body" style="overflow-y: auto; flex: 1; padding: 16px 20px;">
+                <!-- 1. Keyboard View -->
+                <div class="keybind-keyboard-view" id="keybindKeyboardView">
+                    <div class="keyboard-board-wrapper">
+                        <div class="keyboard-stage" id="keyboardStage">
+                            <!-- Dynamicky vyrenderované klávesy v layoutu -->
+                        </div>
+                        <!-- Dedikovaný panel myši -->
+                        <div class="mouse-stage" id="mouseStage">
+                            <div class="mouse-panel-header">🖱️ Tlačítka myši</div>
+                            <div class="mouse-buttons-row" id="mouseButtonsRow">
+                                <!-- Levé tl, Pravé tl, Kolečko, Myš 4, Myš 5 -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Inspector bar: Informace o vybrané klávese -->
+                    <div class="keybind-inspector-card" id="keybindInspectorCard">
+                        <div class="inspector-empty" id="inspectorEmptyState">
+                            <span>💡 Klikni na libovolnou klávesu na klávesnici pro zobrazení přiřazených akcí nebo změnu bindu.</span>
+                        </div>
+                        <div class="inspector-active" id="inspectorActiveContent" style="display: none;">
+                            <div class="inspector-header">
+                                <div class="inspector-key-badge" id="inspectorKeyBadge">W</div>
+                                <div class="inspector-meta">
+                                    <h4 id="inspectorKeyTitle">Klávesa: W</h4>
+                                    <div class="inspector-sub" id="inspectorKeySubtitle">1 přiřazená akce</div>
+                                </div>
+                                <div class="inspector-actions-btn-group">
+                                    <button type="button" class="mc-btn mc-btn-primary btn-sm" id="btnInspectorAssignNew">
+                                        ➕ Přiřadit novou akci
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="inspector-bindings-list" id="inspectorBindingsList">
+                                <!-- Akce přiřazené k této klávese -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. Categorized List View -->
+                <div class="keybind-list-view" id="keybindListView" style="display: none;">
+                    <div class="keybind-categories-container" id="keybindCategoriesContainer">
+                        <!-- Kategorie a jednotlivé řádky akcí -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal footer se stavem a rychlou nápovědou -->
+            <div class="modal-footer keybind-modal-footer">
+                <div class="keybind-footer-info">
+                    <span class="footer-legend-item"><span class="legend-dot dot-bound"></span> Přiřazená klávesa</span>
+                    <span class="footer-legend-item"><span class="legend-dot dot-conflict"></span> Konflikt (více akcí)</span>
+                    <span class="footer-legend-item"><span class="legend-dot dot-free"></span> Volná klávesa</span>
+                </div>
+                <div class="keybind-save-status" id="keybindAutoSaveIndicator">
+                    <span class="save-check">✓</span>
+                    <span id="keybindAutoSaveText">Všechny bindy uloženy globálně</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mini Modal: Nahrávání klávesy / Rebind Dialog -->
+    <div class="launcher-modal-overlay" id="modalKeybindRecorder" style="display: none; z-index: 99999;">
+        <div class="launcher-modal-card recorder-modal-card" style="max-width: 480px; width: 90%; text-align: center; padding: 24px;">
+            <div class="recorder-pulse-indicator">
+                <div class="recorder-dot"></div>
+                <span class="recorder-badge">ČEKÁM NA STISK KLÁVESY</span>
+            </div>
+            <h3 id="recorderActionTitle" style="margin: 14px 0 6px 0;">Přiřazení klávesy</h3>
+            <p id="recorderActionSubtitle" style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 20px;">
+                Stiskni libovolnou klávesu na klávesnici nebo tlačítko myši
+            </p>
+
+            <div class="recorder-key-preview" id="recorderKeyPreview">
+                [ Stiskni klávesu... ]
+            </div>
+
+            <div style="margin-top: 24px; display: flex; justify-content: center; gap: 10px;">
+                <button type="button" class="mc-btn mc-btn-secondary btn-sm" id="btnRecorderUnbind">
+                    ✕ Zrušit bind (Neobsazeno)
+                </button>
+                <button type="button" class="mc-btn mc-btn-secondary btn-sm" id="btnRecorderCancel">
+                    Zrušit (Esc)
+                </button>
+            </div>
+        </div>
+    </div>
     <div class="launcher-modal-overlay" id="modalCreateProfile" style="display: none;">
         <div class="launcher-modal-card">
             <div class="modal-header">

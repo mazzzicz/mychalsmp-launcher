@@ -46,6 +46,7 @@ const { checkForUpdates, applyUpdate, getResourcesDir } = require('./updateServi
 const { analyzeCrash, executeCrashFix } = require('./crashAnalyzer');
 const { scanLauncherCache, cleanLauncherCache } = require('./cleaner');
 const { discordRpc } = require('./discordRpc');
+const keybindManager = require('./keybindManager');
 
 // ⚡ Optimalizace hardwarové akcelerace Electronu (hladký 144Hz+ rendering rozhraní bez záseků CPU)
 try {
@@ -420,6 +421,18 @@ ipcMain.handle('get-available-javas', () => {
 
 ipcMain.handle('detect-java', () => {
     return detectJavaPath();
+});
+
+ipcMain.handle('get-keybinds', async (event, profileId) => {
+    return keybindManager.getKeybinds(profileId);
+});
+
+ipcMain.handle('save-keybinds', async (event, updatedBinds, profileId) => {
+    return keybindManager.saveKeybinds(updatedBinds, profileId);
+});
+
+ipcMain.handle('reset-keybinds-default', async () => {
+    return keybindManager.resetKeybindsToDefaults();
 });
 
 ipcMain.handle('search-modrinth', async (event, query, version, loader, category, projectType, offset, limit) => {

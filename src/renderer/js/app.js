@@ -210,11 +210,23 @@ document.addEventListener('DOMContentLoaded', async () => {
             switchTab('character');
         });
     }
+    const btnQuickMods = document.getElementById('btnQuickMods');
+    if (btnQuickMods) {
+        btnQuickMods.addEventListener('click', () => switchTab('mods'));
+    }
     if (btnManageProfiles) {
         btnManageProfiles.addEventListener('click', () => switchTab('mods'));
     }
     if (btnAddModsShortcut) {
         btnAddModsShortcut.addEventListener('click', () => switchTab('mods'));
+    }
+    const btnOpenKeybindEditor = document.getElementById('btnOpenKeybindEditor');
+    if (btnOpenKeybindEditor) {
+        btnOpenKeybindEditor.addEventListener('click', () => {
+            if (typeof openKeybindEditorModal === 'function') {
+                openKeybindEditorModal();
+            }
+        });
     }
     const heroStatActiveProfile = document.getElementById('heroStatActiveProfile');
     if (heroStatActiveProfile) {
@@ -5556,6 +5568,941 @@ document.addEventListener('DOMContentLoaded', async () => {
                 modalScreenshotsGallery.style.display = 'none';
             }
         });
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // ⌨️ KEYBIND EDITOR & VISUAL KEYBOARD CONTROLLER (MYCHAL SMP STANDARDS)
+    // ═════════════════════════════════════════════════════════════════════════
+    const modalKeybindEditor = document.getElementById('modalKeybindEditor');
+    const btnCloseKeybindEditorModal = document.getElementById('btnCloseKeybindEditorModal');
+    const btnKeybindToggleKeyboard = document.getElementById('btnKeybindToggleKeyboard');
+    const btnKeybindToggleList = document.getElementById('btnKeybindToggleList');
+    const keybindKeyboardView = document.getElementById('keybindKeyboardView');
+    const keybindListView = document.getElementById('keybindListView');
+    const keyboardStage = document.getElementById('keyboardStage');
+    const mouseButtonsRow = document.getElementById('mouseButtonsRow');
+    const keybindCategoriesContainer = document.getElementById('keybindCategoriesContainer');
+    const keybindSearchInput = document.getElementById('keybindSearchInput');
+    const btnClearKeybindSearch = document.getElementById('btnClearKeybindSearch');
+    const keybindCategoryChips = document.getElementById('keybindCategoryChips');
+    const chipOnlyConflicts = document.getElementById('chipOnlyConflicts');
+    const keybindConflictPill = document.getElementById('keybindConflictPill');
+    const keybindConflictText = document.getElementById('keybindConflictText');
+    const btnResetKeybinds = document.getElementById('btnResetKeybinds');
+    const keybindInspectorCard = document.getElementById('keybindInspectorCard');
+    const inspectorEmptyState = document.getElementById('inspectorEmptyState');
+    const inspectorActiveContent = document.getElementById('inspectorActiveContent');
+    const inspectorKeyBadge = document.getElementById('inspectorKeyBadge');
+    const inspectorKeyTitle = document.getElementById('inspectorKeyTitle');
+    const inspectorKeySubtitle = document.getElementById('inspectorKeySubtitle');
+    const inspectorBindingsList = document.getElementById('inspectorBindingsList');
+    const btnInspectorAssignNew = document.getElementById('btnInspectorAssignNew');
+    const keybindAutoSaveIndicator = document.getElementById('keybindAutoSaveIndicator');
+    const keybindAutoSaveText = document.getElementById('keybindAutoSaveText');
+
+    // Recorder dialog elements
+    const modalKeybindRecorder = document.getElementById('modalKeybindRecorder');
+    const recorderActionTitle = document.getElementById('recorderActionTitle');
+    const recorderActionSubtitle = document.getElementById('recorderActionSubtitle');
+    const recorderKeyPreview = document.getElementById('recorderKeyPreview');
+    const btnRecorderUnbind = document.getElementById('btnRecorderUnbind');
+    const btnRecorderCancel = document.getElementById('btnRecorderCancel');
+
+    let keybindState = {
+        binds: [],
+        stats: { total: 0, conflicts: 0, bound: 0, unbound: 0 },
+        keyDefinitions: {}
+    };
+    let keybindSelectedKey = null;
+    let keybindActiveCategory = 'all';
+    let keybindSearchQuery = '';
+    let keybindRecordingActionId = null;
+
+    const KEYBOARD_LAYOUT = [
+        // Row 0: F-row
+        [
+            { key: 'key.keyboard.escape', label: 'Esc', class: 'key-f' },
+            { gap: 'sm' },
+            { key: 'key.keyboard.f1', label: 'F1', class: 'key-f' },
+            { key: 'key.keyboard.f2', label: 'F2', class: 'key-f' },
+            { key: 'key.keyboard.f3', label: 'F3', class: 'key-f' },
+            { key: 'key.keyboard.f4', label: 'F4', class: 'key-f' },
+            { gap: 'sm' },
+            { key: 'key.keyboard.f5', label: 'F5', class: 'key-f' },
+            { key: 'key.keyboard.f6', label: 'F6', class: 'key-f' },
+            { key: 'key.keyboard.f7', label: 'F7', class: 'key-f' },
+            { key: 'key.keyboard.f8', label: 'F8', class: 'key-f' },
+            { gap: 'sm' },
+            { key: 'key.keyboard.f9', label: 'F9', class: 'key-f' },
+            { key: 'key.keyboard.f10', label: 'F10', class: 'key-f' },
+            { key: 'key.keyboard.f11', label: 'F11', class: 'key-f' },
+            { key: 'key.keyboard.f12', label: 'F12', class: 'key-f' },
+            { gap: 'md' },
+            { key: 'key.keyboard.print.screen', label: 'PrtSc', class: 'key-f' },
+            { key: 'key.keyboard.scroll.lock', label: 'ScrLk', class: 'key-f' },
+            { key: 'key.keyboard.pause', label: 'Pause', class: 'key-f' }
+        ],
+        // Row 1: Numbers
+        [
+            { key: 'key.keyboard.grave.accent', label: '~' },
+            { key: 'key.keyboard.1', label: '1' },
+            { key: 'key.keyboard.2', label: '2' },
+            { key: 'key.keyboard.3', label: '3' },
+            { key: 'key.keyboard.4', label: '4' },
+            { key: 'key.keyboard.5', label: '5' },
+            { key: 'key.keyboard.6', label: '6' },
+            { key: 'key.keyboard.7', label: '7' },
+            { key: 'key.keyboard.8', label: '8' },
+            { key: 'key.keyboard.9', label: '9' },
+            { key: 'key.keyboard.0', label: '0' },
+            { key: 'key.keyboard.minus', label: '-' },
+            { key: 'key.keyboard.equal', label: '=' },
+            { key: 'key.keyboard.backspace', label: 'Backspace', class: 'key-backspace' },
+            { gap: 'md' },
+            { key: 'key.keyboard.insert', label: 'Ins', class: 'key-nav' },
+            { key: 'key.keyboard.home', label: 'Home', class: 'key-nav' },
+            { key: 'key.keyboard.page.up', label: 'PgUp', class: 'key-nav' }
+        ],
+        // Row 2: QWERTY
+        [
+            { key: 'key.keyboard.tab', label: 'Tab', class: 'key-tab' },
+            { key: 'key.keyboard.q', label: 'Q' },
+            { key: 'key.keyboard.w', label: 'W' },
+            { key: 'key.keyboard.e', label: 'E' },
+            { key: 'key.keyboard.r', label: 'R' },
+            { key: 'key.keyboard.t', label: 'T' },
+            { key: 'key.keyboard.y', label: 'Y' },
+            { key: 'key.keyboard.u', label: 'U' },
+            { key: 'key.keyboard.i', label: 'I' },
+            { key: 'key.keyboard.o', label: 'O' },
+            { key: 'key.keyboard.p', label: 'P' },
+            { key: 'key.keyboard.left.bracket', label: '[' },
+            { key: 'key.keyboard.right.bracket', label: ']' },
+            { key: 'key.keyboard.backslash', label: '\\' },
+            { gap: 'md' },
+            { key: 'key.keyboard.delete', label: 'Del', class: 'key-nav' },
+            { key: 'key.keyboard.end', label: 'End', class: 'key-nav' },
+            { key: 'key.keyboard.page.down', label: 'PgDn', class: 'key-nav' }
+        ],
+        // Row 3: Home row
+        [
+            { key: 'key.keyboard.caps.lock', label: 'Caps', class: 'key-caps' },
+            { key: 'key.keyboard.a', label: 'A' },
+            { key: 'key.keyboard.s', label: 'S' },
+            { key: 'key.keyboard.d', label: 'D' },
+            { key: 'key.keyboard.f', label: 'F' },
+            { key: 'key.keyboard.g', label: 'G' },
+            { key: 'key.keyboard.h', label: 'H' },
+            { key: 'key.keyboard.j', label: 'J' },
+            { key: 'key.keyboard.k', label: 'K' },
+            { key: 'key.keyboard.l', label: 'L' },
+            { key: 'key.keyboard.semicolon', label: ';' },
+            { key: 'key.keyboard.apostrophe', label: '\'' },
+            { key: 'key.keyboard.enter', label: 'Enter', class: 'key-enter' }
+        ],
+        // Row 4: Shift row
+        [
+            { key: 'key.keyboard.left.shift', label: 'Shift', class: 'key-shift-l' },
+            { key: 'key.keyboard.z', label: 'Z' },
+            { key: 'key.keyboard.x', label: 'X' },
+            { key: 'key.keyboard.c', label: 'C' },
+            { key: 'key.keyboard.v', label: 'V' },
+            { key: 'key.keyboard.b', label: 'B' },
+            { key: 'key.keyboard.n', label: 'N' },
+            { key: 'key.keyboard.m', label: 'M' },
+            { key: 'key.keyboard.comma', label: ',' },
+            { key: 'key.keyboard.period', label: '.' },
+            { key: 'key.keyboard.slash', label: '/' },
+            { key: 'key.keyboard.right.shift', label: 'Shift', class: 'key-shift-r' },
+            { gap: 'md' },
+            { spacer: true, class: 'key-nav' },
+            { key: 'key.keyboard.up', label: '↑', class: 'key-nav' },
+            { spacer: true, class: 'key-nav' }
+        ],
+        // Row 5: Bottom row
+        [
+            { key: 'key.keyboard.left.control', label: 'Ctrl', class: 'key-mod' },
+            { key: 'key.keyboard.left.win', label: 'Win', class: 'key-mod' },
+            { key: 'key.keyboard.left.alt', label: 'Alt', class: 'key-mod' },
+            { key: 'key.keyboard.space', label: 'SPACE', class: 'key-space' },
+            { key: 'key.keyboard.right.alt', label: 'Alt', class: 'key-mod' },
+            { key: 'key.keyboard.right.win', label: 'Win', class: 'key-mod' },
+            { key: 'key.keyboard.right.control', label: 'Ctrl', class: 'key-mod' },
+            { gap: 'md' },
+            { key: 'key.keyboard.left', label: '←', class: 'key-nav' },
+            { key: 'key.keyboard.down', label: '↓', class: 'key-nav' },
+            { key: 'key.keyboard.right', label: '→', class: 'key-nav' }
+        ]
+    ];
+
+    const MOUSE_BUTTONS = [
+        { key: 'key.mouse.left', label: 'Levé tl. myši', defaultDesc: 'Útok / Ničení' },
+        { key: 'key.mouse.right', label: 'Pravé tl. myši', defaultDesc: 'Použít / Položit' },
+        { key: 'key.mouse.middle', label: 'Kolečko myši', defaultDesc: 'Vybrat blok (Pick)' },
+        { key: 'key.mouse.4', label: 'Boční tlačítko 4', defaultDesc: 'Zpět / Vlastní akce' },
+        { key: 'key.mouse.5', label: 'Boční tlačítko 5', defaultDesc: 'Vpřed / Vlastní akce' }
+    ];
+
+    function getKeyDisplay(mcKey) {
+        if (!mcKey || mcKey === 'key.keyboard.unknown') return '—';
+        if (keybindState.keyDefinitions && keybindState.keyDefinitions[mcKey]) {
+            return keybindState.keyDefinitions[mcKey];
+        }
+        if (mcKey.startsWith('key.keyboard.')) {
+            return mcKey.replace('key.keyboard.', '').toUpperCase();
+        }
+        if (mcKey.startsWith('key.mouse.')) {
+            return mcKey.replace('key.mouse.', 'Myš ').toUpperCase();
+        }
+        return mcKey;
+    }
+
+    function recalculateKeybindStats() {
+        const counts = {};
+        for (const b of keybindState.binds) {
+            if (b.key && b.key !== 'key.keyboard.unknown') {
+                counts[b.key] = (counts[b.key] || 0) + 1;
+            }
+        }
+        let conflicts = 0;
+        let bound = 0;
+        let unbound = 0;
+
+        for (const b of keybindState.binds) {
+            if (!b.key || b.key === 'key.keyboard.unknown') {
+                b.isConflict = false;
+                unbound++;
+            } else {
+                bound++;
+                const count = counts[b.key] || 0;
+                b.isConflict = count > 1;
+                if (b.isConflict) conflicts++;
+            }
+        }
+
+        keybindState.stats = {
+            total: keybindState.binds.length,
+            conflicts,
+            bound,
+            unbound
+        };
+
+        if (keybindConflictPill && keybindConflictText) {
+            if (conflicts > 0) {
+                keybindConflictPill.className = 'keybind-conflict-chip has-conflicts';
+                keybindConflictText.textContent = `${conflicts} ${conflicts === 1 ? 'konflikt' : (conflicts < 5 ? 'konflikty' : 'konfliktů')}`;
+                if (chipOnlyConflicts) chipOnlyConflicts.style.display = 'inline-block';
+            } else {
+                keybindConflictPill.className = 'keybind-conflict-chip clean';
+                keybindConflictText.textContent = '0 konfliktů';
+                if (chipOnlyConflicts) {
+                    chipOnlyConflicts.style.display = 'none';
+                    if (keybindActiveCategory === 'conflicts') {
+                        keybindActiveCategory = 'all';
+                        updateCategoryChipsUI();
+                    }
+                }
+            }
+        }
+    }
+
+    function updateCategoryChipsUI() {
+        if (!keybindCategoryChips) return;
+        const chips = keybindCategoryChips.querySelectorAll('.cat-chip');
+        chips.forEach(c => {
+            const cat = c.dataset.category;
+            if (cat === keybindActiveCategory) {
+                c.classList.add('active');
+            } else {
+                c.classList.remove('active');
+            }
+        });
+    }
+
+    async function autoSaveKeybinds() {
+        try {
+            const map = {};
+            for (const b of keybindState.binds) {
+                map[b.id] = b.key;
+            }
+            if (keybindAutoSaveIndicator && keybindAutoSaveText) {
+                keybindAutoSaveIndicator.style.opacity = '0.5';
+                keybindAutoSaveText.textContent = 'Ukládám bindy...';
+            }
+            await window.api.saveKeybinds(map);
+            if (keybindAutoSaveIndicator && keybindAutoSaveText) {
+                keybindAutoSaveIndicator.style.opacity = '1';
+                keybindAutoSaveText.textContent = 'Všechny bindy uloženy globálně pro všechny profily';
+            }
+        } catch (err) {
+            console.error('Chyba při ukládání kláves:', err);
+            if (keybindAutoSaveText) keybindAutoSaveText.textContent = 'Chyba ukládání';
+        }
+    }
+
+    function renderKeyboardStage() {
+        if (!keyboardStage) return;
+        keyboardStage.innerHTML = '';
+
+        KEYBOARD_LAYOUT.forEach(row => {
+            const rowEl = document.createElement('div');
+            rowEl.className = 'keyboard-row';
+
+            row.forEach(item => {
+                if (item.gap) {
+                    const gapEl = document.createElement('div');
+                    gapEl.className = `keyboard-gap-${item.gap}`;
+                    rowEl.appendChild(gapEl);
+                    return;
+                }
+                if (item.spacer) {
+                    const spEl = document.createElement('div');
+                    spEl.className = `keycap ${item.class || ''}`;
+                    spEl.style.visibility = 'hidden';
+                    rowEl.appendChild(spEl);
+                    return;
+                }
+
+                const keycap = document.createElement('div');
+                keycap.className = `keycap ${item.class || ''}`;
+                keycap.dataset.key = item.key;
+
+                const boundActions = keybindState.binds.filter(b => b.key === item.key);
+                const isConflict = boundActions.length > 1;
+                const isBound = boundActions.length > 0;
+
+                if (isConflict) keycap.classList.add('conflict');
+                else if (isBound) keycap.classList.add('bound');
+
+                if (keybindSelectedKey === item.key) {
+                    keycap.classList.add('selected');
+                }
+
+                // Subtitle preview
+                let subText = '';
+                if (isConflict) {
+                    subText = `⚠️ ${boundActions.length}x`;
+                } else if (isBound) {
+                    subText = boundActions[0].label;
+                }
+
+                keycap.innerHTML = `
+                    <span class="keycap-label">${escapeHtml(item.label)}</span>
+                    <span class="keycap-sub" title="${escapeHtml(subText)}">${escapeHtml(subText)}</span>
+                    ${isConflict ? `<span class="keycap-conflict-badge">${boundActions.length}</span>` : ''}
+                `;
+
+                keycap.addEventListener('click', () => {
+                    selectKeyboardKey(item.key, item.label);
+                });
+
+                rowEl.appendChild(keycap);
+            });
+
+            keyboardStage.appendChild(rowEl);
+        });
+
+        renderMouseButtonsRow();
+    }
+
+    function renderMouseButtonsRow() {
+        if (!mouseButtonsRow) return;
+        mouseButtonsRow.innerHTML = '';
+
+        MOUSE_BUTTONS.forEach(btn => {
+            const keycap = document.createElement('div');
+            keycap.className = 'keycap mouse-keycap';
+            keycap.dataset.key = btn.key;
+
+            const boundActions = keybindState.binds.filter(b => b.key === btn.key);
+            const isConflict = boundActions.length > 1;
+            const isBound = boundActions.length > 0;
+
+            if (isConflict) keycap.classList.add('conflict');
+            else if (isBound) keycap.classList.add('bound');
+
+            if (keybindSelectedKey === btn.key) {
+                keycap.classList.add('selected');
+            }
+
+            let subText = btn.defaultDesc;
+            if (isConflict) {
+                subText = `⚠️ Konflikt (${boundActions.length} akcí)`;
+            } else if (isBound) {
+                subText = boundActions.map(a => a.label).join(', ');
+            }
+
+            keycap.innerHTML = `
+                <span class="keycap-label">${escapeHtml(btn.label)}</span>
+                <span class="keycap-sub" title="${escapeHtml(subText)}">${escapeHtml(subText)}</span>
+                ${isConflict ? `<span class="keycap-conflict-badge">${boundActions.length}</span>` : ''}
+            `;
+
+            keycap.addEventListener('click', () => {
+                selectKeyboardKey(btn.key, btn.label);
+            });
+
+            mouseButtonsRow.appendChild(keycap);
+        });
+    }
+
+    function selectKeyboardKey(mcKey, label) {
+        keybindSelectedKey = mcKey;
+
+        // Aktualizujeme třídu selected na všech klávesách
+        if (keyboardStage) {
+            keyboardStage.querySelectorAll('.keycap').forEach(k => {
+                k.classList.toggle('selected', k.dataset.key === mcKey);
+            });
+        }
+        if (mouseButtonsRow) {
+            mouseButtonsRow.querySelectorAll('.keycap').forEach(k => {
+                k.classList.toggle('selected', k.dataset.key === mcKey);
+            });
+        }
+
+        renderKeyInspector(mcKey, label);
+    }
+
+    function renderKeyInspector(mcKey, label) {
+        if (!keybindInspectorCard || !inspectorEmptyState || !inspectorActiveContent) return;
+
+        if (!mcKey) {
+            inspectorEmptyState.style.display = 'flex';
+            inspectorActiveContent.style.display = 'none';
+            return;
+        }
+
+        inspectorEmptyState.style.display = 'none';
+        inspectorActiveContent.style.display = 'block';
+
+        const boundActions = keybindState.binds.filter(b => b.key === mcKey);
+        const displayLabel = label || getKeyDisplay(mcKey);
+
+        inspectorKeyBadge.textContent = displayLabel;
+        inspectorKeyTitle.textContent = `Klávesa: ${displayLabel}`;
+
+        if (boundActions.length === 0) {
+            inspectorKeySubtitle.textContent = 'Volná klávesa (žádná přiřazená akce)';
+            inspectorKeySubtitle.style.color = 'var(--text-muted)';
+        } else if (boundActions.length === 1) {
+            inspectorKeySubtitle.textContent = '1 přiřazená akce';
+            inspectorKeySubtitle.style.color = 'var(--brand-gray)';
+        } else {
+            inspectorKeySubtitle.textContent = `⚠️ Konflikt: ${boundActions.length} akcí používá tuto klávesu současně`;
+            inspectorKeySubtitle.style.color = 'var(--brand-red)';
+        }
+
+        inspectorBindingsList.innerHTML = '';
+
+        if (boundActions.length === 0) {
+            const emptyNotice = document.createElement('div');
+            emptyNotice.style.padding = '10px 0';
+            emptyNotice.style.color = 'var(--text-muted)';
+            emptyNotice.style.fontSize = '0.84rem';
+            emptyNotice.textContent = 'K této klávese zatím není přiřazena žádná herní akce.';
+            inspectorBindingsList.appendChild(emptyNotice);
+        } else {
+            boundActions.forEach(action => {
+                const row = document.createElement('div');
+                row.className = `inspector-binding-row ${boundActions.length > 1 ? 'is-conflict' : ''}`;
+
+                row.innerHTML = `
+                    <div class="inspector-binding-info">
+                        <span class="inspector-binding-title">${escapeHtml(action.label)}</span>
+                        <span class="inspector-binding-tag">${escapeHtml(action.modName || action.category)} • <code>${escapeHtml(action.id)}</code></span>
+                    </div>
+                    <div class="inspector-binding-controls">
+                        <button type="button" class="mc-btn mc-btn-primary btn-sm btn-rebind-action">
+                            Změnit klávesu
+                        </button>
+                        <button type="button" class="mc-btn mc-btn-secondary btn-sm btn-unbind-action" title="Zrušit přiřazení">
+                            ✕
+                        </button>
+                    </div>
+                `;
+
+                row.querySelector('.btn-rebind-action').addEventListener('click', () => {
+                    startRecordingKeybind(action.id);
+                });
+                row.querySelector('.btn-unbind-action').addEventListener('click', async () => {
+                    action.key = 'key.keyboard.unknown';
+                    recalculateKeybindStats();
+                    renderKeyboardStage();
+                    renderKeyInspector(mcKey, label);
+                    renderKeybindListView();
+                    await autoSaveKeybinds();
+                });
+
+                inspectorBindingsList.appendChild(row);
+            });
+        }
+
+        // Tlačítko přiřadit novou akci
+        btnInspectorAssignNew.onclick = () => {
+            showAssignActionPicker(mcKey);
+        };
+    }
+
+    function showAssignActionPicker(targetMcKey) {
+        // Zobrazíme rychlý dialog se všemi akcemi, které lze přiřadit k této klávese
+        const availableActions = keybindState.binds.filter(b => b.key !== targetMcKey);
+        if (availableActions.length === 0) {
+            showToast('Všechny akce jsou již k této klávese přiřazeny.', 'info');
+            return;
+        }
+
+        const pickerModal = document.createElement('div');
+        pickerModal.className = 'launcher-modal-overlay';
+        pickerModal.style.display = 'flex';
+        pickerModal.style.zIndex = '99999';
+
+        pickerModal.innerHTML = `
+            <div class="launcher-modal-card" style="max-width: 520px; width: 90%; max-height: 80vh; display: flex; flex-direction: column;">
+                <div class="modal-header">
+                    <div class="modal-title-box">
+                        <h3>Přiřadit akci ke klávese ${escapeHtml(getKeyDisplay(targetMcKey))}</h3>
+                    </div>
+                    <button class="modal-close-btn btn-picker-close">✕</button>
+                </div>
+                <div style="padding: 12px 18px; border-bottom: 1px solid var(--surface-border);">
+                    <input type="text" class="keybind-search-input picker-search" placeholder="Hledat akci (např. Skok, Útok, Zoom)..." style="width: 100%;">
+                </div>
+                <div class="picker-list" style="overflow-y: auto; flex: 1; padding: 12px 18px; display: flex; flex-direction: column; gap: 6px;">
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(pickerModal);
+
+        const pickerList = pickerModal.querySelector('.picker-list');
+        const pickerSearch = pickerModal.querySelector('.picker-search');
+        const btnClose = pickerModal.querySelector('.btn-picker-close');
+
+        function renderPickerList(filter = '') {
+            pickerList.innerHTML = '';
+            const q = filter.toLowerCase().trim();
+            const filtered = availableActions.filter(a => {
+                if (!q) return true;
+                return a.label.toLowerCase().includes(q) || a.id.toLowerCase().includes(q);
+            });
+
+            if (filtered.length === 0) {
+                pickerList.innerHTML = '<div style="color: var(--text-muted); padding: 10px; text-align: center;">Žádná akce nenalezena.</div>';
+                return;
+            }
+
+            filtered.forEach(action => {
+                const item = document.createElement('div');
+                item.className = 'inspector-binding-row';
+                item.style.cursor = 'pointer';
+
+                item.innerHTML = `
+                    <div class="inspector-binding-info">
+                        <span class="inspector-binding-title">${escapeHtml(action.label)}</span>
+                        <span class="inspector-binding-tag">Aktuální klávesa: ${escapeHtml(getKeyDisplay(action.key))}</span>
+                    </div>
+                    <button type="button" class="mc-btn mc-btn-primary btn-sm">Přiřadit</button>
+                `;
+
+                item.addEventListener('click', async () => {
+                    action.key = targetMcKey;
+                    document.body.removeChild(pickerModal);
+                    recalculateKeybindStats();
+                    renderKeyboardStage();
+                    renderKeyInspector(targetMcKey);
+                    renderKeybindListView();
+                    await autoSaveKeybinds();
+                    showToast(`Klávesa ${getKeyDisplay(targetMcKey)} přiřazena k "${action.label}".`, 'success');
+                });
+
+                pickerList.appendChild(item);
+            });
+        }
+
+        renderPickerList();
+        pickerSearch.addEventListener('input', (e) => renderPickerList(e.target.value));
+        pickerSearch.focus();
+
+        btnClose.addEventListener('click', () => {
+            if (document.body.contains(pickerModal)) document.body.removeChild(pickerModal);
+        });
+        pickerModal.addEventListener('click', (e) => {
+            if (e.target === pickerModal && document.body.contains(pickerModal)) {
+                document.body.removeChild(pickerModal);
+            }
+        });
+    }
+
+    function renderKeybindListView() {
+        if (!keybindCategoriesContainer) return;
+        keybindCategoriesContainer.innerHTML = '';
+
+        const CATEGORY_NAMES = {
+            'movement': '🏃 Pohyb',
+            'gameplay': '⚔️ Hratelnost & Boj',
+            'inventory': '🎒 Inventář & Rychlá lišta',
+            'multiplayer': '💬 Multiplayer & Komunikace',
+            'misc': '⚙️ Různé & Rozhraní',
+            'mods': '🧩 Módy & Doplňky'
+        };
+
+        const categories = ['movement', 'gameplay', 'inventory', 'multiplayer', 'misc', 'mods'];
+        const q = keybindSearchQuery.toLowerCase().trim();
+
+        categories.forEach(catKey => {
+            if (keybindActiveCategory !== 'all' && keybindActiveCategory !== 'conflicts' && keybindActiveCategory !== catKey) {
+                return;
+            }
+
+            let actions = keybindState.binds.filter(b => b.category === catKey);
+
+            if (keybindActiveCategory === 'conflicts') {
+                actions = actions.filter(b => b.isConflict);
+            }
+
+            if (q) {
+                actions = actions.filter(b => {
+                    const labelMatch = b.label.toLowerCase().includes(q);
+                    const idMatch = b.id.toLowerCase().includes(q);
+                    const keyMatch = getKeyDisplay(b.key).toLowerCase().includes(q);
+                    return labelMatch || idMatch || keyMatch;
+                });
+            }
+
+            if (actions.length === 0) return;
+
+            const card = document.createElement('div');
+            card.className = 'keybind-category-card';
+
+            const header = document.createElement('div');
+            header.className = 'keybind-category-header';
+            header.innerHTML = `
+                <span>${CATEGORY_NAMES[catKey] || catKey}</span>
+                <span class="keybind-category-count">${actions.length} ${actions.length === 1 ? 'akce' : (actions.length < 5 ? 'akce' : 'akcí')}</span>
+            `;
+            card.appendChild(header);
+
+            const body = document.createElement('div');
+            body.className = 'keybind-category-body';
+
+            actions.forEach(action => {
+                const row = document.createElement('div');
+                row.className = `keybind-action-row ${action.isConflict ? 'is-conflict' : ''}`;
+
+                let conflictNotice = '';
+                if (action.isConflict) {
+                    const others = keybindState.binds.filter(b => b.key === action.key && b.id !== action.id);
+                    const names = others.map(o => o.label).join(', ');
+                    conflictNotice = `<div class="action-conflict-warn">⚠️ Konflikt s: ${escapeHtml(names)}</div>`;
+                }
+
+                row.innerHTML = `
+                    <div class="action-row-left">
+                        <span class="action-label-main">${escapeHtml(action.label)}</span>
+                        <span class="action-id-sub">${escapeHtml(action.modName ? `${action.modName} • ` : '')}${escapeHtml(action.id)}</span>
+                        ${conflictNotice}
+                    </div>
+                    <div class="action-row-right">
+                        <button type="button" class="key-record-btn ${action.isConflict ? 'is-conflict' : ''}">
+                            ${escapeHtml(getKeyDisplay(action.key))}
+                        </button>
+                        <button type="button" class="key-unbind-btn" title="Zrušit bind">
+                            ✕
+                        </button>
+                    </div>
+                `;
+
+                const recordBtn = row.querySelector('.key-record-btn');
+                const unbindBtn = row.querySelector('.key-unbind-btn');
+
+                recordBtn.addEventListener('click', () => {
+                    startRecordingKeybind(action.id);
+                });
+
+                unbindBtn.addEventListener('click', async () => {
+                    action.key = 'key.keyboard.unknown';
+                    recalculateKeybindStats();
+                    renderKeyboardStage();
+                    renderKeybindListView();
+                    if (keybindSelectedKey) renderKeyInspector(keybindSelectedKey);
+                    await autoSaveKeybinds();
+                });
+
+                body.appendChild(row);
+            });
+
+            card.appendChild(body);
+            keybindCategoriesContainer.appendChild(card);
+        });
+
+        if (keybindCategoriesContainer.children.length === 0) {
+            keybindCategoriesContainer.innerHTML = `
+                <div style="text-align: center; color: var(--text-muted); padding: 40px;">
+                    Žádné klávesy neodpovídají zadanému filtru.
+                </div>
+            `;
+        }
+    }
+
+    function convertBrowserCodeToMcKey(code) {
+        if (!code) return 'key.keyboard.unknown';
+        const directMap = {
+            'Space': 'key.keyboard.space',
+            'ShiftLeft': 'key.keyboard.left.shift',
+            'ShiftRight': 'key.keyboard.right.shift',
+            'ControlLeft': 'key.keyboard.left.control',
+            'ControlRight': 'key.keyboard.right.control',
+            'AltLeft': 'key.keyboard.left.alt',
+            'AltRight': 'key.keyboard.right.alt',
+            'MetaLeft': 'key.keyboard.left.win',
+            'MetaRight': 'key.keyboard.right.win',
+            'Tab': 'key.keyboard.tab',
+            'CapsLock': 'key.keyboard.caps.lock',
+            'Enter': 'key.keyboard.enter',
+            'Backspace': 'key.keyboard.backspace',
+            'Escape': 'key.keyboard.escape',
+            'ArrowUp': 'key.keyboard.up',
+            'ArrowDown': 'key.keyboard.down',
+            'ArrowLeft': 'key.keyboard.left',
+            'ArrowRight': 'key.keyboard.right',
+            'Insert': 'key.keyboard.insert',
+            'Delete': 'key.keyboard.delete',
+            'Home': 'key.keyboard.home',
+            'End': 'key.keyboard.end',
+            'PageUp': 'key.keyboard.page.up',
+            'PageDown': 'key.keyboard.page.down',
+            'PrintScreen': 'key.keyboard.print.screen',
+            'ScrollLock': 'key.keyboard.scroll.lock',
+            'Pause': 'key.keyboard.pause',
+            'Backquote': 'key.keyboard.grave.accent',
+            'Minus': 'key.keyboard.minus',
+            'Equal': 'key.keyboard.equal',
+            'BracketLeft': 'key.keyboard.left.bracket',
+            'BracketRight': 'key.keyboard.right.bracket',
+            'Backslash': 'key.keyboard.backslash',
+            'Semicolon': 'key.keyboard.semicolon',
+            'Quote': 'key.keyboard.apostrophe',
+            'Comma': 'key.keyboard.comma',
+            'Period': 'key.keyboard.period',
+            'Slash': 'key.keyboard.slash'
+        };
+        if (directMap[code]) return directMap[code];
+        if (code.startsWith('Key')) {
+            return `key.keyboard.${code.slice(3).toLowerCase()}`;
+        }
+        if (code.startsWith('Digit')) {
+            return `key.keyboard.${code.slice(5)}`;
+        }
+        if (code.startsWith('F') && /^F\d+$/.test(code)) {
+            return `key.keyboard.${code.toLowerCase()}`;
+        }
+        if (code.startsWith('Numpad')) {
+            return `key.keyboard.keypad.${code.slice(6).toLowerCase()}`;
+        }
+        return 'key.keyboard.unknown';
+    }
+
+    function convertMouseButtonToMcKey(button) {
+        if (button === 0) return 'key.mouse.left';
+        if (button === 1) return 'key.mouse.middle';
+        if (button === 2) return 'key.mouse.right';
+        if (button === 3) return 'key.mouse.4';
+        if (button === 4) return 'key.mouse.5';
+        return 'key.keyboard.unknown';
+    }
+
+    function startRecordingKeybind(actionId) {
+        keybindRecordingActionId = actionId;
+        const action = keybindState.binds.find(b => b.id === actionId);
+        if (!action) return;
+
+        recorderActionTitle.textContent = `Přiřazení klávesy: ${action.label}`;
+        recorderActionSubtitle.textContent = action.modName 
+            ? `Mód: ${action.modName}` 
+            : `Minecraft akce (${action.id})`;
+        recorderKeyPreview.textContent = '[ Stiskni klávesu nebo tlačítko myši ]';
+        modalKeybindRecorder.style.display = 'flex';
+
+        window.addEventListener('keydown', onRecordingKeyDown, { capture: true });
+        window.addEventListener('mousedown', onRecordingMouseDown, { capture: true });
+    }
+
+    function stopRecordingKeybind() {
+        modalKeybindRecorder.style.display = 'none';
+        keybindRecordingActionId = null;
+        window.removeEventListener('keydown', onRecordingKeyDown, { capture: true });
+        window.removeEventListener('mousedown', onRecordingMouseDown, { capture: true });
+    }
+
+    async function applyRecordedKey(mcKey) {
+        if (!keybindRecordingActionId) return;
+        const action = keybindState.binds.find(b => b.id === keybindRecordingActionId);
+        if (action) {
+            action.key = mcKey;
+            stopRecordingKeybind();
+            recalculateKeybindStats();
+            renderKeyboardStage();
+            renderKeybindListView();
+            if (keybindSelectedKey) renderKeyInspector(keybindSelectedKey);
+            await autoSaveKeybinds();
+            showToast(`Klávesa ${getKeyDisplay(mcKey)} přiřazena k "${action.label}".`, 'success');
+        } else {
+            stopRecordingKeybind();
+        }
+    }
+
+    function onRecordingKeyDown(e) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (e.code === 'Escape') {
+            stopRecordingKeybind();
+            return;
+        }
+
+        const mcKey = convertBrowserCodeToMcKey(e.code);
+        applyRecordedKey(mcKey);
+    }
+
+    function onRecordingMouseDown(e) {
+        // Zkontrolujeme zda nekliká na zrušení nebo unbind
+        if (btnRecorderCancel && btnRecorderCancel.contains(e.target)) return;
+        if (btnRecorderUnbind && btnRecorderUnbind.contains(e.target)) return;
+
+        // Jinak zachytíme tlačítko myši jako bind!
+        e.preventDefault();
+        e.stopPropagation();
+
+        const mcKey = convertMouseButtonToMcKey(e.button);
+        applyRecordedKey(mcKey);
+    }
+
+    if (btnRecorderCancel) {
+        btnRecorderCancel.addEventListener('click', stopRecordingKeybind);
+    }
+    if (btnRecorderUnbind) {
+        btnRecorderUnbind.addEventListener('click', () => {
+            applyRecordedKey('key.keyboard.unknown');
+        });
+    }
+
+    // Modal switch view buttons
+    if (btnKeybindToggleKeyboard) {
+        btnKeybindToggleKeyboard.addEventListener('click', () => {
+            btnKeybindToggleKeyboard.classList.add('active');
+            btnKeybindToggleList.classList.remove('active');
+            keybindKeyboardView.style.display = 'flex';
+            keybindListView.style.display = 'none';
+        });
+    }
+    if (btnKeybindToggleList) {
+        btnKeybindToggleList.addEventListener('click', () => {
+            btnKeybindToggleList.classList.add('active');
+            btnKeybindToggleKeyboard.classList.remove('active');
+            keybindKeyboardView.style.display = 'none';
+            keybindListView.style.display = 'block';
+            renderKeybindListView();
+        });
+    }
+
+    // Category chips
+    if (keybindCategoryChips) {
+        keybindCategoryChips.addEventListener('click', (e) => {
+            const chip = e.target.closest('.cat-chip');
+            if (!chip) return;
+            keybindActiveCategory = chip.dataset.category;
+            updateCategoryChipsUI();
+            renderKeybindListView();
+        });
+    }
+
+    // Search bar
+    if (keybindSearchInput) {
+        keybindSearchInput.addEventListener('input', (e) => {
+            keybindSearchQuery = e.target.value;
+            if (btnClearKeybindSearch) {
+                btnClearKeybindSearch.style.display = keybindSearchQuery ? 'block' : 'none';
+            }
+            renderKeybindListView();
+        });
+    }
+    if (btnClearKeybindSearch) {
+        btnClearKeybindSearch.addEventListener('click', () => {
+            keybindSearchInput.value = '';
+            keybindSearchQuery = '';
+            btnClearKeybindSearch.style.display = 'none';
+            renderKeybindListView();
+        });
+    }
+
+    // Conflict pill click -> filters to conflicts
+    if (keybindConflictPill) {
+        keybindConflictPill.addEventListener('click', () => {
+            if (keybindState.stats.conflicts > 0) {
+                keybindActiveCategory = 'conflicts';
+                updateCategoryChipsUI();
+                // přepneme na list view pro okamžitý přehled
+                if (btnKeybindToggleList) btnKeybindToggleList.click();
+            }
+        });
+    }
+
+    // Reset button
+    if (btnResetKeybinds) {
+        btnResetKeybinds.addEventListener('click', async () => {
+            try {
+                const res = await window.api.resetKeybindsDefault();
+                if (res && res.success) {
+                    await loadAndInitKeybinds();
+                    showToast('Všechny klávesy byly resetovány do výchozího stavu.', 'success');
+                }
+            } catch (err) {
+                console.error('Chyba při resetování bindů:', err);
+            }
+        });
+    }
+
+    // Close modal
+    if (btnCloseKeybindEditorModal) {
+        btnCloseKeybindEditorModal.addEventListener('click', () => {
+            if (modalKeybindEditor) modalKeybindEditor.style.display = 'none';
+        });
+    }
+    if (modalKeybindEditor) {
+        modalKeybindEditor.addEventListener('click', (e) => {
+            if (e.target === modalKeybindEditor) {
+                modalKeybindEditor.style.display = 'none';
+            }
+        });
+    }
+
+    async function loadAndInitKeybinds() {
+        try {
+            const res = await window.api.getKeybinds();
+            if (res && res.success) {
+                keybindState.binds = res.binds || [];
+                keybindState.stats = res.stats || {};
+                keybindState.keyDefinitions = res.keyDefinitions || {};
+            }
+            recalculateKeybindStats();
+            renderKeyboardStage();
+            renderKeybindListView();
+            if (keybindSelectedKey) {
+                renderKeyInspector(keybindSelectedKey);
+            } else {
+                // Výchozí vybraná klávesa W
+                selectKeyboardKey('key.keyboard.w', 'W');
+            }
+        } catch (err) {
+            console.error('Chyba načítání kláves:', err);
+        }
+    }
+
+    function openKeybindEditorModal() {
+        if (!modalKeybindEditor) return;
+        modalKeybindEditor.style.display = 'flex';
+        loadAndInitKeybinds();
     }
 
     // ── Intelligent Crash Analyzer ──────────────────────────────────────────
