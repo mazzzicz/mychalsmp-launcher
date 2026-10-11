@@ -137,7 +137,7 @@ function scanLauncherCache(baseDir, profiles = []) {
         try {
             const vDirs = fs.readdirSync(versionsDir);
             for (const v of vDirs) {
-                if (!activeVersions.has(v) && !v.includes('26.2') && !v.includes('26.3')) {
+                if (!activeVersions.has(v) && !v.includes('26.2') && !v.includes('26.3') && !v.includes('1.21.11') && !v.includes('26.1')) {
                     const fullVDir = path.join(versionsDir, v);
                     const jarFiles = scanDir(fullVDir, (fPath, name, stat) => {
                         return (now - stat.mtimeMs) > THIRTY_DAYS_MS;

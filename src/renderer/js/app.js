@@ -96,7 +96,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     let currentConfig = {};
     let installedVersions = [];
     let isLaunching = false;
-    let isRunning = false;
+    const BUNDLED_KEYARTS = {
+        '1.21.11': 'assets/keyarts/1.21.11.png',
+        '26.1': 'assets/keyarts/26.1.png',
+        '26.2': 'assets/keyarts/26.2.png',
+        '26.3': 'assets/keyarts/26.3.png',
+        'card-1.21.11': 'assets/keyarts/card-1.21.11.png',
+        'card-26.1': 'assets/keyarts/card-26.1.png',
+        'card-26.2': 'assets/keyarts/card-26.2.png',
+        'card-26.3': 'assets/keyarts/card-26.3.png',
+        'default': 'assets/keyarts/default.jpg'
+    };
+    const BUNDLED_CARD_KEYARTS = {
+        '1.21.11': 'assets/keyarts/card-1.21.11.png',
+        '26.1': 'assets/keyarts/card-26.1.png',
+        '26.2': 'assets/keyarts/card-26.2.png',
+        '26.3': 'assets/keyarts/card-26.3.png',
+        'default': 'assets/keyarts/default.jpg'
+    };
+    let availableKeyartsMap = { ...BUNDLED_KEYARTS };
     let currentModFilter = {
         query: '',
         version: '26.2',
@@ -362,6 +380,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             currentConfig = await window.api.getConfig();
             installedVersions = await window.api.getInstalledVersions();
+            try {
+                if (window.api && typeof window.api.getKeyarts === 'function') {
+                    const fetched = await window.api.getKeyarts();
+                    if (fetched && typeof fetched === 'object') {
+                        availableKeyartsMap = { ...BUNDLED_KEYARTS, ...fetched };
+                    }
+                }
+            } catch (_) {}
 
             // Automatické pročištění starého defaultního canvas pláště z konfigurace
             if (currentConfig && currentConfig.customCapePath && (
@@ -933,7 +959,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const activeProfile = (currentConfig.profiles || []).find(p => p.id === currentConfig.activeProfileId);
             const activeVersion = activeProfile ? activeProfile.version : (currentConfig.version || '26.2');
 
-            const versions = ['26.2', '26.3', '26.1.2'];
+            const versions = ['26.2', '26.3', '1.21.11', '26.1.2'];
             for (const ver of versions) {
                 const idSuffix = ver.replace(/\./g, '');
                 const card = document.getElementById(`vCard${idSuffix}`);
@@ -1878,9 +1904,133 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return bPlaytime - aPlaytime;
             }
 
-            // 4. Stabilní abecední pořadí podle názvu
+            // 4. Přirozené pořadí verzí sítě: 26.3 -> 26.2 -> 26.1.2 -> 1.21.11
+            const getVersionPriority = (ver) => {
+                const v = String(ver || '').toLowerCase();
+                if (v.includes('26.3')) return 40;
+                if (v.includes('26.2')) return 30;
+                if (v.includes('26.1')) return 20;
+                if (v.includes('1.21.11') || v.includes('1.21')) return 10;
+                return 0;
+            };
+            const prioDiff = getVersionPriority(b.version) - getVersionPriority(a.version);
+            if (prioDiff !== 0) {
+                return prioDiff;
+            }
+
+            // 5. Stabilní abecední pořadí podle názvu
             return (a.name || '').localeCompare(b.name || '');
         });
+    }
+
+    // ── Version Key Arts (Background Artworks) ──────────────────────────────
+    function resolveKeyartUrl(versionStr) {
+        if (!availableKeyartsMap || Object.keys(availableKeyartsMap).length === 0) {
+            return 'assets/keyarts/default.jpg';
+        }
+        if (!versionStr) {
+            return availableKeyartsMap['26.2'] || availableKeyartsMap['default'] || null;
+        }
+
+        const raw = String(versionStr).toLowerCase().trim();
+        // 1. Přímá shoda (např. '1.21.11', '26.3', '26.2', '26.1')
+        if (availableKeyartsMap[raw]) {
+            return availableKeyartsMap[raw];
+        }
+
+        // 2. Extrakce verze (např. 'minecraft-1.21.11' nebo 'Minecraft 26.2')
+        const match = raw.match(/\d+(\.\d+)*/);
+        if (match) {
+            const vNum = match[0];
+            if (availableKeyartsMap[vNum]) {
+                return availableKeyartsMap[vNum];
+            }
+
+            // 3. Fallback na major.minor (např. 26.1.2 -> 26.1)
+            const parts = vNum.split('.');
+            if (parts.length > 2) {
+                const shortV = `${parts[0]}.${parts[1]}`;
+                if (availableKeyartsMap[shortV]) {
+                    return availableKeyartsMap[shortV];
+                }
+            }
+
+            // Fallback pro 1.21 rodinu -> 1.21.11
+            if (vNum.startsWith('1.21') && availableKeyartsMap['1.21.11']) {
+                return availableKeyartsMap['1.21.11'];
+            }
+
+            if (parts.length > 1) {
+                const majorV = parts[0];
+                if (availableKeyartsMap[majorV]) {
+                    return availableKeyartsMap[majorV];
+                }
+                if (majorV === '26' && availableKeyartsMap['26.2']) {
+                    return availableKeyartsMap['26.2'];
+                }
+            }
+        }
+
+        // 4. Default fallback
+        return availableKeyartsMap['default'] || availableKeyartsMap['26.2'] || null;
+    }
+
+    function resolveCardKeyartUrl(versionStr) {
+        if (!availableKeyartsMap || Object.keys(availableKeyartsMap).length === 0) {
+            return BUNDLED_CARD_KEYARTS['26.2'] || 'assets/keyarts/default.jpg';
+        }
+        if (!versionStr) {
+            return availableKeyartsMap['card-26.2'] || BUNDLED_CARD_KEYARTS['26.2'] || null;
+        }
+
+        const raw = String(versionStr).toLowerCase().trim();
+        // 1. Přímá shoda (card-26.2, card-26.3, card-1.21.11, card-26.1)
+        if (availableKeyartsMap[`card-${raw}`]) return availableKeyartsMap[`card-${raw}`];
+        if (BUNDLED_CARD_KEYARTS[raw]) return BUNDLED_CARD_KEYARTS[raw];
+
+        // 2. Extrakce verze z názvu
+        const match = raw.match(/\d+(\.\d+)*/);
+        if (match) {
+            const vNum = match[0];
+            if (availableKeyartsMap[`card-${vNum}`]) return availableKeyartsMap[`card-${vNum}`];
+            if (BUNDLED_CARD_KEYARTS[vNum]) return BUNDLED_CARD_KEYARTS[vNum];
+
+            // 3. Fallback pro major.minor (např. 26.1.2 -> card-26.1)
+            const parts = vNum.split('.');
+            if (parts.length > 2) {
+                const shortV = `${parts[0]}.${parts[1]}`;
+                if (availableKeyartsMap[`card-${shortV}`]) return availableKeyartsMap[`card-${shortV}`];
+                if (BUNDLED_CARD_KEYARTS[shortV]) return BUNDLED_CARD_KEYARTS[shortV];
+            }
+
+            // Fallback pro 1.21 rodinu
+            if (vNum.startsWith('1.21')) {
+                if (availableKeyartsMap['card-1.21.11']) return availableKeyartsMap['card-1.21.11'];
+                if (BUNDLED_CARD_KEYARTS['1.21.11']) return BUNDLED_CARD_KEYARTS['1.21.11'];
+            }
+
+            if (parts.length > 1 && parts[0] === '26') {
+                if (availableKeyartsMap['card-26.2']) return availableKeyartsMap['card-26.2'];
+                if (BUNDLED_CARD_KEYARTS['26.2']) return BUNDLED_CARD_KEYARTS['26.2'];
+            }
+        }
+
+        // 4. Fallback na plný keyart
+        return resolveKeyartUrl(versionStr);
+    }
+
+    function updateHeroKeyart(versionStr) {
+        const heroBg = document.getElementById('heroKeyartBg');
+        if (!heroBg) return;
+
+        const keyartUrl = resolveKeyartUrl(versionStr);
+        if (keyartUrl) {
+            heroBg.style.backgroundImage = `url("${keyartUrl}")`;
+            heroBg.classList.add('has-keyart');
+        } else {
+            heroBg.style.backgroundImage = 'none';
+            heroBg.classList.remove('has-keyart');
+        }
     }
 
     // ── Profile List Rendering & Interactive Selection ──────────────────────
@@ -1902,6 +2052,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const loaderTag = (activeProfile.loader && activeProfile.loader !== 'vanilla') ? ` • ${activeProfile.loader}` : '';
             btnQuickPlayMychal.title = `Rychlé připojení na MYCHAL SMP (${activeProfile.name}${loaderTag})`;
         }
+
+        updateHeroKeyart(activeProfile ? activeProfile.version : currentConfig.version);
 
         const totalSec = profiles.reduce((acc, p) => acc + (p.playtimeSeconds || 0), 0);
         const heroPlaytimeEl = document.getElementById('heroTotalPlaytimeVal');
@@ -1925,6 +2077,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         list.innerHTML = sortedProfiles.map(p => {
             const isActive = p.id === activeId;
+            const pKeyart = resolveCardKeyartUrl(p.version);
+            const keyartBgStyle = pKeyart ? `background-image: url('${escapeHtml(pKeyart)}');` : '';
             const getIconSvg = (icon) => {
                 switch (icon) {
                     case 'sword':
@@ -1966,6 +2120,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             return `
                 <div class="profile-row-card ${isActive ? 'active-profile' : ''}" data-profile-id="${escapeHtml(p.id)}">
+                    ${pKeyart ? `<div class="profile-card-keyart-bg" style="${keyartBgStyle}"></div><div class="profile-card-keyart-overlay"></div>` : ''}
                     <div class="profile-icon-box">${iconSymbol}</div>
                     <div class="profile-details">
                         <div class="profile-title-line">
@@ -2039,6 +2194,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (p) {
             currentConfig.version = p.version;
             currentConfig.loader = p.loader || 'vanilla';
+            updateHeroKeyart(p.version);
             window.api.saveConfig({
                 activeProfileId: profileId,
                 version: p.version,
@@ -6957,7 +7113,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (importPathLabel) importPathLabel.textContent = scan.originalDir;
             if (importProfileNameInput) importProfileNameInput.value = scan.name;
             if (importVersionSelect) {
-                if (['26.2', '26.3', '26.1.2'].includes(scan.detectedVersion)) {
+                if (['26.2', '26.3', '26.1.2', '1.21.11'].includes(scan.detectedVersion)) {
                     importVersionSelect.value = scan.detectedVersion;
                 } else {
                     importVersionSelect.value = '26.2';

@@ -435,6 +435,61 @@ ipcMain.handle('reset-keybinds-default', async () => {
     return keybindManager.resetKeybindsToDefaults();
 });
 
+ipcMain.handle('get-available-keyarts', async () => {
+    const keyarts = {};
+    const validExts = ['.jpg', '.jpeg', '.png', '.webp'];
+
+    const scanDir = (dirPath, prefix = '') => {
+        try {
+            if (!fs.existsSync(dirPath)) return;
+            const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+            for (const ent of entries) {
+                if (ent.isFile()) {
+                    const ext = path.extname(ent.name).toLowerCase();
+                    if (validExts.includes(ext)) {
+                        const baseName = path.basename(ent.name, ext).toLowerCase().trim();
+                        const relPath = prefix ? path.posix.join(prefix, ent.name) : ent.name;
+                        keyarts[baseName] = relPath;
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[KEYARTS] Nelze načíst složku:', dirPath, e.message);
+        }
+    };
+
+    // 1. Vestavěná složka v renderer/assets/keyarts
+    const bundledDir = path.join(__dirname, '../renderer/assets/keyarts');
+    scanDir(bundledDir, 'assets/keyarts');
+
+    // 2. Uživatelská složka v BASE_DIR/keyarts (pokud existuje)
+    const userDir = path.join(BASE_DIR, 'keyarts');
+    if (fs.existsSync(userDir)) {
+        try {
+            const userEntries = fs.readdirSync(userDir);
+            for (const fname of userEntries) {
+                const ext = path.extname(fname).toLowerCase();
+                if (validExts.includes(ext)) {
+                    const baseName = path.basename(fname, ext).toLowerCase().trim();
+                    const fullP = path.join(userDir, fname);
+                    keyarts[baseName] = `file://${fullP.replace(/\\/g, '/')}`;
+                }
+            }
+        } catch (_) {}
+    }
+
+    return keyarts;
+});
+
+ipcMain.handle('open-keyarts-folder', async () => {
+    const bundledDir = path.join(__dirname, '../renderer/assets/keyarts');
+    if (!fs.existsSync(bundledDir)) {
+        try { fs.mkdirSync(bundledDir, { recursive: true }); } catch (_) {}
+    }
+    const { shell } = require('electron');
+    return await shell.openPath(bundledDir);
+});
+
 ipcMain.handle('search-modrinth', async (event, query, version, loader, category, projectType, offset, limit) => {
     return await searchModrinth(query, version, loader, category, projectType, offset, limit);
 });

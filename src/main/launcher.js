@@ -1642,7 +1642,10 @@ async function getOrFetchVanillaVersionJson(centralRootDir, targetVersion) {
         const manRes = await fetch('https://piston-meta.mojang.com/mc/game/version_manifest_v2.json', { signal: AbortSignal.timeout(8000) });
         if (manRes.ok) {
             const manifest = await manRes.json();
-            const entry = manifest.versions.find(v => v.id === targetVersion);
+            let entry = manifest.versions.find(v => v.id === targetVersion);
+            if (!entry && targetVersion === '1.21.11') {
+                entry = manifest.versions.find(v => v.id === '1.21.1') || manifest.versions.find(v => v.id === '1.21');
+            }
             if (entry && entry.url) {
                 const vRes = await fetch(entry.url, { signal: AbortSignal.timeout(10000) });
                 if (vRes.ok) {
@@ -1684,19 +1687,35 @@ async function ensureFabricProfile(centralRootDir, targetVersion, onLog = consol
 
     onLog(`[FABRIC] Zjišťuji nejnovější Fabric loader pro Minecraft ${targetVersion}...`);
     try {
+        let loaders = [];
+        let effectiveGameVersion = targetVersion;
         const metaRes = await fetch(`https://meta.fabricmc.net/v2/versions/loader/${targetVersion}`, {
             headers: { 'User-Agent': 'MYCHALSMP-Launcher' },
             signal: AbortSignal.timeout(10000)
         });
-        if (!metaRes.ok) throw new Error(`Fabric meta HTTP ${metaRes.status}`);
-        const loaders = await metaRes.json();
+        if (metaRes.ok) {
+            loaders = await metaRes.json();
+        }
+        if ((!Array.isArray(loaders) || loaders.length === 0) && targetVersion === '1.21.11') {
+            const fallbackRes = await fetch(`https://meta.fabricmc.net/v2/versions/loader/1.21.1`, {
+                headers: { 'User-Agent': 'MYCHALSMP-Launcher' },
+                signal: AbortSignal.timeout(10000)
+            });
+            if (fallbackRes.ok) {
+                const fbLoaders = await fallbackRes.json();
+                if (Array.isArray(fbLoaders) && fbLoaders.length > 0) {
+                    loaders = fbLoaders;
+                    effectiveGameVersion = '1.21.1';
+                }
+            }
+        }
         if (!Array.isArray(loaders) || loaders.length === 0) {
             throw new Error(`Žádný Fabric loader nenalezen pro verzi ${targetVersion}`);
         }
         const loaderVersion = loaders[0].loader.version;
         onLog(`[FABRIC] Stahuji profil pro Fabric loader ${loaderVersion}...`);
 
-        const profileRes = await fetch(`https://meta.fabricmc.net/v2/versions/loader/${targetVersion}/${loaderVersion}/profile/json`, {
+        const profileRes = await fetch(`https://meta.fabricmc.net/v2/versions/loader/${effectiveGameVersion}/${loaderVersion}/profile/json`, {
             headers: { 'User-Agent': 'MYCHALSMP-Launcher' },
             signal: AbortSignal.timeout(12000)
         });
@@ -2536,6 +2555,7 @@ async function getOrFetchAssetIndex(baseDir, targetVersion = '26.2') {
         if (manifestRes.ok) {
             const manifest = await manifestRes.json();
             let vEntry = manifest.versions.find(v => v.id === targetVersion) ||
+                         (targetVersion === '1.21.11' ? manifest.versions.find(v => v.id === '1.21.1') : null) ||
                          manifest.versions.find(v => v.id === manifest.latest.release) ||
                          manifest.versions[0];
             if (vEntry && vEntry.url) {

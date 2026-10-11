@@ -794,7 +794,7 @@ body.is-maximized {
 /* Left Hero Character Stage */
 .hero-character-stage {
     position: relative;
-    background: radial-gradient(circle at 70% 30%, #1e2540 0%, #10121d 100%);
+    background: radial-gradient(circle at 75% 30%, #161c31 0%, #0e101a 100%);
     border: 1px solid var(--surface-border);
     border-radius: var(--radius-lg);
     padding: 24px;
@@ -802,14 +802,46 @@ body.is-maximized {
     align-items: center;
     gap: 24px;
     overflow: hidden;
+    isolation: isolate;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.stage-keyart-bg {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background-size: cover;
+    background-position: 70% center;
+    background-repeat: no-repeat;
+    opacity: 0;
+    transform: scale(1.02);
+    transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1), filter 0.5s ease;
+    pointer-events: none;
+}
+
+.stage-keyart-bg.has-keyart {
+    opacity: 0.85;
+    transform: scale(1);
+    filter: brightness(0.95) saturate(1.1);
+}
+
+.stage-keyart-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background: linear-gradient(90deg, rgba(16, 18, 29, 0.94) 0%, rgba(16, 18, 29, 0.80) 36%, rgba(16, 18, 29, 0.42) 72%, rgba(16, 18, 29, 0.20) 100%),
+                linear-gradient(0deg, rgba(16, 18, 29, 0.55) 0%, transparent 45%);
 }
 
 .stage-bg-overlay {
     position: absolute;
     inset: 0;
-    background-image: radial-gradient(rgba(10, 103, 229, 0.12) 1px, transparent 1px);
+    z-index: 1;
+    background-image: radial-gradient(rgba(10, 103, 229, 0.10) 1px, transparent 1px);
     background-size: 16px 16px;
     pointer-events: none;
+    opacity: 0.4;
 }
 
 .stage-character {
@@ -817,7 +849,12 @@ body.is-maximized {
     flex-direction: column;
     align-items: center;
     position: relative;
-    z-index: 1;
+    z-index: 2;
+}
+
+.stage-caption {
+    position: relative;
+    z-index: 2;
 }
 
 .stage-skin-wrapper {
@@ -1032,6 +1069,30 @@ body.is-maximized {
     user-select: none;
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     position: relative;
+    overflow: hidden;
+    isolation: isolate;
+}
+
+.profile-card-keyart-bg {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
+    opacity: 0.48;
+    filter: brightness(1.02) saturate(1.18);
+    transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), filter 0.3s ease;
+    pointer-events: none;
+}
+
+.profile-card-keyart-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background: linear-gradient(90deg, rgba(16, 18, 29, 0.94) 0%, rgba(16, 18, 29, 0.68) 36%, rgba(16, 18, 29, 0.25) 75%, rgba(16, 18, 29, 0.45) 100%);
+    transition: background 0.3s ease;
 }
 
 .profile-row-card:hover {
@@ -1041,10 +1102,29 @@ body.is-maximized {
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 }
 
+.profile-row-card:hover .profile-card-keyart-bg {
+    opacity: 0.75;
+    filter: brightness(1.15) saturate(1.25);
+    transform: scale(1.02);
+}
+
+.profile-row-card:hover .profile-card-keyart-overlay {
+    background: linear-gradient(90deg, rgba(20, 24, 40, 0.88) 0%, rgba(20, 24, 40, 0.55) 36%, rgba(20, 24, 40, 0.18) 75%, rgba(20, 24, 40, 0.35) 100%);
+}
+
 .profile-row-card.active-profile {
     border-color: #21de00;
     background: #111a21;
     box-shadow: 0 0 0 1px rgba(33, 222, 0, 0.45), inset 0 0 20px rgba(33, 222, 0, 0.08);
+}
+
+.profile-row-card.active-profile .profile-card-keyart-bg {
+    opacity: 0.82;
+    filter: brightness(1.18) saturate(1.30);
+}
+
+.profile-row-card.active-profile .profile-card-keyart-overlay {
+    background: linear-gradient(90deg, rgba(14, 25, 28, 0.88) 0%, rgba(14, 25, 28, 0.50) 36%, rgba(14, 25, 28, 0.15) 75%, rgba(14, 25, 28, 0.30) 100%);
 }
 
 .profile-icon-box {
@@ -1057,10 +1137,22 @@ body.is-maximized {
     font-size: 18px;
     background: var(--surface2);
     border: 1px solid var(--surface-border);
+    position: relative;
+    z-index: 2;
 }
 
 .profile-details {
     flex: 1;
+    position: relative;
+    z-index: 2;
+}
+
+.profile-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    position: relative;
+    z-index: 2;
 }
 
 .profile-title-line {
@@ -1074,6 +1166,7 @@ body.is-maximized {
     font-weight: 700;
     font-size: 14px;
     color: #fff;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
 }
 
 .p-badge {
@@ -1100,6 +1193,7 @@ body.is-maximized {
 .p-meta {
     font-size: 11px;
     color: var(--text-muted);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
 }
 
 .profile-actions {

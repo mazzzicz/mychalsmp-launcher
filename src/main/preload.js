@@ -62,6 +62,10 @@ contextBridge.exposeInMainWorld('api', {
     saveKeybinds: (binds, profileId) => ipcRenderer.invoke('save-keybinds', binds, profileId),
     resetKeybindsDefault: () => ipcRenderer.invoke('reset-keybinds-default'),
 
+    // Key Arts & Version Backgrounds
+    getKeyarts: () => ipcRenderer.invoke('get-available-keyarts'),
+    openKeyartsFolder: () => ipcRenderer.invoke('open-keyarts-folder'),
+
     // Event Listeners
     onProgress: (callback) => {
         ipcRenderer.on('launch-progress', (event, data) => callback(data));
