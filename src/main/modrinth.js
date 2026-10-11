@@ -103,6 +103,7 @@ const CURATED_MODS = [
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const CURATED_PACKS = [
     {
@@ -713,11 +714,117 @@ async function downloadModOrPack(options, targetDir) {
     };
 }
 
+/**
+ * Kontroluje aktualizace nainstalovaných módů v profilu přes Modrinth API.
+ * Využívá hromadný endpoint /v2/version_files/update pro bleskový dotaz během stovek milisekund.
+ */
+async function checkProfileModUpdates({ profileId, gameDir, version = '26.2', loader = 'fabric' }) {
+    const modsDir = path.join(gameDir, 'mods');
+    if (!fs.existsSync(modsDir)) {
+        return { success: true, updates: [] };
+    }
+
+    const normLoader = (loader && loader !== 'vanilla') ? loader.toLowerCase() : 'fabric';
+    const normVersion = version || '26.2';
+
+    let metaMap = {};
+    const metaPath = path.join(modsDir, '.mod_meta.json');
+    if (fs.existsSync(metaPath)) {
+        try { metaMap = JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch (_) {}
+    }
+
+    let files = [];
+    try {
+        files = fs.readdirSync(modsDir).filter(f => f.toLowerCase().endsWith('.jar'));
+    } catch (_) {
+        return { success: true, updates: [] };
+    }
+
+    if (files.length === 0) {
+        return { success: true, updates: [] };
+    }
+
+    const fileByHash = {};
+    const hashes = [];
+
+    for (const f of files) {
+        try {
+            const fullPath = path.join(modsDir, f);
+            const buf = fs.readFileSync(fullPath);
+            const sha1 = crypto.createHash('sha1').update(buf).digest('hex');
+            hashes.push(sha1);
+            fileByHash[sha1] = {
+                filename: f,
+                fullPath,
+                fileMeta: metaMap[f] || metaMap[f.replace(/\.disabled$/i, '')] || null,
+                cleanName: f.replace(/\.jar$/i, '')
+            };
+        } catch (_) {}
+    }
+
+    if (hashes.length === 0) {
+        return { success: true, updates: [] };
+    }
+
+    const updates = [];
+
+    try {
+        const res = await fetch('https://api.modrinth.com/v2/version_files/update', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'User-Agent': 'mychalVidea/mychalsmp-launcher (support@mychalsmp.xyz)'
+            },
+            body: JSON.stringify({
+                hashes: hashes,
+                algorithm: 'sha1',
+                loaders: [normLoader],
+                game_versions: [normVersion]
+            }),
+            signal: AbortSignal.timeout(4000)
+        });
+
+        if (res.ok) {
+            const updateMap = await res.json();
+            for (const [oldHash, vObj] of Object.entries(updateMap)) {
+                const localItem = fileByHash[oldHash];
+                if (!localItem || !vObj) continue;
+
+                const primaryFile = (vObj.files || []).find(f => f.primary) || (vObj.files || [])[0];
+                if (!primaryFile) continue;
+
+                // Ověříme, zda je hash jiný (skutečně novější soubor)
+                const newHash = primaryFile.hashes?.sha1;
+                if (newHash && newHash === oldHash) continue;
+                if (primaryFile.filename === localItem.filename && newHash === oldHash) continue;
+
+                const title = localItem.fileMeta?.title || vObj.name || localItem.cleanName;
+                updates.push({
+                    id: vObj.project_id,
+                    title: title,
+                    currentVersion: localItem.fileMeta?.version || null,
+                    newVersion: vObj.version_number,
+                    oldFilename: localItem.filename,
+                    newFilename: primaryFile.filename,
+                    directUrl: primaryFile.url,
+                    size: primaryFile.size,
+                    projectType: 'mod'
+                });
+            }
+        }
+    } catch (apiErr) {
+        console.warn('[MOD UPDATES] Chyba při volání Modrinth /v2/version_files/update:', apiErr.message);
+    }
+
+    return { success: true, updates };
+}
+
 module.exports = {
     searchModrinth,
     downloadModOrPack,
     resolveModrinthProject,
     isModInstalledInDir,
+    checkProfileModUpdates,
     CURATED_MODS,
     CURATED_PACKS
 };

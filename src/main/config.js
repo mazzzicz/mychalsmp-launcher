@@ -106,6 +106,7 @@ const DEFAULT_CONFIG = {
     installedMods: [],
     enableNativeWayland: false,
     enableDiscordRpc: true,
+    autoUpdateMods: true,
     customSkinPath: null,
     customSkinVariant: 'classic',
     customCapePath: null

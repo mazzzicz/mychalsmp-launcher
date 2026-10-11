@@ -49,7 +49,7 @@ const {
     cancelAudioDlcDownload,
     setupOfflineCustomSkinAndCape
 } = require('./launcher');
-const { searchModrinth, downloadModOrPack } = require('./modrinth');
+const { searchModrinth, downloadModOrPack, checkProfileModUpdates } = require('./modrinth');
 const {
     scanInstanceDirectory,
     importInstanceProfile,
@@ -239,6 +239,10 @@ function createWindow() {
     });
 
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+
+    mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+        console.log(`[RENDERER] ${message} (${path.basename(sourceId || '')}:${line})`);
+    });
 
     mainWindow.webContents.once('did-finish-load', () => {
         const isLive = checkAndResumeActiveSession();
@@ -549,6 +553,27 @@ ipcMain.handle('get-latest-game-log', async () => {
 
 ipcMain.handle('search-modrinth', async (event, query, version, loader, category, projectType, offset, limit) => {
     return await searchModrinth(query, version, loader, category, projectType, offset, limit);
+});
+
+ipcMain.handle('check-profile-mod-updates', async (event, profileId) => {
+    try {
+        const config = loadConfig();
+        const targetProfId = profileId || config.activeProfileId;
+        const profile = (config.profiles || []).find(p => p.id === targetProfId) || config.profiles[0];
+        if (!profile || profile.loader === 'vanilla') {
+            return { success: true, updates: [] };
+        }
+        const targetDir = profile.gameDir || BASE_DIR;
+        return await checkProfileModUpdates({
+            profileId: targetProfId,
+            gameDir: targetDir,
+            version: profile.version || '26.2',
+            loader: profile.loader || 'fabric'
+        });
+    } catch (e) {
+        console.warn('[MOD UPDATES] Chyba při kontrole aktualizací módů:', e.message);
+        return { success: false, error: e.message, updates: [] };
+    }
 });
 
 ipcMain.handle('download-mod-or-pack', async (event, modOptions) => {

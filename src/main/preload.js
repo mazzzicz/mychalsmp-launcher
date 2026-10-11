@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('api', {
     searchModrinth: (query, version, loader, category, projectType, offset, limit) => 
         ipcRenderer.invoke('search-modrinth', query, version, loader, category, projectType, offset, limit),
     downloadModOrPack: (options) => ipcRenderer.invoke('download-mod-or-pack', options),
+    checkProfileModUpdates: (profileId) => ipcRenderer.invoke('check-profile-mod-updates', profileId),
     onModDownloadProgress: (callback) => {
         ipcRenderer.on('mod-download-progress', (event, data) => callback(data));
     },

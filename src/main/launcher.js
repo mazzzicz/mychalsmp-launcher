@@ -2306,6 +2306,12 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
         }
         process.env[key] = val;
     };
+    const unsetGameEnv = (key) => {
+        if (!(key in savedEnv)) {
+            savedEnv[key] = process.env[key];
+        }
+        delete process.env[key];
+    };
 
     if (process.platform === 'linux') {
         // Feral GameMode support
@@ -2325,29 +2331,79 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
             }
         }
 
-        // Discrete GPU (NVIDIA & AMD Prime Offloading výhradně pro hybridní notebooky s baterií)
-        // Na stolních PC (jako RTX 4070) je monitor zapojen přímo do grafiky a PRIME offload se NIKDY nesmí zapínat!
+        // Discrete GPU (NVIDIA & AMD Prime Offloading výhradně pro hybridní notebooky s duální iGPU + dGPU)
+        // Na stolních PC (jako RTX 4070) nebo laptopech s 1 GPU je monitor/displej zapojen přímo do grafiky a PRIME offload se NIKDY nesmí zapínat!
         let isLaptop = false;
         try {
-            if (fs.existsSync('/sys/class/power_supply')) {
+            if (fs.existsSync('/sys/class/dmi/id/chassis_type')) {
+                const chassis = fs.readFileSync('/sys/class/dmi/id/chassis_type', 'utf8').trim();
+                const laptopTypes = ['8', '9', '10', '11', '14', '30', '31', '32'];
+                const desktopTypes = ['3', '4', '5', '6', '7', '13', '15', '16', '17', '23', '24', '35', '36'];
+                if (laptopTypes.includes(chassis)) {
+                    isLaptop = true;
+                } else if (desktopTypes.includes(chassis)) {
+                    isLaptop = false;
+                }
+            }
+            if (!isLaptop && fs.existsSync('/sys/class/power_supply')) {
                 const supplies = fs.readdirSync('/sys/class/power_supply');
-                isLaptop = supplies.some(s => s.startsWith('BAT'));
+                for (const s of supplies) {
+                    if (s.startsWith('BAT')) {
+                        const scopePath = path.join('/sys/class/power_supply', s, 'scope');
+                        const typePath = path.join('/sys/class/power_supply', s, 'type');
+                        const scope = fs.existsSync(scopePath) ? fs.readFileSync(scopePath, 'utf8').trim().toLowerCase() : '';
+                        const type = fs.existsSync(typePath) ? fs.readFileSync(typePath, 'utf8').trim().toLowerCase() : '';
+                        // Baterie periferií (bezdrátová myš, klávesnice) mají scope: Device
+                        // Baterie notebooku mají scope: System (nebo chybí) a type: Battery
+                        if ((type === 'battery' || !type) && scope !== 'device') {
+                            isLaptop = true;
+                            break;
+                        }
+                    }
+                }
             }
         } catch (_) {}
 
-        if (config.enableDiscreteGpu && isLaptop) {
+        // Zjištění zda systém má skutečně více GPU (hybridní iGPU + dGPU)
+        let gpuDeviceCount = 1;
+        try {
+            const drmDir = '/sys/class/drm';
+            if (fs.existsSync(drmDir)) {
+                const cards = fs.readdirSync(drmDir).filter(f => /^card\d+$/.test(f));
+                const uniqueDevices = new Set();
+                for (const c of cards) {
+                    try {
+                        const devPath = fs.realpathSync(path.join(drmDir, c, 'device'));
+                        uniqueDevices.add(devPath);
+                    } catch (_) {}
+                }
+                gpuDeviceCount = uniqueDevices.size;
+            }
+        } catch (_) {}
+
+        const isHybridMultiGpu = isLaptop && (gpuDeviceCount >= 2);
+
+        if (config.enableDiscreteGpu && isHybridMultiGpu) {
             const hasNvidia = fs.existsSync('/proc/driver/nvidia') || fs.existsSync('/sys/module/nvidia');
             if (hasNvidia) {
                 setGameEnv('__NV_PRIME_RENDER_OFFLOAD', '1');
                 setGameEnv('__GLX_VENDOR_LIBRARY_NAME', 'nvidia');
-                setGameEnv('__VK_LAYER_NV_optimus', 'NVIDIA_only');
-                onLog('[VÝKON] Hybridní notebook: aktivován NVIDIA Prime Render Offload');
+                // Nikdy nenastavovat __VK_LAYER_NV_optimus=NVIDIA_only – rozbíjí Vulkan loader a vede k VK_ERROR_INITIALIZATION_FAILED
+                unsetGameEnv('__VK_LAYER_NV_optimus');
+                onLog('[VÝKON] Hybridní notebook (iGPU + dGPU): aktivován NVIDIA Prime Render Offload');
             } else {
                 setGameEnv('DRI_PRIME', '1');
-                onLog('[VÝKON] Hybridní notebook: aktivován DRI_PRIME=1');
+                onLog('[VÝKON] Hybridní notebook (iGPU + dGPU): aktivován DRI_PRIME=1');
             }
-        } else if (config.enableDiscreteGpu && !isLaptop) {
-            onLog('[VÝKON] Detekován stolní počítač (Desktop PC) – GPU běží nativně bez hybridního PRIME offloadu.');
+        } else {
+            // Stolní PC (Desktop PC) nebo notebook s 1 GPU: nativní přístup ke GPU bez hybridního offloadu
+            unsetGameEnv('__NV_PRIME_RENDER_OFFLOAD');
+            unsetGameEnv('__GLX_VENDOR_LIBRARY_NAME');
+            unsetGameEnv('__VK_LAYER_NV_optimus');
+            unsetGameEnv('DRI_PRIME');
+            if (config.enableDiscreteGpu) {
+                onLog(`[VÝKON] Detekován ${isLaptop ? 'notebook s 1 GPU' : 'stolní počítač (Desktop PC)'} – GPU běží nativně bez hybridního PRIME offloadu.`);
+            }
         }
 
         // Zink (OpenGL over Vulkan)

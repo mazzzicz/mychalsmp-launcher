@@ -40,6 +40,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnCancelGlobalDownload = document.getElementById('btnCancelGlobalDownload');
     let lastProgressData = null;
     let maxRenderedProgress = 0;
+    let activePreLaunchModUpdate = null;
 
     // Stevens' Perceptual Speed Curve (Power law with gamma ~ 0.42):
     // Sub-linear response gives high initial velocity (5% -> 28%, 10% -> 38%, 50% -> 75%),
@@ -98,6 +99,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let currentConfig = {};
     let installedVersions = [];
     let isLaunching = false;
+    let isRunning = false;
     const BUNDLED_KEYARTS = {
         '1.21.11': 'assets/keyarts/1.21.11.png',
         '26.1': 'assets/keyarts/26.1.png',
@@ -513,6 +515,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const checkDiscordRpc = document.getElementById('checkDiscordRpc');
             if (checkDiscordRpc) checkDiscordRpc.checked = currentConfig.enableDiscordRpc !== false;
+
+            const checkAutoUpdateMods = document.getElementById('checkAutoUpdateMods');
+            if (checkAutoUpdateMods) checkAutoUpdateMods.checked = currentConfig.autoUpdateMods !== false;
 
             const jvmArgsInput = document.getElementById('jvmArgsInput');
             if (jvmArgsInput) jvmArgsInput.value = (currentConfig.customJvmArgs || '-XX:+UseZGC -XX:+UnlockExperimentalVMOptions -XX:+AlwaysPreTouch -XX:+DisableExplicitGC').replace(/-XX:\+ZGenerational\s*/g, '').trim();
@@ -2431,6 +2436,93 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
+        // ── Automatická kontrola a stažení aktualizací módů před spuštěním ──
+        if (targetProf && targetProf.loader !== 'vanilla' && currentConfig.autoUpdateMods !== false && !isRunning) {
+            try {
+                if (progressContainer) progressContainer.style.display = 'flex';
+                if (globalDownloadChip) globalDownloadChip.style.display = 'inline-flex';
+                if (progressBar) progressBar.style.width = '10%';
+                if (progressPercent) progressPercent.textContent = '10%';
+                if (progressText) progressText.textContent = 'Kontroluji aktualizace módů...';
+                if (globalDownloadBar) globalDownloadBar.style.width = '10%';
+                if (globalDownloadText) globalDownloadText.textContent = 'Kontroluji aktualizace módů (10%)';
+                if (sideConsoleStatus) sideConsoleStatus.textContent = 'Kontroluji aktualizace módů...';
+
+                appendLog('[AKTUALIZACE MÓDŮ] Kontroluji aktualizace nainstalovaných módů na Modrinthu...');
+
+                const updateRes = await Promise.race([
+                    window.api.checkProfileModUpdates(targetPid),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 4000))
+                ]).catch(err => {
+                    appendLog(`[AKTUALIZACE MÓDŮ] Kontrola přeskočena (${err.message})`);
+                    return { success: false, updates: [] };
+                });
+
+                const updates = (updateRes && Array.isArray(updateRes.updates)) ? updateRes.updates : [];
+                if (updates.length > 0) {
+                    appendLog(`[AKTUALIZACE MÓDŮ] Nalezeno ${updates.length} nových verzí módů ke stažení.`);
+                    const totalUpdates = updates.length;
+
+                    for (let i = 0; i < totalUpdates; i++) {
+                        if (!isLaunching) break;
+                        const u = updates[i];
+                        const basePct = Math.round(10 + ((i / totalUpdates) * 48));
+                        const nextPct = Math.round(10 + (((i + 1) / totalUpdates) * 48));
+                        const statusMsg = `Stahuji aktualizaci: ${u.title} (v${u.newVersion}) [${i + 1}/${totalUpdates}]`;
+
+                        activePreLaunchModUpdate = {
+                            id: u.id,
+                            title: u.title,
+                            index: i,
+                            total: totalUpdates,
+                            basePct,
+                            nextPct
+                        };
+
+                        if (progressBar) progressBar.style.width = `${basePct}%`;
+                        if (progressPercent) progressPercent.textContent = `${basePct}%`;
+                        if (progressText) progressText.textContent = statusMsg;
+                        if (globalDownloadBar) globalDownloadBar.style.width = `${basePct}%`;
+                        if (globalDownloadText) globalDownloadText.textContent = `${statusMsg} (${basePct}%)`;
+                        if (sideConsoleStatus) sideConsoleStatus.textContent = statusMsg;
+
+                        appendLog(`[AKTUALIZACE MÓDŮ] Stahuji ${u.title} (v${u.newVersion})...`);
+
+                        try {
+                            await window.api.downloadModOrPack({
+                                id: u.id,
+                                title: u.title,
+                                projectType: 'mod',
+                                version: targetProf.version || '26.2',
+                                loader: targetProf.loader || 'fabric',
+                                profileId: targetPid,
+                                oldFilename: u.oldFilename,
+                                directUrl: u.directUrl,
+                                filename: u.newFilename
+                            });
+                            appendLog(`[AKTUALIZACE MÓDŮ] ✔ ${u.title} úspěšně aktualizován.`);
+                        } catch (dlErr) {
+                            console.warn(`Chyba při stahování aktualizace módu ${u.title}:`, dlErr);
+                            appendLog(`[AKTUALIZACE MÓDŮ] ⚠ Selhalo stažení ${u.title}: ${dlErr.message}`);
+                        } finally {
+                            activePreLaunchModUpdate = null;
+                        }
+                    }
+
+                    showToast(`Aktualizováno ${totalUpdates} módů před spuštěním.`, 'success');
+                    if (progressBar) progressBar.style.width = '60%';
+                    if (progressPercent) progressPercent.textContent = '60%';
+                    if (globalDownloadBar) globalDownloadBar.style.width = '60%';
+                } else {
+                    appendLog('[AKTUALIZACE MÓDŮ] Všechny módy jsou aktuální.');
+                }
+            } catch (modUpErr) {
+                console.warn('Chyba při kontrole aktualizací módů:', modUpErr);
+            } finally {
+                activePreLaunchModUpdate = null;
+            }
+        }
+
         const initStatusText = isAlreadyInstalled ? 'Načítání hry...' : 'Stahuji verzi a herní data...';
         maxRenderedProgress = calculatePerceptualProgress(8);
         lastProgressData = { percent: 8, text: initStatusText };
@@ -2637,6 +2729,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         isLaunching = false;
         lastProgressData = null;
         maxRenderedProgress = 0;
+        activePreLaunchModUpdate = null;
         if (progressBar) progressBar.classList.remove('is-running');
         if (globalDownloadBar) globalDownloadBar.classList.remove('is-running');
         if (btnCancelDownload) {
@@ -3657,22 +3750,43 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // Apple-style circular progress overlay on mod avatar
+    // Apple-style circular progress overlay on mod avatar & pre-launch download progress bar
     if (window.api && window.api.onModDownloadProgress) {
         window.api.onModDownloadProgress((data) => {
-            if (!data || !data.id) return;
-            const boxes = document.querySelectorAll(`.mod-avatar-box[data-mod-id="${CSS.escape(data.id)}"]`);
-            boxes.forEach(box => {
-                const ov = box.querySelector('.apple-progress-overlay');
-                const bar = box.querySelector('.apple-progress-bar');
-                if (ov && bar) {
-                    ov.classList.add('active');
-                    const rawPct = Math.max(0, Math.min(100, data.percent || 0));
-                    const pct = calculatePerceptualProgress(rawPct);
-                    const offset = 87.96 - (87.96 * pct / 100);
-                    bar.style.strokeDashoffset = offset;
-                }
-            });
+            if (!data) return;
+
+            if (data.id) {
+                const boxes = document.querySelectorAll(`.mod-avatar-box[data-mod-id="${CSS.escape(data.id)}"]`);
+                boxes.forEach(box => {
+                    const ov = box.querySelector('.apple-progress-overlay');
+                    const bar = box.querySelector('.apple-progress-bar');
+                    if (ov && bar) {
+                        ov.classList.add('active');
+                        const rawPct = Math.max(0, Math.min(100, data.percent || 0));
+                        const pct = calculatePerceptualProgress(rawPct);
+                        const offset = 87.96 - (87.96 * pct / 100);
+                        bar.style.strokeDashoffset = offset;
+                    }
+                });
+            }
+
+            // Živá aktualizace download progress baru během stahování módů před spuštěním hry
+            if (activePreLaunchModUpdate && isLaunching) {
+                const rawModPct = Math.max(0, Math.min(100, data.percent || 0));
+                const span = activePreLaunchModUpdate.nextPct - activePreLaunchModUpdate.basePct;
+                const currentOverallPct = Math.min(99, Math.round(activePreLaunchModUpdate.basePct + (rawModPct * span / 100)));
+                const mbReceived = data.received ? (data.received / 1048576).toFixed(1) : null;
+                const mbTotal = data.total ? (data.total / 1048576).toFixed(1) : null;
+                const sizeStr = (mbReceived && mbTotal && Number(mbTotal) > 0) ? ` (${mbReceived}/${mbTotal} MB)` : '';
+                const text = `Stahuji aktualizaci: ${activePreLaunchModUpdate.title}${sizeStr} [${activePreLaunchModUpdate.index + 1}/${activePreLaunchModUpdate.total}]`;
+
+                if (progressBar) progressBar.style.width = `${currentOverallPct}%`;
+                if (progressPercent) progressPercent.textContent = `${currentOverallPct}%`;
+                if (progressText) progressText.textContent = text;
+                if (globalDownloadBar) globalDownloadBar.style.width = `${currentOverallPct}%`;
+                if (globalDownloadText) globalDownloadText.textContent = `${text} (${currentOverallPct}%)`;
+                if (sideConsoleStatus) sideConsoleStatus.textContent = text;
+            }
         });
     }
 
@@ -5246,6 +5360,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const checkDisableVsync = document.getElementById('checkDisableVsync');
         const checkNativeWayland = document.getElementById('checkNativeWayland');
         const checkDiscordRpc = document.getElementById('checkDiscordRpc');
+        const checkAutoUpdateMods = document.getElementById('checkAutoUpdateMods');
         const jvmArgsInput = document.getElementById('jvmArgsInput');
         const customEnvVarsInput = document.getElementById('customEnvVarsInput');
 
@@ -5261,6 +5376,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             disableVsync: checkDisableVsync ? checkDisableVsync.checked : false,
             enableNativeWayland: checkNativeWayland ? checkNativeWayland.checked : false,
             enableDiscordRpc: checkDiscordRpc ? checkDiscordRpc.checked : true,
+            autoUpdateMods: checkAutoUpdateMods ? checkAutoUpdateMods.checked : true,
             customJvmArgs: jvmArgsInput ? jvmArgsInput.value.trim() : null,
             customEnvVars: customEnvVarsInput ? customEnvVarsInput.value.trim() : ''
         };
@@ -5372,6 +5488,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const checkDiscordRpcEl = document.getElementById('checkDiscordRpc');
     if (checkDiscordRpcEl) checkDiscordRpcEl.addEventListener('change', () => autoSaveSettings(true));
+
+    const checkAutoUpdateModsEl = document.getElementById('checkAutoUpdateMods');
+    if (checkAutoUpdateModsEl) checkAutoUpdateModsEl.addEventListener('change', () => autoSaveSettings(true));
 
 
     document.querySelectorAll('input[name="res"]').forEach(radio => {
