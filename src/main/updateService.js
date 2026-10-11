@@ -228,9 +228,26 @@ async function applyUpdate(assetUrl, onProgress) {
 
             // Validace staženého balíčku
             const stat = fs.statSync(tmpAsar);
-            if (stat.size < 1000000) {
+            if (stat.size < 1000000 || (totalBytes > 0 && receivedBytes < totalBytes) || (totalBytes > 0 && stat.size < totalBytes)) {
                 try { fs.unlinkSync(tmpAsar); } catch (_) {}
-                throw new Error('Stažený aktualizační balíček je nekompletní.');
+                throw new Error(`Stažený aktualizační balíček je nekompletní (${stat.size} B / ${totalBytes} B).`);
+            }
+
+            // Ověření integrity ASAR hlavičky (musí začínat asar magic 0x04 0x00 0x00 0x00)
+            let isAsarValid = false;
+            try {
+                const fd = fs.openSync(tmpAsar, 'r');
+                const headerBuf = Buffer.alloc(4);
+                fs.readSync(fd, headerBuf, 0, 4, 0);
+                fs.closeSync(fd);
+                if (headerBuf[0] === 4 && headerBuf[1] === 0 && headerBuf[2] === 0 && headerBuf[3] === 0) {
+                    isAsarValid = true;
+                }
+            } catch (_) {}
+
+            if (!isAsarValid) {
+                try { fs.unlinkSync(tmpAsar); } catch (_) {}
+                throw new Error('Stažený balíček aktualizace je poškozený nebo neplatný.');
             }
 
             if (process.platform === 'win32') {
