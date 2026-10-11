@@ -170,9 +170,6 @@ function loadConfig() {
                     if (!p.optimizedChosen) {
                         p.optimizedChosen = p.loader === 'fabric' ? 'optimized' : 'vanilla';
                     }
-                    if (p.name && (p.name.includes('Beacon') || p.name.includes('MYCHAL SMP') || p.name.startsWith('Vanilla ') || p.name.toLowerCase().includes('vanilla'))) {
-                        p.name = `Minecraft ${p.version}`;
-                    }
                     if (typeof p.playtimeSeconds !== 'number') {
                         p.playtimeSeconds = 0;
                     }

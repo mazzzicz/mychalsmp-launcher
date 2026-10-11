@@ -7190,16 +7190,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btnSelectImportFolder) {
         btnSelectImportFolder.addEventListener('click', async () => {
             appendLog('[IMPORT] Otevírám dialog výběru složky instance...');
-            const res = await window.api.importProfileDialog();
-            if (res.canceled) return;
+            try {
+                btnSelectImportFolder.disabled = true;
+                const res = await window.api.importProfileDialog();
+                btnSelectImportFolder.disabled = false;
+                if (!res || res.canceled) {
+                    appendLog('[IMPORT] Výběr složky zrušen.');
+                    return;
+                }
 
-            if (res.error) {
-                alert('Chyba při čtení složky: ' + res.error);
-                return;
-            }
+                if (res.error) {
+                    showToast('Chyba při čtení složky: ' + res.error, 'error');
+                    appendLog('[IMPORT] Chyba: ' + res.error);
+                    return;
+                }
 
-            const scan = res.scan;
-            currentScannedData = scan;
+                const scan = res.scan;
+                if (!scan) return;
+                currentScannedData = scan;
 
             if (importPathLabel) importPathLabel.textContent = scan.originalDir;
             if (importProfileNameInput) importProfileNameInput.value = scan.name;
@@ -7225,7 +7233,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (scannedInstancePreview) scannedInstancePreview.style.display = 'block';
             if (btnConfirmImport) btnConfirmImport.disabled = false;
-        });
+        } catch (err) {
+            btnSelectImportFolder.disabled = false;
+            showToast('Chyba dialogu výběru složky: ' + err.message, 'error');
+        }
+    });
     }
 
     if (btnConfirmImport) {

@@ -2264,6 +2264,23 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
         }
     }
 
+    // Odstranění zablokovaného pádu z options.txt (pokud Minecraft po předchozím pádu vnutil opengl)
+    try {
+        const optPaths = [
+            path.join(gameInstanceDir, 'options.txt'),
+            path.join(BASE_DIR, 'options.txt')
+        ];
+        for (const optPath of optPaths) {
+            if (fs.existsSync(optPath)) {
+                let optText = fs.readFileSync(optPath, 'utf8');
+                if (optText.includes('preferredGraphicsBackend:"opengl"')) {
+                    optText = optText.replace(/preferredGraphicsBackend:"opengl"/g, 'preferredGraphicsBackend:"default"');
+                    fs.writeFileSync(optPath, optText, 'utf8');
+                }
+            }
+        }
+    } catch (_) {}
+
     // Důkladné pročištění starých grafických proměnných z process.env
     // Zabrání chybám 'No supported graphics backend was found' a 'VK_ERROR_INITIALIZATION_FAILED'
     const sensitiveGpuKeys = [
@@ -2308,18 +2325,29 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
             }
         }
 
-        // Discrete GPU (NVIDIA & AMD Prime Offloading pro hybridní notebooky)
-        // DŮLEŽITÉ: NIKDY nenastavovat __VK_LAYER_NV_optimus (rozbíjí Vulkan na desktopech i noteboocích)
-        if (config.enableDiscreteGpu) {
+        // Discrete GPU (NVIDIA & AMD Prime Offloading výhradně pro hybridní notebooky s baterií)
+        // Na stolních PC (jako RTX 4070) je monitor zapojen přímo do grafiky a PRIME offload se NIKDY nesmí zapínat!
+        let isLaptop = false;
+        try {
+            if (fs.existsSync('/sys/class/power_supply')) {
+                const supplies = fs.readdirSync('/sys/class/power_supply');
+                isLaptop = supplies.some(s => s.startsWith('BAT'));
+            }
+        } catch (_) {}
+
+        if (config.enableDiscreteGpu && isLaptop) {
             const hasNvidia = fs.existsSync('/proc/driver/nvidia') || fs.existsSync('/sys/module/nvidia');
             if (hasNvidia) {
                 setGameEnv('__NV_PRIME_RENDER_OFFLOAD', '1');
                 setGameEnv('__GLX_VENDOR_LIBRARY_NAME', 'nvidia');
-                onLog('[VÝKON] Diskrétní GPU aktivována (NVIDIA Prime Render Offload)');
+                setGameEnv('__VK_LAYER_NV_optimus', 'NVIDIA_only');
+                onLog('[VÝKON] Hybridní notebook: aktivován NVIDIA Prime Render Offload');
             } else {
                 setGameEnv('DRI_PRIME', '1');
-                onLog('[VÝKON] Diskrétní GPU aktivována (DRI_PRIME=1)');
+                onLog('[VÝKON] Hybridní notebook: aktivován DRI_PRIME=1');
             }
+        } else if (config.enableDiscreteGpu && !isLaptop) {
+            onLog('[VÝKON] Detekován stolní počítač (Desktop PC) – GPU běží nativně bez hybridního PRIME offloadu.');
         }
 
         // Zink (OpenGL over Vulkan)

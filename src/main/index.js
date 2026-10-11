@@ -1900,16 +1900,15 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
 
 // Profile Import & Upgrade IPC Handlers
 ipcMain.handle('import-profile-dialog', async () => {
-    if (!mainWindow) return { canceled: true };
-    const result = await dialog.showOpenDialog(mainWindow, {
-        title: 'Vyber složku profilu / instance (Prism, CurseForge, Modrinth, .minecraft)',
-        properties: ['openDirectory']
-    });
-    if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
-        return { canceled: true };
-    }
-    const dirPath = result.filePaths[0];
     try {
+        const result = await dialog.showOpenDialog({
+            title: 'Vyber složku profilu / instance (Prism, CurseForge, Modrinth, .minecraft)',
+            properties: ['openDirectory']
+        });
+        if (!result || result.canceled || !result.filePaths || result.filePaths.length === 0) {
+            return { canceled: true };
+        }
+        const dirPath = result.filePaths[0];
         const scan = scanInstanceDirectory(dirPath);
         return { canceled: false, scan };
     } catch (e) {
@@ -2284,34 +2283,36 @@ ipcMain.handle('check-optimization-status', async (event, profileId) => {
 });
 
 ipcMain.handle('select-skin-file', async () => {
-    if (!mainWindow) return null;
-    const result = await dialog.showOpenDialog(mainWindow, {
-        title: 'Vyber soubor skinu (.png)',
-        filters: [{ name: 'Minecraft Skin', extensions: ['png'] }],
-        properties: ['openFile']
-    });
-    if (!result.canceled && result.filePaths.length > 0) {
-        const filePath = result.filePaths[0];
-        const dest = path.join(BASE_DIR, 'custom_skin.png');
-        fs.copyFileSync(filePath, dest);
-        return dest;
-    }
+    try {
+        const result = await dialog.showOpenDialog({
+            title: 'Vyber soubor skinu (.png)',
+            filters: [{ name: 'Minecraft Skin', extensions: ['png'] }],
+            properties: ['openFile']
+        });
+        if (!result.canceled && result.filePaths && result.filePaths.length > 0) {
+            const filePath = result.filePaths[0];
+            const dest = path.join(BASE_DIR, 'custom_skin.png');
+            fs.copyFileSync(filePath, dest);
+            return dest;
+        }
+    } catch (_) {}
     return null;
 });
 
 ipcMain.handle('select-cape-file', async () => {
-    if (!mainWindow) return null;
-    const result = await dialog.showOpenDialog(mainWindow, {
-        title: 'Vyber soubor pláště (.png)',
-        filters: [{ name: 'Minecraft Cape', extensions: ['png'] }],
-        properties: ['openFile']
-    });
-    if (!result.canceled && result.filePaths.length > 0) {
-        const filePath = result.filePaths[0];
-        const dest = path.join(BASE_DIR, 'custom_cape.png');
-        fs.copyFileSync(filePath, dest);
-        return dest;
-    }
+    try {
+        const result = await dialog.showOpenDialog({
+            title: 'Vyber soubor pláště (.png)',
+            filters: [{ name: 'Minecraft Cape', extensions: ['png'] }],
+            properties: ['openFile']
+        });
+        if (!result.canceled && result.filePaths && result.filePaths.length > 0) {
+            const filePath = result.filePaths[0];
+            const dest = path.join(BASE_DIR, 'custom_cape.png');
+            fs.copyFileSync(filePath, dest);
+            return dest;
+        }
+    } catch (_) {}
     return null;
 });
 
