@@ -1184,6 +1184,52 @@ function saveSessionTick(session) {
     }
 }
 
+/**
+ * Ověří, zda detekovaný host z herního logu je validní Minecraft multiplayer server
+ * (doména s tečkou, IPv4/IPv6 adresa nebo localhost).
+ * Odmítá pomocné služby jako Simple Voice Chat ('voice', 'voicechat'), audio, telemetry, auth apod.
+ */
+function isValidServerHost(host) {
+    if (!host || typeof host !== 'string') return false;
+    const h = host.toLowerCase().trim();
+    if (!h) return false;
+
+    const blacklist = [
+        'voice', 'voicechat', 'chat', 'server', 'servers', 'the', 'a', 'an',
+        'service', 'services', 'audio', 'sound', 'auth', 'session', 'skin', 'skins',
+        'account', 'telemetry', 'remote', 'local', 'socket', 'channel', 'relay',
+        'proxy', 'ice', 'stun', 'turn', 'world', 'lan', 'screen', 'game',
+        'integrated', 'default', 'null', 'undefined'
+    ];
+    if (blacklist.includes(h)) return false;
+    if (h.startsWith('voice.') || h.endsWith('.voice')) return false;
+    if (h.startsWith('.') || h.endsWith('.') || h.startsWith('-') || h.endsWith('-')) return false;
+
+    if (h === 'localhost') return true;
+
+    // IPv4 adresa
+    if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) {
+        const parts = h.split('.').map(Number);
+        return parts.every(p => p >= 0 && p <= 255);
+    }
+
+    // IPv6 adresa
+    if (/^\[?[0-9a-fA-F:]+\]?$/.test(h) && h.includes(':')) {
+        return true;
+    }
+
+    // Standardní doména obsahující alespoň jednu tečku (např. donutsmp.net, mychalsmp.xyz, play.hypixel.net)
+    if (/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$/.test(h)) {
+        const parts = h.split('.');
+        const tld = parts[parts.length - 1];
+        if (tld.length >= 2 && !/^\d+$/.test(tld)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function startSessionTracking(pid, profileId, profileName, instanceDir, serverIp) {
     if (activeHeartbeatInterval) {
         clearInterval(activeHeartbeatInterval);
@@ -1510,59 +1556,69 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
                     mainWindow.webContents.send('launch-log', logLine);
                 }
 
+                // Ignorujeme logy z doplňkových služeb (hlasový chat Simple Voice Chat, Plasmo Voice, audio, telemetry, auth apod.)
+                const isAuxiliaryLog = /\[(?:.*VoiceChat.*|.*PlasmoVoice.*|.*Voice.*|.*Audio.*)\]/i.test(logLine) ||
+                    /(?:voicechat|plasmovoice|simple\s*voice|voice\s*(?:chat|server|proxy)|audioplayer|essential|telemetry|skin\s*server|auth\s*server|session\s*server|ice\s*server|stun:|turn:)/i.test(logLine);
+
                 // Detekce připojení na herní server z konzole Minecraftu
-                const connMatch = logLine.match(/Connecting to\s+(?:server\s+)?\[?([a-zA-Z0-9_.-]+)\]?(?:(?:,\s*|\:)(\d+))?/i);
+                // Vanilla Minecraft ConnectScreen loguje: "Connecting to <host>, <port>"
+                // Modifikované klienty/proxy mohou logovat: "Connecting to <host>:<port>" nebo "[<host>]:<port>"
+                const connMatch = !isAuxiliaryLog ? logLine.match(/Connecting to\s+(?:server\s+)?\[?([a-zA-Z0-9_.-]+)\]?(?:(?:,\s*|\:)(\d+))?/i) : null;
                 if (connMatch && connMatch[1]) {
                     const detectedHost = connMatch[1].trim();
                     const detectedPort = connMatch[2] ? parseInt(connMatch[2], 10) : 25565;
-                    const isMychal = (detectedHost.toLowerCase().includes('mychalsmp') || detectedHost === '130.61.89.37');
-                    const serverLabel = isMychal
-                        ? 'mychalsmp.xyz'
-                        : (detectedPort && detectedPort !== 25565 ? `${detectedHost}:${detectedPort}` : detectedHost);
 
-                    if (activeSessionData) {
-                        activeSessionData.currentServerIp = serverLabel;
-                    }
+                    // Ověření, že se jedná o skutečný Minecraft server a ne o port/subdoménu voice chatu ani obecné slovo
+                    if (isValidServerHost(detectedHost) && detectedPort !== 24454 && detectedPort !== 9050 && !detectedHost.toLowerCase().startsWith('voice.')) {
+                        const isMychal = (detectedHost.toLowerCase().includes('mychalsmp') || detectedHost === '130.61.89.37');
+                        const serverLabel = isMychal
+                            ? 'mychalsmp.xyz'
+                            : (detectedPort && detectedPort !== 25565 ? `${detectedHost}:${detectedPort}` : detectedHost);
 
-                    // Okamžitá aktualizace Discord Rich Presence s přesnou IP serveru a načtením jeho ikony
-                    try {
-                        const curCfg = loadConfig();
-                        if (curCfg.enableDiscordRpc !== false) {
-                            discordRpc.updateActivity({
-                                username: authData?.name || curCfg.username || 'Hráč',
-                                server: serverLabel,
-                                profileName: profile ? profile.name : 'Minecraft 26.2',
-                                isPlaying: true,
-                                startTime: gameSessionStart
+                        if (activeSessionData) {
+                            activeSessionData.currentServerIp = serverLabel;
+                        }
+
+                        // Okamžitá aktualizace Discord Rich Presence s přesnou IP serveru a načtením jeho ikony
+                        try {
+                            const curCfg = loadConfig();
+                            if (curCfg.enableDiscordRpc !== false) {
+                                discordRpc.updateActivity({
+                                    username: authData?.name || curCfg.username || 'Hráč',
+                                    server: serverLabel,
+                                    profileName: profile ? profile.name : 'Minecraft 26.2',
+                                    isPlaying: true,
+                                    startTime: gameSessionStart
+                                });
+                            }
+                        } catch (_) { }
+
+                        try {
+                            const curCfg = loadConfig();
+                            let srvChanged = false;
+                            const srvList = (curCfg.servers || []).map(s => {
+                                const ip = (s.ip || '').toLowerCase();
+                                const sub = (s.subdomain || '').toLowerCase();
+                                const backup = (s.backupIp || '').toLowerCase();
+                                const checkHost = detectedHost.toLowerCase();
+                                if (ip === checkHost || sub === checkHost || backup === checkHost || (isMychal && (s.id === 'mychalsmp' || s.ip === 'mychalsmp.xyz'))) {
+                                    srvChanged = true;
+                                    return {
+                                        ...s,
+                                        lastJoined: Date.now(),
+                                        playCount: (Number(s.playCount) || 0) + 1
+                                    };
+                                }
+                                return s;
                             });
-                        }
-                    } catch (_) { }
-
-                    try {
-                        const curCfg = loadConfig();
-                        let srvChanged = false;
-                        const srvList = (curCfg.servers || []).map(s => {
-                            const ip = (s.ip || '').toLowerCase();
-                            const sub = (s.subdomain || '').toLowerCase();
-                            const backup = (s.backupIp || '').toLowerCase();
-                            const checkHost = detectedHost.toLowerCase();
-                            if (ip === checkHost || sub === checkHost || backup === checkHost || (isMychal && (s.id === 'mychalsmp' || s.ip === 'mychalsmp.xyz'))) {
-                                srvChanged = true;
-                                return {
-                                    ...s,
-                                    lastJoined: Date.now(),
-                                    playCount: (Number(s.playCount) || 0) + 1
-                                };
+                            if (srvChanged) {
+                                saveConfig({ servers: srvList });
+                                if (mainWindow && !mainWindow.isDestroyed()) {
+                                    mainWindow.webContents.send('servers-updated', srvList);
+                                }
                             }
-                            return s;
-                        });
-                        if (srvChanged) {
-                            saveConfig({ servers: srvList });
-                            if (mainWindow && !mainWindow.isDestroyed()) {
-                                mainWindow.webContents.send('servers-updated', srvList);
-                            }
-                        }
-                    } catch (_) { }
+                        } catch (_) { }
+                    }
                 }
 
                 // Detekce spuštění Singleplayer světa

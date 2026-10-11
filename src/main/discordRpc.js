@@ -30,6 +30,7 @@ class DiscordRpcClient {
         this.isConnected = false;
         this.isConnecting = false;
         this.currentActivity = null;
+        this.lastPlayedServer = null;
         this.reconnectTimer = null;
         this.readBuffer = Buffer.alloc(0);
     }
@@ -240,8 +241,18 @@ class DiscordRpcClient {
         const MYCHAL_ICON = 'https://raw.githubusercontent.com/mychalVidea/mychalsmp-launcher/main/src/renderer/assets/server-icon.png';
         const LOGO_ICON = 'https://raw.githubusercontent.com/mychalVidea/mychalsmp-launcher/main/src/renderer/assets/logo.png';
 
-        const sRaw = (server || '').toString().trim();
-        const sLower = sRaw.toLowerCase();
+        let sRaw = (server || '').toString().trim();
+        let sLower = sRaw.toLowerCase();
+
+        // Bezpečnostní filtr: pokud se do serveru dostane 'voice' z logu voice chatu nebo jiné neplatné slovo
+        const isDisallowedServer = ['voice', 'voicechat', 'server', 'chat', 'undefined', 'null'].includes(sLower) || sLower.startsWith('voice.');
+        if (isDisallowedServer) {
+            sRaw = this.lastPlayedServer || 'menu';
+            sLower = sRaw.toLowerCase();
+        } else if (isPlaying && sRaw && sRaw !== 'menu' && !sLower.includes('singleplayer')) {
+            this.lastPlayedServer = sRaw;
+        }
+
         const isSingleplayer = sLower === 'singleplayer' || sLower === 'režim jednoho hráče' || sLower === 'sp';
         const isMenu = !sRaw || sLower === 'menu' || sLower === 'main_menu';
         const isMychal = !isSingleplayer && !isMenu && (sLower.includes('mychalsmp') || sLower === '130.61.89.37');
@@ -275,7 +286,7 @@ class DiscordRpcClient {
                 smallImageUrl = MYCHAL_ICON;
                 smallImageText = 'MYCHAL SMP';
             } else {
-                // Hraní na libovolném jiném Minecraft serveru (Hypixel, CubeCraft, atd.)
+                // Hraní na libovolném jiném Minecraft serveru (Hypixel, DonutSMP, CubeCraft, atd.)
                 detailsText = `Hraje na: ${sRaw}`;
                 largeImageText = `Server: ${sRaw}`;
 
@@ -316,21 +327,17 @@ class DiscordRpcClient {
                 ]
             };
         } else {
-            const serverLabel = isMychal ? 'mychalsmp.xyz' : (isMenu || isSingleplayer ? 'mychalsmp.xyz' : sRaw);
-
             const assets = {
                 large_image: LOGO_ICON,
-                large_text: 'SMPLauncher'
+                large_text: `SMPClient (${profileName})`,
+                small_image: MYCHAL_ICON,
+                small_text: 'MYCHAL SMP (mychalsmp.xyz)'
             };
 
-            if (isMychal) {
-                assets.small_image = MYCHAL_ICON;
-                assets.small_text = `Server: ${serverLabel}`;
-            }
-
+            const userPart = username && username !== 'Hráč' ? `Hráč: ${username} • ` : '';
             activity = {
-                details: 'V aplikaci SMPLauncher',
-                state: safeStr(`Vybraný server: ${serverLabel}`),
+                details: 'V launcheru',
+                state: safeStr(`${userPart}${profileName}`),
                 assets,
                 buttons: [
                     { label: '🌐 Oficiální web', url: 'https://mychalsmp.xyz' },

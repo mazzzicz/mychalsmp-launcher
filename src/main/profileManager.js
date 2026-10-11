@@ -378,19 +378,41 @@ async function upgradeProfile(sourceProfileId, targetVersion, baseDir, onProgres
     fs.mkdirSync(destModsDir, { recursive: true });
 
     const upgradedMods = [];
+    const disabledMods = [];
     const missingMods = [];
 
+    let AdmZip = null;
+    try { AdmZip = require('adm-zip'); } catch (_) {}
+
     if (fs.existsSync(srcModsDir)) {
-        const files = fs.readdirSync(srcModsDir).filter(f => f.toLowerCase().endsWith('.jar'));
+        const files = fs.readdirSync(srcModsDir).filter(f => f.toLowerCase().endsWith('.jar') || f.toLowerCase().endsWith('.jar.disabled'));
         const total = files.length;
         let index = 0;
 
         for (const file of files) {
             index++;
-            const slug = extractModSlugFromFilename(file);
+            const cleanJarName = file.replace(/\.disabled$/i, '');
+            let modId = null;
+            let modName = null;
+
+            if (AdmZip) {
+                try {
+                    const zip = new AdmZip(path.join(srcModsDir, file));
+                    const fabEntry = zip.getEntry('fabric.mod.json');
+                    if (fabEntry) {
+                        const fab = JSON.parse(fabEntry.getData().toString('utf8'));
+                        if (fab.id) modId = String(fab.id).trim();
+                        if (fab.name) modName = String(fab.name).trim();
+                    }
+                } catch (_) {}
+            }
+
+            const slug = modId || extractModSlugFromFilename(cleanJarName);
+            const displayName = modName || slug || cleanJarName;
+
             if (onProgress) {
                 onProgress({
-                    status: `Hledám novou verzi pro ${file} (${index}/${total})...`,
+                    status: `Hledám verzi pro ${displayName} (${index}/${total})...`,
                     percent: Math.round((index / total) * 100)
                 });
             }
@@ -403,26 +425,54 @@ async function upgradeProfile(sourceProfileId, targetVersion, baseDir, onProgres
                     upgradedMods.push({
                         oldFile: file,
                         newFile: targetMod.filename,
+                        name: displayName,
                         version: targetMod.versionNumber
                     });
                 } else {
-                    // Mod does not have a 26.3 version on Modrinth yet
-                    missingMods.push(file);
+                    // Mód zatím nemá verzi pro cílový Minecraft:
+                    // Zkopírujeme jej s příponou .disabled, aby byl v novém profilu bezpečně zakázán a neshodil hru
+                    const disabledDestPath = path.join(destModsDir, `${cleanJarName}.disabled`);
+                    try {
+                        fs.copyFileSync(path.join(srcModsDir, file), disabledDestPath);
+                    } catch (_) {}
+
+                    disabledMods.push({
+                        file: cleanJarName,
+                        disabledFile: `${cleanJarName}.disabled`,
+                        name: displayName,
+                        reason: `Zatím nepodporuje verzi ${targetVersion}`
+                    });
+                    missingMods.push(cleanJarName);
                 }
             } catch (err) {
-                missingMods.push(file);
+                const disabledDestPath = path.join(destModsDir, `${cleanJarName}.disabled`);
+                try {
+                    fs.copyFileSync(path.join(srcModsDir, file), disabledDestPath);
+                } catch (_) {}
+
+                disabledMods.push({
+                    file: cleanJarName,
+                    disabledFile: `${cleanJarName}.disabled`,
+                    name: displayName,
+                    reason: `Chyba ověření: ${err.message}`
+                });
+                missingMods.push(cleanJarName);
             }
         }
     }
 
     // Create the new upgraded profile
+    const descText = disabledMods.length > 0
+        ? `Upgradováno z ${sourceProfile.version} • ${upgradedMods.length} aktualizováno, ${disabledMods.length} zakázáno (nekompatibilní)`
+        : `Upgradováno z ${sourceProfile.version} • ${upgradedMods.length} aktualizovaných módů`;
+
     const newProfile = {
         id: newProfileId,
         name: `${sourceProfile.name} (${targetVersion})`,
         version: targetVersion,
         loader: sourceProfile.loader || 'fabric',
         optimizedChosen: (sourceProfile.loader === 'fabric' || !sourceProfile.loader) ? 'optimized' : 'vanilla',
-        desc: `Upgradováno z ${sourceProfile.version} • ${upgradedMods.length} aktualizovaných módů`,
+        desc: descText,
         icon: 'upgrade',
         lastPlayed: 'Právě upgradováno',
         playtimeSeconds: 0,
@@ -441,8 +491,9 @@ async function upgradeProfile(sourceProfileId, targetVersion, baseDir, onProgres
         success: true,
         profile: newProfile,
         upgradedMods,
+        disabledMods,
         missingMods,
-        totalChecked: upgradedMods.length + missingMods.length
+        totalChecked: upgradedMods.length + disabledMods.length
     };
 }
 

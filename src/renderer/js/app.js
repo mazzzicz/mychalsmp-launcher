@@ -6109,10 +6109,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                     // Show result modal
                     if (modalUpgradeResult) {
                         if (upgradeResultSummaryText) {
+                            const disabledCount = (res.disabledMods || res.missingMods || []).length;
                             upgradeResultSummaryText.innerHTML = `
                                 <strong>Vytvořen nový profil:</strong> ${escapeHtml(res.profile.name)}<br>
                                 <strong>Převedeno:</strong> Herní options.txt, konfigurace módů (config/) a texture packy.<br>
-                                <strong>Módy z Modrinthu:</strong> Staženo ${res.upgradedMods.length} módů pro verzi ${targetVer}.
+                                <strong>Aktualizováno:</strong> Staženo ${res.upgradedMods ? res.upgradedMods.length : 0} kompatibilních módů pro verzi ${targetVer}.<br>
+                                ${disabledCount > 0 ? `<strong style="color:#f87171;">Deaktivováno:</strong> ${disabledCount} módů bylo bezpečně zakázáno (.disabled), protože pro verzi ${targetVer} zatím nevyšly.` : ''}
                             `;
                         }
 
@@ -6122,18 +6124,27 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 html += `<div style="display:flex; align-items:center; gap:6px; font-weight:700; color:#86efac; margin-top:8px;"><svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Aktualizované módy (${res.upgradedMods.length}):</div>`;
                                 html += res.upgradedMods.map(m => `
                                     <div class="result-mod-tag" style="display:flex; align-items:center; gap:6px; background:#132a1e; color:#86efac;">
-                                        <svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> ${escapeHtml(m.newFile)} (v${escapeHtml(m.version)})
+                                        <svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> ${escapeHtml(m.newFile || m.oldFile)} (v${escapeHtml(m.version || 'nová')})
                                     </div>
                                 `).join('');
                             }
 
-                            if (res.missingMods && res.missingMods.length > 0) {
-                                html += `<div style="display:flex; align-items:center; gap:6px; font-weight:700; color:#fbbf24; margin-top:10px;"><svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--gold" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Módy čekající na vydání pro ${escapeHtml(targetVer)} (${res.missingMods.length}):</div>`;
-                                html += res.missingMods.map(m => `
-                                    <div class="result-mod-tag" style="display:flex; align-items:center; gap:6px; background:#2a2313; color:#fde047;">
-                                        <svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--gold ui-icon-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="12"/></svg> ${escapeHtml(m)} (Zatím bez odpovídající verze)
+                            const disabledList = res.disabledMods || (res.missingMods ? res.missingMods.map(m => ({ name: m, file: m })) : []);
+                            if (disabledList && disabledList.length > 0) {
+                                html += `<div style="display:flex; align-items:center; gap:6px; font-weight:700; color:#f87171; margin-top:12px;"><svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg> Zakázané módy – nepodporují verzi ${escapeHtml(targetVer)} (${disabledList.length}):</div>`;
+                                html += `<div style="font-size:12px; color:var(--text-muted); margin-bottom:6px;">Tyto módy byly v novém profilu automaticky deaktivovány (.disabled), aby hra nespadla:</div>`;
+                                html += disabledList.map(m => {
+                                    const modTitle = typeof m === 'object' ? (m.name || m.file) : m;
+                                    return `
+                                    <div class="result-mod-tag" style="display:flex; align-items:center; justify-content:space-between; gap:8px; background:#291415; border:1px solid rgba(248,113,113,0.25); color:#fca5a5; padding:6px 10px; border-radius:6px; margin-bottom:4px;">
+                                        <div style="display:flex; align-items:center; gap:6px; font-weight:600;">
+                                            <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                                            ${escapeHtml(modTitle)}
+                                        </div>
+                                        <span style="font-size:11px; opacity:0.85; font-weight:400;">(Zakázán • čeká na aktualizaci pro ${escapeHtml(targetVer)})</span>
                                     </div>
-                                `).join('');
+                                    `;
+                                }).join('');
                             }
                             upgradeResultModsList.innerHTML = html;
                         }
