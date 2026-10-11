@@ -173,10 +173,18 @@
                             </div>
                             <div class="stage-character">
                                 <div class="stage-skin-wrapper" id="heroSkinWrapper" title="3D náhled">
-                                    <canvas id="heroSkinCanvas3D" class="hero-3d-canvas" width="160"
-                                        height="220"></canvas>
+                                    <canvas id="heroSkinCanvas3D" class="hero-3d-canvas" width="180"
+                                        height="245"></canvas>
                                     <img src="assets/default_steve.png" alt="Skin" id="heroSkinImg" class="stage-skin"
                                         style="display: none;">
+                                    <!-- Levitující průhledná deska a stín pod postavou -->
+                                    <div class="hero-pedestal-platform" aria-hidden="true">
+                                        <div class="pedestal-shadow-soft"></div>
+                                        <div class="pedestal-glass-disc">
+                                            <div class="pedestal-glass-glow"></div>
+                                        </div>
+                                        <div class="pedestal-contact-shadow"></div>
+                                    </div>
                                 </div>
                                 <div class="stage-nick-pill" id="stageNickPill">
                                     <span id="heroNickLabel">Hráč</span>

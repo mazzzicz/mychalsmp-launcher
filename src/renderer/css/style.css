@@ -909,8 +909,8 @@ body.is-maximized {
 
 .stage-skin-wrapper {
     position: relative;
-    width: 160px;
-    height: 220px;
+    width: 180px;
+    height: 250px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -919,11 +919,13 @@ body.is-maximized {
 }
 
 .hero-3d-canvas {
-    width: 160px;
-    height: 220px;
+    width: 180px;
+    height: 245px;
     display: block;
+    position: relative;
+    z-index: 2;
     cursor: grab;
-    filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.65));
+    filter: drop-shadow(0 14px 20px rgba(0, 0, 0, 0.55));
     border-radius: var(--radius-md);
     outline: none;
     user-select: none;
@@ -933,6 +935,71 @@ body.is-maximized {
 
 .hero-3d-canvas:active {
     cursor: grabbing;
+}
+
+/* Levitating Pedestal & Ground Shadow under 3D Character */
+.hero-pedestal-platform {
+    position: absolute;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 146px;
+    height: 36px;
+    pointer-events: none;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Ambient ground shadow beneath the levitating disc */
+.pedestal-shadow-soft {
+    position: absolute;
+    bottom: -6px;
+    width: 140px;
+    height: 22px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.70) 0%, rgba(0, 0, 0, 0.28) 48%, transparent 75%);
+    filter: blur(6px);
+}
+
+/* Levitating transparent glass disc */
+.pedestal-glass-disc {
+    position: absolute;
+    bottom: 2px;
+    width: 124px;
+    height: 24px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at 50% 50%, rgba(10, 103, 229, 0.20) 0%, rgba(14, 18, 30, 0.78) 60%, rgba(10, 103, 229, 0.12) 100%);
+    border: 1px solid rgba(10, 103, 229, 0.42);
+    box-shadow: 
+        0 0 16px rgba(10, 103, 229, 0.32),
+        inset 0 0 8px rgba(10, 103, 229, 0.22),
+        inset 0 1px 1px rgba(255, 255, 255, 0.25);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Inner concentric cyan/blue glow circle */
+.pedestal-glass-glow {
+    width: 82px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1px dashed rgba(10, 103, 229, 0.45);
+    background: radial-gradient(ellipse at center, rgba(10, 103, 229, 0.28) 0%, transparent 75%);
+}
+
+/* Dark contact shadow directly beneath character feet */
+.pedestal-contact-shadow {
+    position: absolute;
+    bottom: 7px;
+    width: 72px;
+    height: 13px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.42) 50%, transparent 75%);
+    filter: blur(2px);
 }
 
 .stage-skin {
@@ -1005,38 +1072,27 @@ body.is-maximized {
     font-family: var(--font-heading);
     font-size: 26px;
     font-weight: 800;
-    letter-spacing: 0.3px;
-    line-height: 1.18;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
     margin-bottom: 6px;
     color: #ffffff;
-    text-shadow: 
-        0 1px 2px #000000, 
-        0 2px 6px rgba(0, 0, 0, 0.98), 
-        0 4px 16px rgba(0, 0, 0, 0.92), 
-        0 0 24px rgba(0, 0, 0, 0.80);
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.55);
 }
 
 .stage-title span {
-    color: #38bdf8;
+    color: #0a67e5;
     font-weight: 800;
-    text-shadow: 
-        0 1px 2px #000000, 
-        0 2px 5px rgba(0, 0, 0, 0.98), 
-        0 0 14px rgba(10, 103, 229, 0.92), 
-        0 0 28px rgba(56, 189, 248, 0.65);
-    letter-spacing: 0.3px;
+    text-shadow: 0 0 16px rgba(10, 103, 229, 0.40), 0 2px 8px rgba(0, 0, 0, 0.55);
+    letter-spacing: -0.01em;
 }
 
 .stage-subtitle {
     font-size: 13.5px;
     font-weight: 500;
-    color: #f1f5f9;
+    color: var(--text-secondary);
     margin-bottom: 12px;
     line-height: 1.4;
-    text-shadow: 
-        0 1px 2px #000000, 
-        0 2px 6px rgba(0, 0, 0, 0.98), 
-        0 0 12px rgba(0, 0, 0, 0.85);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
 }
 
 .hero-live-stats {
@@ -1073,7 +1129,7 @@ body.is-maximized {
     color: #cbd5e1;
     font-weight: 500;
     font-size: 11px;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .hero-stat-val {
@@ -1081,7 +1137,7 @@ body.is-maximized {
     font-weight: 600;
     font-size: 11.5px;
     letter-spacing: 0.2px;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.98);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .hero-stat-dot {
