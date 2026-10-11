@@ -1796,6 +1796,7 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
     }
 
     const installedModIds = new Set();
+    const installedModsMap = new Map();
     const parsedMods = [];
 
     for (const f of jarFiles) {
@@ -1807,9 +1808,19 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
                 const fab = JSON.parse(fabEntry.getData().toString('utf8'));
                 if (fab.id) {
                     const idLower = fab.id.toLowerCase();
+                    const modInfo = {
+                        filename: f,
+                        fullPath,
+                        id: fab.id,
+                        name: fab.name || fab.id,
+                        version: String(fab.version || '')
+                    };
                     installedModIds.add(idLower);
                     installedModIds.add(idLower.replace(/_/g, '-'));
                     installedModIds.add(idLower.replace(/-/g, '_'));
+                    installedModsMap.set(idLower, modInfo);
+                    installedModsMap.set(idLower.replace(/_/g, '-'), modInfo);
+                    installedModsMap.set(idLower.replace(/-/g, '_'), modInfo);
                 }
                 if (fab.depends && typeof fab.depends === 'object') {
                     parsedMods.push({
@@ -1832,7 +1843,13 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
     const targetVersion = config.version || '26.2';
 
     for (const pm of parsedMods) {
+        // Pokud byl tento mód již dříve deaktivován v tomto běhu, přeskočíme ho
+        if (!fs.existsSync(pm.fullPath)) continue;
+
         for (const [depId, constraint] of Object.entries(pm.depends)) {
+            // Pokud byl tento mód deaktivován kvůli předchozí chybějící závislosti, končíme pro něj
+            if (!fs.existsSync(pm.fullPath)) break;
+
             const normDep = depId.toLowerCase();
             const normDepHyphen = normDep.replace(/_/g, '-');
             const normDepUnderscore = normDep.replace(/-/g, '_');
@@ -1840,31 +1857,72 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
                 continue;
             }
 
-            // Zkontrolujeme, zda je závislost přítomna mezi JARy nebo v adresáři
-            if (installedModIds.has(normDep) || installedModIds.has(normDepHyphen) || installedModIds.has(normDepUnderscore)) {
-                continue;
-            }
+            const installedMod = installedModsMap.get(normDep) || installedModsMap.get(normDepHyphen) || installedModsMap.get(normDepUnderscore);
 
-            if (typeof isModInstalledInDir === 'function') {
-                const check = isModInstalledInDir(modsDir, depId);
-                if (check && check.installed) {
-                    if (check.disabled && check.fullPath) {
-                        try {
-                            const enabled = check.fullPath.replace(/\.disabled$/i, '');
-                            fs.renameSync(check.fullPath, enabled);
-                            installedModIds.add(normDep);
-                            if (typeof onLog === 'function') {
-                                onLog(`[ZÁVISLOSTI] ✔ Re-aktivována nalezená závislost: ${check.filename}`);
-                            }
-                        } catch (_) {}
+            // Zvláštní kontrola verze: Iris na Minecraftu 26.2 striktně vyžaduje Sodium 0.9.x
+            let isOutdated = false;
+            if (installedMod) {
+                if (normDep === 'sodium' && pm.modId.toLowerCase() === 'iris') {
+                    if (!installedMod.version.startsWith('0.9')) {
+                        isOutdated = true;
                     }
-                    continue;
                 }
             }
 
-            // Závislost chybí! Automaticky se ji pokusíme stáhnout z Modrinthu
+            // Pokud je závislost přítomna a je kompatibilní, pokračujeme
+            if (installedMod && !isOutdated) {
+                continue;
+            }
+
+            let oldFilenameToReplace = installedMod ? installedMod.filename : null;
+
+            // Pokud závislost není přímo načtena, zkusíme najít soubor ve složce (např. .disabled)
+            if (!installedMod && typeof isModInstalledInDir === 'function') {
+                const check = isModInstalledInDir(modsDir, depId);
+                if (check && check.installed) {
+                    if (check.disabled && check.fullPath) {
+                        // Zkontrolujeme, zda soubor .disabled není zastaralý
+                        let disabledOutdated = false;
+                        if (normDep === 'sodium' && pm.modId.toLowerCase() === 'iris') {
+                            try {
+                                const dZip = new AdmZip(check.fullPath);
+                                const dFabEntry = dZip.getEntry('fabric.mod.json');
+                                if (dFabEntry) {
+                                    const dFab = JSON.parse(dFabEntry.getData().toString('utf8'));
+                                    if (dFab.version && !String(dFab.version).startsWith('0.9')) {
+                                        disabledOutdated = true;
+                                    }
+                                }
+                            } catch (_) {}
+                        }
+
+                        if (!disabledOutdated) {
+                            try {
+                                const enabled = check.fullPath.replace(/\.disabled$/i, '');
+                                fs.renameSync(check.fullPath, enabled);
+                                installedModIds.add(normDep);
+                                installedModsMap.set(normDep, { filename: path.basename(enabled), fullPath: enabled, version: '' });
+                                if (typeof onLog === 'function') {
+                                    onLog(`[ZÁVISLOSTI] ✔ Re-aktivována nalezená závislost: ${check.filename}`);
+                                }
+                                continue;
+                            } catch (_) {}
+                        } else {
+                            oldFilenameToReplace = check.filename;
+                        }
+                    } else {
+                        oldFilenameToReplace = check.filename;
+                    }
+                }
+            }
+
+            // Závislost chybí nebo je zastaralá! Automaticky se ji pokusíme stáhnout z Modrinthu
             if (typeof onLog === 'function') {
-                onLog(`[ZÁVISLOSTI] 🔍 Mód "${pm.modName}" vyžaduje "${depId}". Automaticky stahuji z Modrinthu...`);
+                if (isOutdated) {
+                    onLog(`[ZÁVISLOSTI] ⚠️ Zjištěna nekompatibilní verze ${installedMod.name} (${installedMod.version}). Mód "${pm.modName}" vyžaduje novější verzi pro MC ${targetVersion}. Automaticky stahuji kompatibilní verzi...`);
+                } else {
+                    onLog(`[ZÁVISLOSTI] 🔍 Mód "${pm.modName}" vyžaduje "${depId}". Automaticky stahuji z Modrinthu...`);
+                }
             }
 
             let dlSuccess = false;
@@ -1875,12 +1933,18 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
                         title: depId,
                         projectType: 'mod',
                         version: targetVersion,
-                        loader: 'fabric'
+                        loader: 'fabric',
+                        oldFilename: oldFilenameToReplace
                     }, gameInstanceDir);
 
                     if (dlRes && dlRes.success) {
                         dlSuccess = true;
                         installedModIds.add(normDep);
+                        installedModsMap.set(normDep, {
+                            filename: dlRes.filename,
+                            fullPath: path.join(modsDir, dlRes.filename),
+                            version: '0.9.x'
+                        });
                         if (typeof onLog === 'function') {
                             onLog(`[ZÁVISLOSTI] ✔ Úspěšně stažena vyžadovaná závislost: ${depId} (${dlRes.filename})`);
                         }
@@ -1892,7 +1956,7 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
                 }
             }
 
-            // Fallback: Pokud se závislost nepodařilo stáhnout, deaktivujeme problematický mód (.disabled),
+            // Fallback: Pokud se závislost nepodařilo stáhnout/aktualizovat, deaktivujeme problematický mód (.disabled),
             // aby Minecraft nespadl na Fabric FormattedException!
             if (!dlSuccess) {
                 try {
@@ -2729,5 +2793,6 @@ module.exports = {
     ensureJavaExecutable,
     downloadAndInstallJava,
     getJavaMajorVersion,
-    getRequiredJavaVersion
+    getRequiredJavaVersion,
+    ensureProfileModsDependencies
 };

@@ -111,15 +111,16 @@ function extractMissingDependencies(combinedText) {
         }
     }
 
-    // 1. Fabric: "Mod 'Particle Core' (particle_core) 0.3.3+26.2 requires version 0.7.6 or later of fzzy_config, which is missing!"
+    // 1. Fabric: "Mod 'Iris' (iris) 1.11.4+mc26.2 requires any 0.9.x version of sodium, which is missing!"
+    //     or "Mod 'Particle Core' (particle_core) 0.3.3+26.2 requires version 0.7.6 or later of fzzy_config, which is missing!"
     //     or "Mod 'A' (a) requires ... of mod 'B' (b), which is missing!"
-    const rModReq = /Mod\s+['"]([^'"]+)['"]\s*(?:\(([^)]+)\))?[^\n\r]*requires (?:version [^\n\r]+ of |any version [^\n\r]+ of )?(?:mod\s+['"]([^'"]+)['"]\s*\(([^)]+)\)|['"]([^'"]+)['"]|([a-zA-Z0-9_\-]+)),\s*which is missing/gi;
+    const rModReq = /Mod\s+['"]([^'"]+)['"]\s*(?:\(([^)]+)\))?[^\n\r]*?requires\s+(?:[^\n\r]*?\s+of\s+)?(?:mod\s+['"]([^'"]+)['"]\s*(?:\(([^)]+)\))?|['"]([^'"]+)['"]|([a-zA-Z0-9_\-]+)),\s*which is missing/gi;
     while ((m = rModReq.exec(combinedText)) !== null) {
         const modName = m[1];
         const modId = m[2] || modName;
         const depName = m[3] || m[5] || m[6];
         const depId = m[4] || m[5] || m[6];
-        if (depId && !['minecraft', 'java', 'fabricloader', 'fabric-loader', 'fabric'].includes(depId.toLowerCase())) {
+        if (depId && !['minecraft', 'java', 'fabricloader', 'fabric-loader', 'fabric', 'quilt_loader', 'quiltloader'].includes(depId.toLowerCase())) {
             const existing = missing.find(d => d.depId.toLowerCase() === depId.toLowerCase());
             if (existing) {
                 if (modName && (!existing.modName || existing.modName === 'Neznámý mód')) existing.modName = modName;
@@ -130,12 +131,12 @@ function extractMissingDependencies(combinedText) {
         }
     }
 
-    // 2. Fabric recommended: "Install fzzy_config, version 0.7.6 or later." OR "Install mod 'X' (x)"
-    const rInstallFlex = /Install\s+(?:mod\s+['"]([^'"]+)['"]\s*\(([^)]+)\)|([a-zA-Z0-9_\-]+)),?\s*version/gi;
+    // 2. Fabric recommended: "Install sodium, any 0.9.x version." OR "Install fzzy_config, version 0.7.6 or later."
+    const rInstallFlex = /Install\s+(?:mod\s+['"]([^'"]+)['"]\s*(?:\(([^)]+)\))?|([a-zA-Z0-9_\-]+)),?\s*[^\n\r]*?version/gi;
     while ((m = rInstallFlex.exec(combinedText)) !== null) {
         const depName = m[1] || m[3];
         const depId = m[2] || m[3];
-        if (depId && !['minecraft', 'java', 'fabricloader', 'fabric-loader', 'fabric'].includes(depId.toLowerCase())) {
+        if (depId && !['minecraft', 'java', 'fabricloader', 'fabric-loader', 'fabric', 'quilt_loader', 'quiltloader'].includes(depId.toLowerCase())) {
             const existing = missing.find(d => d.depId.toLowerCase() === depId.toLowerCase());
             if (!existing) {
                 missing.push({ modName: '', modId: '', depName, depId });
@@ -144,11 +145,11 @@ function extractMissingDependencies(combinedText) {
     }
 
     // 3. Fabric generic: "requires ... of mod 'DepName' (depId), which is missing"
-    const r2 = /requires (?:version [^\n\r]+ of |any version [^\n\r]+ of )?mod '([^']+)' \(([^)]+)\), which is missing/gi;
+    const r2 = /requires\s+[^\n\r]*?\s+of\s+mod\s+'([^']+)'\s*\(([^)]+)\),\s*which is missing/gi;
     while ((m = r2.exec(combinedText)) !== null) {
         const depName = m[1];
         const depId = m[2];
-        if (!['minecraft', 'java', 'fabricloader', 'fabric-loader', 'fabric'].includes(depId.toLowerCase())) {
+        if (!['minecraft', 'java', 'fabricloader', 'fabric-loader', 'fabric', 'quilt_loader', 'quiltloader'].includes(depId.toLowerCase())) {
             const existing = missing.find(d => d.depId.toLowerCase() === depId.toLowerCase());
             if (!existing) {
                 missing.push({ modName: '', modId: '', depName, depId });
@@ -157,9 +158,9 @@ function extractMissingDependencies(combinedText) {
     }
 
     // 4. Fabric: "requires ... of 'depId', which is missing"
-    const r3 = /requires (?:version [^\n\r]+ of |any version [^\n\r]+ of )?'([^']+)', which is missing/gi;
+    const r3 = /requires\s+[^\n\r]*?\s+of\s+(?:'([^']+)'|([a-zA-Z0-9_\-]+)),\s*which is missing/gi;
     while ((m = r3.exec(combinedText)) !== null) {
-        const depId = m[1];
+        const depId = m[1] || m[2];
         if (!['minecraft', 'java', 'fabricloader', 'fabric-loader', 'fabric'].includes(depId.toLowerCase())) {
             const existing = missing.find(d => d.depId.toLowerCase() === depId.toLowerCase());
             if (!existing) {
@@ -281,47 +282,64 @@ async function autoResolveMissingDependencies(gameDir, combinedText, launchConfi
         return null;
     }
 
-    const reEnabled = [];
-    const stillMissing = [];
+    // 1. Pokud pro některou závislost nemáme zjištěný modId (který ji vyžaduje),
+    // prohledáme fabric.mod.json všech JARů v modsDir, abychom našli ten, který ji má v "depends"
+    let AdmZip = null;
+    try { AdmZip = require('adm-zip'); } catch (_) {}
 
-    // 1. Nejprve zkontrolujeme, zda již závislost ve složce mods není (např. dříve deaktivovaná jako .disabled)
-    for (const dep of missingDeps) {
-        const check = isModInstalledInDir(modsDir, dep.depId);
-        if (check && check.installed) {
-            if (check.disabled && check.fullPath) {
-                try {
-                    const targetEnabled = check.fullPath.replace(/\.disabled$/i, '');
-                    fs.renameSync(check.fullPath, targetEnabled);
-                    console.log(`[CRASH AUTO-RESOLVE] Re-aktivována nalezená závislost: ${check.filename}`);
-                    reEnabled.push({
-                        depId: dep.depId,
-                        depName: dep.depName || dep.depId,
-                        filename: path.basename(targetEnabled)
-                    });
-                } catch (e) {
-                    stillMissing.push(dep);
+    if (AdmZip && fs.existsSync(modsDir)) {
+        try {
+            const jarFiles = fs.readdirSync(modsDir).filter(f => f.toLowerCase().endsWith('.jar'));
+            for (const dep of missingDeps) {
+                if (dep.modId) continue;
+                const targetDepId = dep.depId.toLowerCase();
+                const targetHyphen = targetDepId.replace(/_/g, '-');
+                const targetUnderscore = targetDepId.replace(/-/g, '_');
+
+                for (const jf of jarFiles) {
+                    try {
+                        const zip = new AdmZip(path.join(modsDir, jf));
+                        const entry = zip.getEntry('fabric.mod.json');
+                        if (entry) {
+                            const fab = JSON.parse(entry.getData().toString('utf8'));
+                            if (fab.depends && typeof fab.depends === 'object') {
+                                const depKeys = Object.keys(fab.depends).map(k => k.toLowerCase());
+                                if (depKeys.includes(targetDepId) || depKeys.includes(targetHyphen) || depKeys.includes(targetUnderscore)) {
+                                    dep.modId = fab.id;
+                                    dep.modName = fab.name || fab.id;
+                                    console.log(`[CRASH AUTO-RESOLVE] Identifikován mateřský mód: ${dep.modName} (${dep.modId}) vyžadující ${dep.depId}`);
+                                    break;
+                                }
+                            }
+                        }
+                    } catch (_) {}
                 }
             }
-        } else {
-            stillMissing.push(dep);
-        }
+        } catch (_) {}
     }
 
-    // 2. Chybějící závislosti automaticky stáhneme z Modrinthu
+    const reEnabled = [];
     const downloaded = [];
     const failedToDownload = [];
     const targetVersion = launchConfig.version || '26.2';
     const targetLoader = launchConfig.loader || 'fabric';
 
-    for (const dep of stillMissing) {
+    // 2. Chybějící nebo nekompatibilní závislosti automaticky stáhneme z Modrinthu
+    for (const dep of missingDeps) {
         try {
-            console.log(`[CRASH AUTO-RESOLVE] Automaticky stahuji chybějící závislost ${dep.depName || dep.depId} z Modrinthu...`);
+            console.log(`[CRASH AUTO-RESOLVE] Automaticky stahuji vyžadovanou závislost ${dep.depName || dep.depId} z Modrinthu (MC ${targetVersion}, ${targetLoader})...`);
+
+            // Zjistíme, zda existuje starší nebo nekompatibilní soubor k nahrazení
+            const existingCheck = isModInstalledInDir(modsDir, dep.depId);
+            const oldFilename = existingCheck ? existingCheck.filename : null;
+
             const dlRes = await downloadModOrPack({
                 id: dep.depId,
                 title: dep.depName || dep.depId,
                 projectType: 'mod',
                 version: targetVersion,
-                loader: targetLoader
+                loader: targetLoader,
+                oldFilename: oldFilename
             }, gameDir);
 
             if (dlRes && dlRes.success) {
@@ -335,12 +353,29 @@ async function autoResolveMissingDependencies(gameDir, combinedText, launchConfi
             }
         } catch (dlErr) {
             console.warn(`[CRASH AUTO-RESOLVE] Nepodařilo se stáhnout závislost ${dep.depId}:`, dlErr.message);
-            failedToDownload.push(dep);
+            // Zkusíme, zda náhodou v modsDir neexistuje dříve deaktivovaný .disabled soubor (offline nouzový fallback)
+            const check = isModInstalledInDir(modsDir, dep.depId);
+            if (check && check.installed && check.disabled && check.fullPath) {
+                try {
+                    const targetEnabled = check.fullPath.replace(/\.disabled$/i, '');
+                    fs.renameSync(check.fullPath, targetEnabled);
+                    console.log(`[CRASH AUTO-RESOLVE] Offline fallback: Re-aktivována nalezená závislost: ${check.filename}`);
+                    reEnabled.push({
+                        depId: dep.depId,
+                        depName: dep.depName || dep.depId,
+                        filename: path.basename(targetEnabled)
+                    });
+                } catch (e) {
+                    failedToDownload.push(dep);
+                }
+            } else {
+                failedToDownload.push(dep);
+            }
         }
     }
 
-    // 3. Fallback: Pokud se závislost nepodařilo stáhnout, automaticky deaktivujeme problémový mód (.disabled),
-    // který chybějící závislost vyžaduje, aby hra nebyla zablokovaná a mohla se v pořádku spustit.
+    // 3. Fallback: Pokud se závislost nepodařilo stáhnout/získat, automaticky deaktivujeme problémový mód (.disabled),
+    // který chybějící závislost vyžaduje, aby hra nebyla zablokovaná a mohla se v pořádku spustit bez pádu.
     const disabledMods = [];
     if (failedToDownload.length > 0) {
         for (const failedDep of failedToDownload) {
@@ -373,7 +408,12 @@ async function autoResolveMissingDependencies(gameDir, combinedText, launchConfi
     }
 
     const totalFixed = reEnabled.length + downloaded.length + disabledMods.length;
-    const isFullyFixed = totalFixed > 0 && (failedToDownload.length === 0 || disabledMods.length >= failedToDownload.length);
+    // Považujeme za plně opravené, pokud byla závislost stažena NEBO byl problémový mód úspěšně deaktivován (.disabled)
+    const unhandledFailures = failedToDownload.filter(f => !disabledMods.some(d =>
+        (f.modId && d.id && f.modId.toLowerCase() === d.id.toLowerCase()) ||
+        (f.modName && d.name && f.modName.toLowerCase() === d.name.toLowerCase())
+    ));
+    const isFullyFixed = totalFixed > 0 && unhandledFailures.length === 0;
 
     return {
         detected: true,
@@ -669,7 +709,7 @@ async function analyzeCrash(gameDir, exitCode = 1, recentMemoryLogs = [], launch
     }
 
     const logTail = readLatestLogTail(gameDir);
-    const memoryLogText = Array.isArray(recentMemoryLogs) ? recentMemoryLogs.join('\n') : '';
+    const memoryLogText = Array.isArray(recentMemoryLogs) ? recentMemoryLogs.join('\n') : (typeof recentMemoryLogs === 'string' ? recentMemoryLogs : '');
 
     const combinedText = [
         reportContent,
