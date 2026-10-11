@@ -2148,6 +2148,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 })()}</span>
                         </button>
                         <button class="mc-btn mc-btn-secondary btn-profile-settings" data-profile-id="${escapeHtml(p.id)}" title="Nastavení profilu"><svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
+                        ${sortedProfiles.length > 1 ? `
+                        <button class="mc-btn mc-btn-secondary btn-profile-delete" data-profile-id="${escapeHtml(p.id)}" title="Odebrat a odinstalovat profil"><svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--red" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
+                        ` : ''}
                     </div>
                 </div>
             `;
@@ -2192,6 +2195,41 @@ document.addEventListener('DOMContentLoaded', async () => {
                 e.stopPropagation();
                 const pid = btn.dataset.profileId;
                 openProfileSettingsModal(pid);
+            });
+        });
+
+        // Bind Delete buttons (Trash icon) to remove and uninstall profile
+        list.querySelectorAll('.btn-profile-delete').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const pid = btn.dataset.profileId;
+                const p = (currentConfig.profiles || []).find(x => x.id === pid);
+                const pName = p ? p.name : pid;
+                if ((currentConfig.profiles || []).length <= 1) {
+                    showToast('V launcheru musí zůstat alespoň jeden profil.', 'warning');
+                    return;
+                }
+                const isConfirmed = confirm(
+                    `Opravdu chceš odebrat a odinstalovat profil "${pName}"?\n\n` +
+                    `Tato akce profil odstraní a odinstaluje soubory verze, které nepoužívá žádný jiný profil.`
+                );
+                if (!isConfirmed) return;
+
+                btn.disabled = true;
+                try {
+                    const res = await window.api.deleteProfile(pid);
+                    if (res && res.success) {
+                        showToast(`Profil "${pName}" byl odebrán a odinstalován.`, 'success');
+                        await loadConfiguration();
+                        renderProfilesList();
+                    } else {
+                        showToast(res?.error || 'Profil se nepodařilo odebrat.', 'error');
+                        btn.disabled = false;
+                    }
+                } catch (err) {
+                    showToast('Chyba: ' + err.message, 'error');
+                    btn.disabled = false;
+                }
             });
         });
     }
@@ -4297,14 +4335,42 @@ document.addEventListener('DOMContentLoaded', async () => {
     let lastLoadedCapeUrl = null;
 
     // Smooth return physics & drag controls for hero card
-    const DEFAULT_HERO_ROT_Y = -0.30; // ~17° default angle: front, 3D depth, and cape are visible
-    const DEFAULT_HERO_ROT_X = 0;
+    const DEFAULT_HERO_ROT_X = 0;   // Výchozí vertikální natočení (0 = rovně)
+    const DEFAULT_HERO_ROT_Y = 0;   // Výchozí horizontální natočení (0 = rovně)
+    const HERO_IDLE_POSES = [
+        -0.25,  // Mírné natočení doprava (~14°), pravá strana mírně vzad
+        0.00,   // Přímý čelní postoj
+        0.25,   // Mírné natočení doleva (~14°), levá strana mírně vzad
+        -0.14,  // Decentní natočení doprava
+        0.16    // Decentní natočení doleva
+    ];
+    let currentHeroPoseIndex = 0;
+    let targetHeroBodyRotY = HERO_IDLE_POSES[0];
+    let currentHeroBodyRotY = HERO_IDLE_POSES[0];
+    let lastHeroPoseChangeTime = Date.now();
+    let nextHeroPoseInterval = 5500; // 5.5s interval mezi střídáním póz
+
+    // Hover leaning & head glance physics
+    let targetHeroLeanX = 0;
+    let targetHeroLeanY = 0;
+    let targetHeroLeanZ = 0;
+    let targetHeroHeadLookX = 0;
+    let targetHeroHeadLookY = 0;
+
+    let currentHeroLeanX = 0;
+    let currentHeroLeanY = 0;
+    let currentHeroLeanZ = 0;
+    let currentHeroHeadLookX = 0;
+    let currentHeroHeadLookY = 0;
+
+    let isHeroHoverTrackingActive = false;
+
     const HERO_RETURN_DELAY_MS = 1800; // 1.8s delay after releasing mouse before returning
     let isDraggingHero = false;
     let startPointerX = 0;
     let startPointerY = 0;
-    let startHeroRotY = DEFAULT_HERO_ROT_Y;
-    let startHeroRotX = DEFAULT_HERO_ROT_X;
+    let startHeroRotY = targetHeroBodyRotY;
+    let startHeroRotX = 0;
     let heroReturnTimeout = null;
     let heroReturnAnimId = null;
 
@@ -4333,22 +4399,80 @@ document.addEventListener('DOMContentLoaded', async () => {
         const currentX = heroSkinViewer.playerWrapper.rotation.x;
 
         // Shortest angular difference around circle [-PI, PI]
-        const diffY = ((DEFAULT_HERO_ROT_Y - currentY + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
-        const diffX = DEFAULT_HERO_ROT_X - currentX;
+        const diffY = ((targetHeroBodyRotY - currentY + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+        const diffX = -currentX;
 
         // Threshold check to finish smoothly
-        if (Math.abs(diffY) < 0.0015 && Math.abs(diffX) < 0.0015) {
-            heroSkinViewer.playerWrapper.rotation.y = DEFAULT_HERO_ROT_Y;
-            heroSkinViewer.playerWrapper.rotation.x = DEFAULT_HERO_ROT_X;
+        if (Math.abs(diffY) < 0.002 && Math.abs(diffX) < 0.002) {
+            currentHeroBodyRotY = targetHeroBodyRotY;
+            heroSkinViewer.playerWrapper.rotation.y = targetHeroBodyRotY;
+            heroSkinViewer.playerWrapper.rotation.x = 0;
             heroReturnAnimId = null;
             return;
         }
 
         // Smooth ease-out lerp (0.065 damping factor)
-        heroSkinViewer.playerWrapper.rotation.y += diffY * 0.065;
-        heroSkinViewer.playerWrapper.rotation.x += diffX * 0.065;
+        currentHeroBodyRotY = currentY + diffY * 0.065;
+        heroSkinViewer.playerWrapper.rotation.y = currentHeroBodyRotY;
+        heroSkinViewer.playerWrapper.rotation.x = currentX + diffX * 0.065;
 
         heroReturnAnimId = requestAnimationFrame(animateHeroSmoothReturn);
+    }
+
+    /**
+     * Interaktivní sledování tlačítek: když hráč najede myší nad jakékoliv tlačítko,
+     * postava se k němu lehce zvědavě nakloní a pootočí hlavu.
+     */
+    function setupHeroInteractiveHoverTracking() {
+        if (isHeroHoverTrackingActive) return;
+        isHeroHoverTrackingActive = true;
+
+        const getInteractive = (target) => {
+            if (!target) return null;
+            return target.closest('button, .mc-btn, .profile-row-card, .sidebar-nav-item, .dash-action-chip, .btn-launch-profile, .btn-upgrade-profile, .btn-profile-settings, .btn-profile-delete, .stage-nick-pill');
+        };
+
+        document.addEventListener('pointerover', (e) => {
+            const btn = getInteractive(e.target);
+            if (btn && !btn.closest('#heroSkinWrapper')) {
+                const canvas = document.getElementById('heroSkinCanvas3D');
+                if (!canvas) return;
+                const canvasRect = canvas.getBoundingClientRect();
+                const btnRect = btn.getBoundingClientRect();
+
+                const canvasX = canvasRect.left + canvasRect.width / 2;
+                const canvasY = canvasRect.top + canvasRect.height / 2;
+                const btnX = btnRect.left + btnRect.width / 2;
+                const btnY = btnRect.top + btnRect.height / 2;
+
+                const dx = btnX - canvasX;
+                const dy = btnY - canvasY;
+
+                const normX = Math.max(-1, Math.min(1, dx / 480));
+                const normY = Math.max(-1, Math.min(1, dy / 360));
+
+                targetHeroLeanZ = normX * 0.06; // jemný náklon celého těla do strany (cca 3.5°)
+                targetHeroLeanY = normX * 0.08; // jemné pootočení těla k tlačítku
+                targetHeroLeanX = (normY > 0) ? (normY * 0.07) : (normY * 0.03); // předklon / záklon
+
+                targetHeroHeadLookY = normX * 0.14; // zvědavé pootočení hlavy přímo k prvku
+                targetHeroHeadLookX = normY * 0.12; // pohled hlavy dolů/nahoru
+            }
+        });
+
+        document.addEventListener('pointerout', (e) => {
+            const btn = getInteractive(e.target);
+            if (btn) {
+                const nextInteractive = getInteractive(e.relatedTarget);
+                if (!nextInteractive || nextInteractive.closest('#heroSkinWrapper')) {
+                    targetHeroLeanX = 0;
+                    targetHeroLeanY = 0;
+                    targetHeroLeanZ = 0;
+                    targetHeroHeadLookX = 0;
+                    targetHeroHeadLookY = 0;
+                }
+            }
+        });
     }
 
     /**
@@ -4359,7 +4483,69 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
-     * Dynamická animace klidového stavu (Idle) s přirozeným vlněním pláště ve větru.
+     * Inteligentní animace hlavní postavy na dashboardu:
+     * 1. Organické vlnění pláště ve větru.
+     * 2. Periodické střídání rotace těla v přirozených intervalech (každých 5-8 sekund).
+     * 3. Hlava neustále kompenzuje rotaci těla a dívá se PŘÍMO na hráče.
+     * 4. Interaktivní mikro-naklonění (lean & glance) celého těla a hlavy směrem k tlačítku, nad kterým má hráč myš!
+     */
+    function createHeroIdleAnimation() {
+        if (!window.skinview3d) return null;
+        try {
+            class HeroIdleAnimation extends window.skinview3d.IdleAnimation {
+                animate(player) {
+                    super.animate(player);
+                    const t = this.progress * 3;
+
+                    // 1. Organické vlnění pláště ve větru
+                    if (player && player.cape) {
+                        player.cape.rotation.x = 0.28 + 0.11 * Math.sin(t) + 0.04 * Math.sin(t * 2.3);
+                        player.cape.rotation.z = 0.04 * Math.sin(t * 0.9);
+                        player.cape.rotation.y = Math.PI + 0.02 * Math.cos(t * 1.1);
+                    }
+
+                    // 2. Periodické střídání rotace těla a interaktivní náklon k tlačítkům
+                    if (!heroSkinViewer) return;
+
+                    if (!isDraggingHero) {
+                        const now = Date.now();
+                        if (now - lastHeroPoseChangeTime > nextHeroPoseInterval) {
+                            lastHeroPoseChangeTime = now;
+                            nextHeroPoseInterval = 4500 + Math.random() * 3000;
+                            currentHeroPoseIndex = (currentHeroPoseIndex + 1) % HERO_IDLE_POSES.length;
+                            targetHeroBodyRotY = HERO_IDLE_POSES[currentHeroPoseIndex];
+                        }
+
+                        // Plynulé pružinové přechody (lerp)
+                        currentHeroBodyRotY += (targetHeroBodyRotY - currentHeroBodyRotY) * 0.035;
+                        currentHeroLeanX += (targetHeroLeanX - currentHeroLeanX) * 0.08;
+                        currentHeroLeanY += (targetHeroLeanY - currentHeroLeanY) * 0.08;
+                        currentHeroLeanZ += (targetHeroLeanZ - currentHeroLeanZ) * 0.08;
+                        currentHeroHeadLookX += (targetHeroHeadLookX - currentHeroHeadLookX) * 0.09;
+                        currentHeroHeadLookY += (targetHeroHeadLookY - currentHeroHeadLookY) * 0.09;
+
+                        const effectiveBodyY = currentHeroBodyRotY + currentHeroLeanY;
+                        heroSkinViewer.playerWrapper.rotation.y = effectiveBodyY;
+                        heroSkinViewer.playerWrapper.rotation.x = currentHeroLeanX;
+                        heroSkinViewer.playerWrapper.rotation.z = currentHeroLeanZ;
+
+                        // Hlava se neustále dívá ROVNĚ na hráče (kompenzuje natočení těla + sleduje tlačítka při hoveru)
+                        if (player && player.skin && player.skin.head) {
+                            player.skin.head.rotation.y = -effectiveBodyY + currentHeroHeadLookY;
+                            player.skin.head.rotation.x = currentHeroHeadLookX + Math.sin(t * 1.5) * 0.015;
+                            player.skin.head.rotation.z = -currentHeroLeanZ * 0.45;
+                        }
+                    }
+                }
+            }
+            return new HeroIdleAnimation();
+        } catch (_) {
+            return new window.skinview3d.IdleAnimation();
+        }
+    }
+
+    /**
+     * Dynamická animace klidového stavu (Idle) pro modál výběru skinu.
      */
     function createCapeIdleAnimation() {
         if (!window.skinview3d) return null;
@@ -4369,7 +4555,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     super.animate(player);
                     if (player && player.cape) {
                         const t = this.progress * 3;
-                        // Organické vlnění pláště v jemném vánku při stání
                         player.cape.rotation.x = 0.28 + 0.11 * Math.sin(t) + 0.04 * Math.sin(t * 2.3);
                         player.cape.rotation.z = 0.04 * Math.sin(t * 0.9);
                         player.cape.rotation.y = Math.PI + 0.02 * Math.cos(t * 1.1);
@@ -4457,7 +4642,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             heroSkinViewer.fov = 48;
             heroSkinViewer.autoRotate = false; // Strictly no auto-rotation
             heroSkinViewer.controls.enabled = false; // Direct smooth drag on playerWrapper
-            heroSkinViewer.animation = createCapeIdleAnimation() || new window.skinview3d.IdleAnimation();
+            heroSkinViewer.animation = createHeroIdleAnimation() || new window.skinview3d.IdleAnimation();
 
             // Set default resting pose
             heroSkinViewer.playerWrapper.rotation.set(DEFAULT_HERO_ROT_X, DEFAULT_HERO_ROT_Y, 0);
@@ -4543,6 +4728,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.warn('[HERO 3D] Inicializace hero 3D prohlížeče selhala:', e);
             if (heroSkinImg) heroSkinImg.style.display = 'block';
         }
+
+        // Aktivace interaktivního sledování tlačítek (lean & glance)
+        setupHeroInteractiveHoverTracking();
     }
 
     /**
@@ -7575,7 +7763,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         if (deleteSec) {
-            deleteSec.style.display = (profile.id === 'minecraft-26.2' || profile.id === 'mychalsmp-26.2') ? 'none' : 'flex';
+            deleteSec.style.display = ((currentConfig.profiles || []).length <= 1) ? 'none' : 'flex';
         }
 
         if (modalProfileSettings) modalProfileSettings.style.display = 'flex';
@@ -7707,11 +7895,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!activeSettingsProfileId) return;
             const profile = (currentConfig.profiles || []).find(p => p.id === activeSettingsProfileId);
             const pName = profile ? profile.name : activeSettingsProfileId;
-            if (!confirm(`Opravdu chceš smazat profil "${pName}"?`)) return;
+            if ((currentConfig.profiles || []).length <= 1) {
+                alert('V launcheru musí zůstat alespoň jeden profil.');
+                return;
+            }
+            if (!confirm(`Opravdu chceš smazat a odinstalovat profil "${pName}"?\n\nTato akce profil odstraní a odinstaluje soubory verze, které nepoužívá žádný jiný profil.`)) return;
 
             const res = await window.api.deleteProfile(activeSettingsProfileId);
             if (res && res.success) {
-                showToast(`Profil "${pName}" byl smazán.`, 'success');
+                showToast(`Profil "${pName}" byl smazán a odinstalován.`, 'success');
                 closeProfileSettingsModal();
                 await loadConfiguration();
                 renderProfilesList();

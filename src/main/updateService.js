@@ -66,19 +66,24 @@ async function checkForUpdates() {
         if (isPortable) {
             preferredAsset = winPortableAsset || winAsset;
             isDelta = false;
-        } else if (process.platform === 'win32' && (winSetupAsset || winAsset)) {
-            // Na Windows instalacích preferujeme čistý instalátor, aby nedocházelo k zamykání a poškozování app.asar
-            preferredAsset = winSetupAsset || winAsset;
-            isDelta = false;
         } else if (deltaAsset) {
+            // Blesková Delta aktualizace (update-v2.asar) – preferujeme na Windows i Linuxu!
+            // Na Windows se bezpečně stáhne a při restartu se atomicky prohodí přes app.asar.pending (PowerShell),
+            // čímž se vyhneme stahování 105+ MB plného instalátoru.
             preferredAsset = deltaAsset;
             isDelta = true;
+        } else if (process.platform === 'win32' && (winSetupAsset || winAsset)) {
+            preferredAsset = winSetupAsset || winAsset;
+            isDelta = false;
         } else if (process.platform === 'linux' && tarAsset) {
             preferredAsset = tarAsset;
+            isDelta = false;
         } else if (process.platform === 'win32' && winAsset) {
             preferredAsset = winSetupAsset || winAsset;
+            isDelta = false;
         } else if (assets.length > 0) {
             preferredAsset = assets[0];
+            isDelta = false;
         }
 
         return {

@@ -1999,21 +1999,72 @@ ipcMain.handle('update-profile-settings', async (event, profileId, updates) => {
 
 ipcMain.handle('delete-profile', async (event, profileId) => {
     const config = loadConfig();
-    if (profileId === 'minecraft-26.2' || profileId === 'mychalsmp-26.2') {
-        return { success: false, error: 'Výchozí doporučený profil nelze smazat.' };
+    const profiles = config.profiles || [];
+    if (profiles.length <= 1) {
+        return { success: false, error: 'V launcheru musí zůstat alespoň jeden profil.' };
     }
-    const profile = (config.profiles || []).find(p => p.id === profileId);
-    if (profile && profile.gameDir && fs.existsSync(profile.gameDir)) {
+
+    const profile = profiles.find(p => p.id === profileId);
+    if (!profile) {
+        return { success: false, error: 'Profil nebyl nalezen.' };
+    }
+
+    // 1. Smazání složky instance profilu (pokud existuje)
+    if (profile.gameDir && fs.existsSync(profile.gameDir) && profile.gameDir !== BASE_DIR) {
         try {
             fs.rmSync(profile.gameDir, { recursive: true, force: true });
         } catch (e) { }
     }
-    const updated = (config.profiles || []).filter(p => p.id !== profileId);
-    const newActive = config.activeProfileId === profileId
-        ? (updated[0] ? updated[0].id : 'mychalsmp-26.2')
-        : config.activeProfileId;
-    saveConfig({ profiles: updated, activeProfileId: newActive });
-    return { success: true, activeProfileId: newActive };
+
+    const profileSubDir = path.join(BASE_DIR, 'profiles', profileId);
+    if (fs.existsSync(profileSubDir)) {
+        try {
+            fs.rmSync(profileSubDir, { recursive: true, force: true });
+        } catch (e) { }
+    }
+
+    const instanceSubDir = path.join(BASE_DIR, 'instances', profileId);
+    if (fs.existsSync(instanceSubDir)) {
+        try {
+            fs.rmSync(instanceSubDir, { recursive: true, force: true });
+        } catch (e) { }
+    }
+
+    const updated = profiles.filter(p => p.id !== profileId);
+
+    // 2. Odinstalace nepoužívané Minecraft verze z disku (pokud ji už žádný jiný profil nepoužívá)
+    if (profile.version) {
+        const isVersionStillUsed = updated.some(p => p.version === profile.version);
+        if (!isVersionStillUsed) {
+            const versionsDir = path.join(BASE_DIR, 'versions');
+            if (fs.existsSync(versionsDir)) {
+                try {
+                    const entries = fs.readdirSync(versionsDir);
+                    for (const entry of entries) {
+                        // Přesná shoda verze nebo související fabric/forge loader pro tuto verzi
+                        if (entry === profile.version || entry.endsWith(`-${profile.version}`)) {
+                            const verPath = path.join(versionsDir, entry);
+                            try {
+                                fs.rmSync(verPath, { recursive: true, force: true });
+                            } catch (_) { }
+                        }
+                    }
+                } catch (_) { }
+            }
+        }
+    }
+
+    const newActiveProfile = updated.find(p => p.id === config.activeProfileId) || updated[0];
+    const newActiveId = newActiveProfile ? newActiveProfile.id : 'minecraft-26.2';
+
+    saveConfig({
+        profiles: updated,
+        activeProfileId: newActiveId,
+        version: newActiveProfile ? newActiveProfile.version : config.version,
+        loader: newActiveProfile ? (newActiveProfile.loader || 'fabric') : config.loader
+    });
+
+    return { success: true, activeProfileId: newActiveId };
 });
 
 ipcMain.handle('reset-launcher-data', async () => {

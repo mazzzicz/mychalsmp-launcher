@@ -739,6 +739,30 @@ body.is-maximized {
     border-color: rgba(255, 255, 255, 0.16);
 }
 
+.btn-profile-delete {
+    width: 33px;
+    height: 33px;
+    padding: 0;
+    border-radius: var(--radius-control);
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #181b28;
+    color: #f51515;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    transition: var(--transition);
+    text-shadow: none !important;
+}
+
+.btn-profile-delete:hover {
+    background: rgba(245, 21, 21, 0.14);
+    color: #ff4d4d;
+    border-color: rgba(245, 21, 21, 0.4);
+    transform: translateY(-1px);
+}
+
 .mc-btn-quickplay {
     width: 100%;
     padding: 12px 16px;
@@ -794,16 +818,17 @@ body.is-maximized {
 /* Left Hero Character Stage */
 .hero-character-stage {
     position: relative;
-    background: radial-gradient(circle at 75% 30%, #161c31 0%, #0e101a 100%);
+    background: radial-gradient(circle at 85% 35%, #151b2e 0%, #0c0e17 100%);
     border: 1px solid var(--surface-border);
     border-radius: var(--radius-lg);
-    padding: 24px;
+    padding: 24px 28px;
     display: flex;
     align-items: center;
-    gap: 24px;
+    justify-content: space-between;
+    gap: 20px;
     overflow: hidden;
     isolation: isolate;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.40), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .stage-keyart-bg {
@@ -820,9 +845,9 @@ body.is-maximized {
 }
 
 .stage-keyart-bg.has-keyart {
-    opacity: 0.85;
+    opacity: 0.98;
     transform: scale(1);
-    filter: brightness(0.95) saturate(1.1);
+    filter: brightness(1.02) contrast(1.05) saturate(1.10);
 }
 
 .stage-keyart-overlay {
@@ -830,39 +855,54 @@ body.is-maximized {
     inset: 0;
     z-index: 1;
     pointer-events: none;
+    /* Jemný gradient – pozadí keyartu je jasně viditelné */
     background: 
-        radial-gradient(circle at 45% 38%, rgba(8, 10, 18, 0.76) 0%, rgba(8, 10, 18, 0.35) 60%, transparent 100%),
+        /* Levý gradient chrání čitelnost textu, ale nechává pozadí výrazně prosvítat */
         linear-gradient(90deg, 
-            rgba(8, 10, 18, 0.98) 0%, 
-            rgba(8, 10, 18, 0.92) 32%, 
-            rgba(8, 10, 18, 0.78) 58%, 
-            rgba(8, 10, 18, 0.30) 82%, 
-            rgba(8, 10, 18, 0.48) 100%
+            rgba(9, 11, 19, 0.82) 0%, 
+            rgba(9, 11, 19, 0.55) 22%, 
+            rgba(9, 11, 19, 0.18) 42%, 
+            rgba(9, 11, 19, 0.04) 60%, 
+            transparent 100%
         ),
-        linear-gradient(0deg, rgba(8, 10, 18, 0.75) 0%, transparent 60%);
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
+        /* Jemný spodní a horní stín pro ohraničení karty */
+        linear-gradient(0deg, rgba(9, 11, 19, 0.35) 0%, transparent 30%),
+        linear-gradient(180deg, rgba(9, 11, 19, 0.18) 0%, transparent 20%);
 }
 
 .stage-bg-overlay {
     position: absolute;
     inset: 0;
     z-index: 1;
-    background-image: radial-gradient(rgba(10, 103, 229, 0.10) 1px, transparent 1px);
+    background-image: radial-gradient(rgba(10, 103, 229, 0.08) 1px, transparent 1px);
     background-size: 16px 16px;
     pointer-events: none;
-    opacity: 0.4;
+    opacity: 0.25;
 }
 
 .stage-character {
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     position: relative;
     z-index: 2;
+    flex: 1 0 auto;
+    margin: 0 auto;
+}
+
+.stage-showcase-spacer {
+    flex: 1 1 0;
+    min-width: 24px;
+    max-width: 80px;
+    pointer-events: none;
+    z-index: 1;
 }
 
 .stage-caption {
+    flex: 0 1 auto;
+    max-width: 340px;
+    min-width: 220px;
     position: relative;
     z-index: 2;
 }
