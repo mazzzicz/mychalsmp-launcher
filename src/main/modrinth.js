@@ -391,12 +391,22 @@ function isModInstalledInDir(destDir, modIdentifier) {
             const cleanF = lowerF.replace(/\.disabled$/i, '').replace(/\.jar$/i, '');
             const isDisabled = lowerF.endsWith('.disabled');
 
-            if (
-                cleanF === rawId || cleanF === hyphenId || cleanF === underscoreId ||
+            // Vyhneme se falešným shodám typu sodium-extra pro dotaz na sodium
+            if ((rawId === 'sodium' || rawId === 'aanobbmi') && (cleanF.includes('extra') || cleanF.includes('options') || cleanF.includes('menu'))) {
+                continue;
+            }
+
+            const isExact = cleanF === rawId || cleanF === hyphenId || cleanF === underscoreId;
+            const startsWithPrefix = (
                 cleanF.startsWith(rawId + '-') || cleanF.startsWith(hyphenId + '-') || cleanF.startsWith(underscoreId + '-') ||
-                cleanF.startsWith(rawId + '_') || cleanF.startsWith(hyphenId + '_') || cleanF.startsWith(underscoreId + '_') ||
-                cleanF.includes(rawId) || cleanF.includes(hyphenId)
-            ) {
+                cleanF.startsWith(rawId + '_') || cleanF.startsWith(hyphenId + '_') || cleanF.startsWith(underscoreId + '_')
+            );
+            const loaderPrefixMatch = (
+                cleanF.startsWith('fabric-' + rawId) || cleanF.startsWith('fabric_' + rawId) ||
+                cleanF.startsWith('fabric-' + hyphenId) || cleanF.startsWith('fabric_' + underscoreId)
+            );
+
+            if (isExact || startsWithPrefix || loaderPrefixMatch) {
                 return {
                     installed: true,
                     disabled: isDisabled,
@@ -623,23 +633,36 @@ async function downloadModOrPack(options, targetDir) {
 
             // Ověříme, zda závislost již není přítomna v mods složce
             const check = isModInstalledInDir(destDir, depProjId);
+            let isOutdatedDep = false;
+            let oldDepFilename = null;
+
             if (check && check.installed) {
-                // Pokud byla závislost pouze deaktivována (.disabled), znovu ji povolíme
-                if (check.disabled && check.fullPath) {
-                    try {
-                        const targetEnabled = check.fullPath.replace(/\.disabled$/i, '');
-                        fs.renameSync(check.fullPath, targetEnabled);
-                        console.log(`[DEPENDENCY] Re-aktivována deaktivovaná závislost: ${check.filename}`);
-                        dependenciesInstalled.push({
-                            id: depProjId,
-                            title: depProjId,
-                            filename: path.basename(targetEnabled),
-                            reEnabled: true
-                        });
-                    } catch (_) {}
+                const normCheckName = (check.filename || '').toLowerCase();
+                if ((normDepId === 'sodium' || normDepId === 'aanobbmi') && (version === '26.2' || String(version).startsWith('26.'))) {
+                    if (!normCheckName.includes('0.9')) {
+                        isOutdatedDep = true;
+                        oldDepFilename = check.filename;
+                    }
                 }
-                visited.add(normDepId);
-                continue;
+
+                if (!isOutdatedDep) {
+                    // Pokud byla závislost pouze deaktivována (.disabled), znovu ji povolíme
+                    if (check.disabled && check.fullPath) {
+                        try {
+                            const targetEnabled = check.fullPath.replace(/\.disabled$/i, '');
+                            fs.renameSync(check.fullPath, targetEnabled);
+                            console.log(`[DEPENDENCY] Re-aktivována deaktivovaná závislost: ${check.filename}`);
+                            dependenciesInstalled.push({
+                                id: depProjId,
+                                title: depProjId,
+                                filename: path.basename(targetEnabled),
+                                reEnabled: true
+                            });
+                        } catch (_) {}
+                    }
+                    visited.add(normDepId);
+                    continue;
+                }
             }
 
             // Vyhledáme závislost na Modrinthu a automaticky ji stáhneme
@@ -657,6 +680,7 @@ async function downloadModOrPack(options, targetDir) {
                         projectType: 'mod',
                         version: version,
                         loader: resolvedLoader || normLoader,
+                        oldFilename: oldDepFilename,
                         _visited: visited
                     }, targetDir);
 

@@ -1774,7 +1774,8 @@ async function ensureFabricProfile(centralRootDir, targetVersion, onLog = consol
  * aby nedošlo k pádu Minecraftu na "Incompatible mods found!".
  */
 async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
-    if (!config || !config.loader || config.loader.toLowerCase() !== 'fabric') return;
+    const ldr = (config && config.loader) ? String(config.loader).toLowerCase() : '';
+    if (!ldr.includes('fabric')) return;
     const modsDir = path.join(gameInstanceDir, 'mods');
     if (!fs.existsSync(modsDir)) return;
 
@@ -1863,7 +1864,7 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
             let isOutdated = false;
             if (installedMod) {
                 if (normDep === 'sodium' && pm.modId.toLowerCase() === 'iris') {
-                    if (!installedMod.version.startsWith('0.9')) {
+                    if (!installedMod.version.startsWith('0.9') && !installedMod.filename.toLowerCase().includes('0.9')) {
                         isOutdated = true;
                     }
                 }

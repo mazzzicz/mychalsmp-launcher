@@ -223,7 +223,7 @@ function syncServersDat(gameDir, additionalServers = []) {
 /**
  * Checks if essential optimization mods are already present in gameDir.
  */
-function checkInstalledOptimizationMods(gameDir) {
+function checkInstalledOptimizationMods(gameDir, version = '26.2') {
     const modsDir = path.join(gameDir, 'mods');
     const shaderDir = path.join(gameDir, 'shaderpacks');
 
@@ -232,20 +232,63 @@ function checkInstalledOptimizationMods(gameDir) {
         hasSodium: false,
         hasLithium: false,
         hasIris: false,
-        hasComplementary: false
+        hasComplementary: false,
+        oldSodiumFilename: null
     };
 
     if (fs.existsSync(modsDir)) {
-        const files = fs.readdirSync(modsDir).map(f => f.toLowerCase());
-        result.hasFabricApi = files.some(f => f.includes('fabric-api') || f.includes('fabric_api'));
-        result.hasSodium = files.some(f => f.includes('sodium'));
-        result.hasLithium = files.some(f => f.includes('lithium'));
-        result.hasIris = files.some(f => f.includes('iris'));
+        let allEntries = [];
+        try { allEntries = fs.readdirSync(modsDir); } catch (_) {}
+        // Pouze aktivní .jar soubory (žádné .disabled)
+        const jarFiles = allEntries.filter(f => {
+            const l = f.toLowerCase();
+            return l.endsWith('.jar') && !l.endsWith('.disabled');
+        });
+
+        result.hasFabricApi = jarFiles.some(f => {
+            const l = f.toLowerCase();
+            return l.includes('fabric-api') || l.includes('fabric_api');
+        });
+
+        // Sodium: nesmí to být deriváty (sodium-extra, rubidium, reeses options apod.)
+        const sodiumFile = jarFiles.find(f => {
+            const l = f.toLowerCase();
+            if (l.includes('extra') || l.includes('options') || l.includes('menu')) return false;
+            return l.startsWith('sodium-') || l.startsWith('sodium_') || l === 'sodium.jar';
+        });
+
+        if (sodiumFile) {
+            // Pokud jsme na MC 26.2 a Iris striktně vyžaduje Sodium 0.9.x, ověříme kompatibilitu
+            if (version === '26.2' || String(version).startsWith('26.')) {
+                if (sodiumFile.toLowerCase().includes('0.9')) {
+                    result.hasSodium = true;
+                } else {
+                    result.hasSodium = false;
+                    result.oldSodiumFilename = sodiumFile;
+                }
+            } else {
+                result.hasSodium = true;
+            }
+        } else {
+            result.hasSodium = false;
+        }
+
+        result.hasLithium = jarFiles.some(f => {
+            const l = f.toLowerCase();
+            return l.startsWith('lithium-') || l.startsWith('lithium_') || l === 'lithium.jar';
+        });
+
+        result.hasIris = jarFiles.some(f => {
+            const l = f.toLowerCase();
+            return l.startsWith('iris-') || l.startsWith('iris_') || l === 'iris.jar';
+        });
     }
 
     if (fs.existsSync(shaderDir)) {
-        const sFiles = fs.readdirSync(shaderDir).map(f => f.toLowerCase());
-        result.hasComplementary = sFiles.some(f => f.includes('complementary'));
+        let sFiles = [];
+        try { sFiles = fs.readdirSync(shaderDir); } catch (_) {}
+        const validShaders = sFiles.filter(f => !f.toLowerCase().endsWith('.disabled'));
+        result.hasComplementary = validShaders.some(f => f.toLowerCase().includes('complementary'));
     }
 
     return result;
@@ -255,11 +298,11 @@ function checkInstalledOptimizationMods(gameDir) {
  * Downloads essential optimization mods and shaders for the target version and loader.
  */
 async function installOptimizationPack(gameDir, version = '26.2', onProgress) {
-    const installed = checkInstalledOptimizationMods(gameDir);
+    const installed = checkInstalledOptimizationMods(gameDir, version);
 
     const items = [
         { id: 'fabric-api', title: 'Fabric API', projectType: 'mod', needed: !installed.hasFabricApi },
-        { id: 'sodium', title: 'Sodium', projectType: 'mod', needed: !installed.hasSodium },
+        { id: 'sodium', title: 'Sodium', projectType: 'mod', needed: !installed.hasSodium, oldFilename: installed.oldSodiumFilename },
         { id: 'lithium', title: 'Lithium', projectType: 'mod', needed: !installed.hasLithium },
         { id: 'iris', title: 'Iris Shaders', projectType: 'mod', needed: !installed.hasIris },
         { id: 'complementary-reimagined', title: 'Complementary Reimagined', projectType: 'shader', needed: !installed.hasComplementary }
@@ -304,6 +347,7 @@ async function installOptimizationPack(gameDir, version = '26.2', onProgress) {
                 projectType: item.projectType,
                 version: version || '26.2',
                 loader: 'fabric',
+                oldFilename: item.oldFilename,
                 onProgress: (received, totalBytes, subPercent) => {
                     if (onProgress) {
                         const safeSub = Math.max(0, Math.min(100, subPercent || 0));
