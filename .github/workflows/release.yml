@@ -37,6 +37,13 @@ jobs:
         run: |
           node -e "const fs = require('fs'); const pkg = JSON.parse(fs.readFileSync('./package.json')); pkg.version = '${{ github.event.inputs.custom_version }}'.replace(/^v/, ''); fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');"
 
+      - name: Ensure Build Resources
+        shell: bash
+        run: |
+          mkdir -p build
+          [ -f build/icon.ico ] || cp src/renderer/assets/icon.ico build/icon.ico
+          [ -f build/icon.png ] || cp src/renderer/assets/logo.png build/icon.png
+
       - name: Build Windows Packages
         run: npx electron-builder --win nsis portable --publish never
 
@@ -68,6 +75,13 @@ jobs:
         if: "${{ github.event.inputs.custom_version != '' }}"
         run: |
           node -e "const fs = require('fs'); const pkg = JSON.parse(fs.readFileSync('./package.json')); pkg.version = '${{ github.event.inputs.custom_version }}'.replace(/^v/, ''); fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');"
+
+      - name: Ensure Build Resources
+        shell: bash
+        run: |
+          mkdir -p build
+          [ -f build/icon.ico ] || cp src/renderer/assets/icon.ico build/icon.ico
+          [ -f build/icon.png ] || cp src/renderer/assets/logo.png build/icon.png
 
       - name: Build Linux Package
         run: npx electron-builder --linux tar.gz --dir --publish never

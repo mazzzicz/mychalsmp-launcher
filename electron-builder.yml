@@ -21,7 +21,8 @@ win:
       arch:
         - x64
   icon: build/icon.ico
-  publisherName: "mychalVidea"
+  signtoolOptions:
+    publisherName: "mychalVidea"
   verifyUpdateCodeSignature: false
 
 nsis:
