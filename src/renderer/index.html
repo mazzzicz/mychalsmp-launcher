@@ -136,8 +136,10 @@
                     <div class="dash-left">
                         <!-- Hero Stage Banner -->
                         <div class="hero-character-stage">
-                            <div class="stage-keyart-bg has-keyart" id="heroKeyartBg"
-                                style="background-image: url('assets/keyarts/26.2.png');"></div>
+                            <div class="stage-keyart-container" id="heroKeyartContainer">
+                                <div class="stage-keyart-layer stage-keyart-active" id="heroKeyartBg"
+                                    style="background-image: url('assets/keyarts/26.2.png');"></div>
+                            </div>
                             <div class="stage-keyart-overlay"></div>
                             <div class="stage-bg-overlay"></div>
                             <div class="stage-caption">
@@ -163,11 +165,6 @@
                                         </svg>
                                         <span class="hero-stat-label">Odehráno:</span>
                                         <span class="hero-stat-val" id="heroTotalPlaytimeVal">Zatím nehráno</span>
-                                    </div>
-                                    <div class="hero-stat-chip" id="heroStatServer" title="Stav serveru">
-                                        <span class="hero-stat-dot" id="heroServerDot"></span>
-                                        <span class="hero-stat-label">mychalsmp.xyz:</span>
-                                        <span class="hero-stat-val" id="heroServerStatusVal">Načítání...</span>
                                     </div>
                                 </div>
                             </div>

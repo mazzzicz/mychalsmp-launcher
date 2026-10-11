@@ -351,11 +351,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (networkText) networkText.textContent = `mychalsmp.xyz • ${status.players.online} online`;
                 if (serverPlayersCount) serverPlayersCount.textContent = `${status.players.online} / ${status.players.max}`;
                 if (serverPingVal) serverPingVal.textContent = `${status.latency} ms`;
-
-                const heroServerStatusVal = document.getElementById('heroServerStatusVal');
-                const heroServerDot = document.getElementById('heroServerDot');
-                if (heroServerStatusVal) heroServerStatusVal.textContent = `Online (${status.players.online} hráčů)`;
-                if (heroServerDot) heroServerDot.classList.remove('offline');
             } else {
                 markOfflineStatus();
             }
@@ -369,11 +364,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (networkText) networkText.textContent = `Offline mód (Lokální verze)`;
         if (serverPlayersCount) serverPlayersCount.textContent = `Offline`;
         if (serverPingVal) serverPingVal.textContent = `-- ms`;
-
-        const heroServerStatusVal = document.getElementById('heroServerStatusVal');
-        const heroServerDot = document.getElementById('heroServerDot');
-        if (heroServerStatusVal) heroServerStatusVal.textContent = `Offline`;
-        if (heroServerDot) heroServerDot.classList.add('offline');
     }
 
     updateNetworkStatus();
@@ -2026,18 +2016,76 @@ document.addEventListener('DOMContentLoaded', async () => {
         return resolveKeyartUrl(versionStr);
     }
 
-    function updateHeroKeyart(versionStr) {
-        const heroBg = document.getElementById('heroKeyartBg');
-        if (!heroBg) return;
+    let currentHeroKeyartUrl = null;
+    let lastActiveProfileIndex = -1;
+
+    function updateHeroKeyart(versionStr, direction = 'auto') {
+        const container = document.getElementById('heroKeyartContainer') || document.getElementById('heroKeyartBg')?.parentElement;
+        if (!container) return;
 
         const keyartUrl = resolveKeyartUrl(versionStr);
-        if (keyartUrl) {
-            heroBg.style.backgroundImage = `url("${keyartUrl}")`;
-            heroBg.classList.add('has-keyart');
-        } else {
-            heroBg.style.backgroundImage = 'none';
-            heroBg.classList.remove('has-keyart');
+
+        // Zjistit aktuální URL pozadí z existující vrstvy pokud ještě není inicializováno
+        if (currentHeroKeyartUrl === null) {
+            const initialLayer = container.querySelector('.stage-keyart-active') || document.getElementById('heroKeyartBg');
+            if (initialLayer && initialLayer.style.backgroundImage) {
+                const match = initialLayer.style.backgroundImage.match(/url\(['"]?(.*?)['"]?\)/);
+                if (match) currentHeroKeyartUrl = match[1];
+            }
         }
+
+        // Stejný keyart a vrstva už je aktivní -> žádná nová animace není potřeba
+        if (keyartUrl === currentHeroKeyartUrl && container.querySelector('.stage-keyart-active')) {
+            return;
+        }
+
+        currentHeroKeyartUrl = keyartUrl;
+
+        // Automatické určení směru posunu (zprava nebo zleva podle pořadí profilů v seznamu)
+        let slideDirection = direction;
+        if (slideDirection === 'auto') {
+            const profiles = currentConfig?.profiles || [];
+            const currentIndex = profiles.findIndex(p => p.id === currentConfig?.activeProfileId);
+            if (currentIndex !== -1 && lastActiveProfileIndex !== -1) {
+                slideDirection = currentIndex >= lastActiveProfileIndex ? 'right' : 'left';
+            } else {
+                slideDirection = 'right';
+            }
+            lastActiveProfileIndex = currentIndex;
+        }
+
+        const oldLayer = container.querySelector('.stage-keyart-active') || container.querySelector('.stage-keyart-layer, #heroKeyartBg');
+
+        if (!keyartUrl) {
+            if (oldLayer) {
+                oldLayer.className = `stage-keyart-layer ${slideDirection === 'right' ? 'stage-keyart-leaving-left' : 'stage-keyart-leaving-right'}`;
+                setTimeout(() => { try { oldLayer.remove(); } catch (_) {} }, 720);
+            }
+            return;
+        }
+
+        // Vytvoření nové vrstvy s počátečním motion-blur posunem
+        const newLayer = document.createElement('div');
+        const enterClass = slideDirection === 'right' ? 'stage-keyart-entering-right' : 'stage-keyart-entering-left';
+        newLayer.className = `stage-keyart-layer ${enterClass}`;
+        newLayer.style.backgroundImage = `url("${keyartUrl}")`;
+        container.appendChild(newLayer);
+
+        // Stará vrstva se plynule odsune a rozmaže s motion-blurem
+        if (oldLayer) {
+            const leaveClass = slideDirection === 'right' ? 'stage-keyart-leaving-left' : 'stage-keyart-leaving-right';
+            oldLayer.className = `stage-keyart-layer ${leaveClass}`;
+            setTimeout(() => {
+                try { oldLayer.remove(); } catch (_) {}
+            }, 720);
+        }
+
+        // Dva snímky rAF pro bezpečné spuštění CSS transform/filter animace
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                newLayer.className = 'stage-keyart-layer stage-keyart-active';
+            });
+        });
     }
 
     // ── Profile List Rendering & Interactive Selection ──────────────────────
@@ -2254,6 +2302,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (heroActiveProfileEl) {
                 const loaderTag = (p.loader && p.loader !== 'vanilla') ? ` (${p.loader})` : '';
                 heroActiveProfileEl.textContent = `${p.name}${loaderTag}`;
+                heroActiveProfileEl.classList.remove('val-pulse');
+                void heroActiveProfileEl.offsetWidth;
+                heroActiveProfileEl.classList.add('val-pulse');
             }
             if (btnQuickPlayMychal) {
                 const loaderTag = (p.loader && p.loader !== 'vanilla') ? ` • ${p.loader}` : '';
@@ -4335,77 +4386,48 @@ document.addEventListener('DOMContentLoaded', async () => {
     let lastLoadedCapeUrl = null;
 
     // Smooth return physics & drag controls for hero card
-    const DEFAULT_HERO_ROT_X = 0;
-    const DEFAULT_HERO_ROT_Y = 0;
+    let heroManualRotY = 0;
+    let heroManualRotX = 0;
+    let heroDragVelocityY = 0;
+    let heroDragVelocityX = 0;
+    let isDraggingHero = false;
+    let lastDragPointerX = 0;
+    let lastDragPointerY = 0;
+    let startDragPointerX = 0;
+    let startDragPointerY = 0;
 
     // Head tracking physics (cursor and button hover)
     let targetHeroHeadLookX = 0;
     let targetHeroHeadLookY = 0;
     let currentHeroHeadLookX = 0;
     let currentHeroHeadLookY = 0;
-
     let isHeroHoverTrackingActive = false;
 
-    const HERO_RETURN_DELAY_MS = 1800; // 1.8s delay after releasing mouse before returning
-    let isDraggingHero = false;
-    let startPointerX = 0;
-    let startPointerY = 0;
-    let startHeroRotY = 0;
-    let startHeroRotX = 0;
-    let heroReturnTimeout = null;
-    let heroReturnAnimId = null;
+    // Greeting wave physics: waves automatically 5s after startup or on click
+    let heroWaveStartTime = Date.now() + 5000;
+    const HERO_WAVE_DURATION = 2600;
+
+    function triggerHeroWave() {
+        heroWaveStartTime = Date.now();
+    }
 
     function cancelHeroReturn() {
-        if (heroReturnTimeout) {
-            clearTimeout(heroReturnTimeout);
-            heroReturnTimeout = null;
-        }
-        if (heroReturnAnimId) {
-            cancelAnimationFrame(heroReturnAnimId);
-            heroReturnAnimId = null;
-        }
+        // Safe no-op retained for API compatibility
     }
 
     function scheduleHeroReturn() {
-        cancelHeroReturn();
-        heroReturnTimeout = setTimeout(() => {
-            animateHeroSmoothReturn();
-        }, HERO_RETURN_DELAY_MS);
-    }
-
-    function animateHeroSmoothReturn() {
-        if (!heroSkinViewer || isDraggingHero) return;
-
-        const currentY = heroSkinViewer.playerWrapper.rotation.y;
-        const currentX = heroSkinViewer.playerWrapper.rotation.x;
-
-        // Easing smoothly back to 0 (frontal hero stance)
-        const diffY = ((0 - currentY + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
-        const diffX = -currentX;
-
-        if (Math.abs(diffY) < 0.002 && Math.abs(diffX) < 0.002) {
-            heroSkinViewer.playerWrapper.rotation.y = 0;
-            heroSkinViewer.playerWrapper.rotation.x = 0;
-            heroReturnAnimId = null;
-            return;
-        }
-
-        heroSkinViewer.playerWrapper.rotation.y = currentY + diffY * 0.065;
-        heroSkinViewer.playerWrapper.rotation.x = currentX + diffX * 0.065;
-
-        heroReturnAnimId = requestAnimationFrame(animateHeroSmoothReturn);
+        // Safe no-op retained for API compatibility
     }
 
     /**
      * Plynulé sledování kurzoru a tlačítek:
-     * Postava reaguje POUZE HLAVOU – tělo zůstává stabilní a v pevném postoji.
+     * Postava reaguje POUZE HLAVOU – tělo se natáčí organicky v idle pohybu nebo tažením myší.
      */
     function setupHeroInteractiveHoverTracking() {
         if (isHeroHoverTrackingActive) return;
         isHeroHoverTrackingActive = true;
 
         window.addEventListener('pointermove', (e) => {
-            if (isDraggingHero) return;
             const canvas = document.getElementById('heroSkinCanvas3D');
             if (!canvas) return;
 
@@ -4455,8 +4477,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     /**
      * Inteligentní animace hlavní postavy na dashboardu:
      * 1. Organické vlnění pláště ve větru.
-     * 2. Tělo zůstává stabilní a důstojné (žádné goofy otáčení tělem).
-     * 3. Hlava plynule a hladce sleduje kurzor a tlačítka.
+     * 2. Přirozené střídání poloh těla (plynulé jemné natáčení doleva a doprava).
+     * 3. Fyzikální momentum (dojezd) při rotaci myší a hladké vracení zpět.
+     * 4. Hlava neustále plynule sleduje kurzor (kompenzuje natočení těla).
      */
     function createHeroIdleAnimation() {
         if (!window.skinview3d) return null;
@@ -4475,21 +4498,84 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                     if (!heroSkinViewer) return;
 
-                    // 2. Tělo zůstává stabilní čelem k hráči
-                    if (!isDraggingHero && !heroReturnAnimId) {
-                        heroSkinViewer.playerWrapper.rotation.y = 0;
-                        heroSkinViewer.playerWrapper.rotation.x = 0;
-                        heroSkinViewer.playerWrapper.rotation.z = 0;
+                    // 2. Přirozené střídání poloh těla: plynulé jemné otáčení doleva a doprava
+                    // Dva harmonické kmitočty vytváří organický živý pohyb těla (cca ±16°)
+                    const idleBodyYaw = Math.sin(t * 0.38) * 0.24 + Math.sin(t * 0.19) * 0.06;
+
+                    // 3. Fyzika rotace tažením myší (momentum dojezd + hladké vracení zpět)
+                    if (!isDraggingHero) {
+                        // Setrvačný hladký dojezd (momentum friction)
+                        if (Math.abs(heroDragVelocityY) > 0.0002) {
+                            heroManualRotY += heroDragVelocityY;
+                            heroDragVelocityY *= 0.88;
+                        } else {
+                            heroDragVelocityY = 0;
+                        }
+                        if (Math.abs(heroDragVelocityX) > 0.0002) {
+                            heroManualRotX += heroDragVelocityX;
+                            heroDragVelocityX *= 0.88;
+                        } else {
+                            heroDragVelocityX = 0;
+                        }
+
+                        // Hladké a plynulé vracení manuální rotace do výchozí pozice (0) bez skoku
+                        heroManualRotY *= 0.945;
+                        heroManualRotX *= 0.945;
+                        if (Math.abs(heroManualRotY) < 0.0008) heroManualRotY = 0;
+                        if (Math.abs(heroManualRotX) < 0.0008) heroManualRotX = 0;
                     }
 
-                    // 3. POUZE HLAVA plynule reaguje na pozici kurzoru a tlačítek (ultra-smooth lerp)
-                    currentHeroHeadLookX += (targetHeroHeadLookX - currentHeroHeadLookX) * 0.04;
-                    currentHeroHeadLookY += (targetHeroHeadLookY - currentHeroHeadLookY) * 0.04;
+                    // Celková rotace těla (přirozený idle pohyb + manuální rotace s dojezdem)
+                    const totalBodyYaw = idleBodyYaw + heroManualRotY;
+                    const totalBodyPitch = heroManualRotX;
+
+                    heroSkinViewer.playerWrapper.rotation.y = totalBodyYaw;
+                    heroSkinViewer.playerWrapper.rotation.x = totalBodyPitch;
+                    heroSkinViewer.playerWrapper.rotation.z = 0;
+
+                    // 4. Přátelské zamávání rukou (5s po zapnutí nebo na kliknutí)
+                    let waveWeight = 0;
+                    const now = Date.now();
+                    if (now >= heroWaveStartTime && now <= heroWaveStartTime + HERO_WAVE_DURATION) {
+                        const elapsed = now - heroWaveStartTime;
+                        const p = elapsed / HERO_WAVE_DURATION;
+                        // Hladký náběh (0 až 0.18), držení mávání (0.18 až 0.82), hladký dojezd dolů (0.82 až 1.0)
+                        if (p < 0.18) {
+                            waveWeight = 0.5 - 0.5 * Math.cos((p / 0.18) * Math.PI);
+                        } else if (p > 0.82) {
+                            waveWeight = 0.5 + 0.5 * Math.cos(((p - 0.82) / 0.18) * Math.PI);
+                        } else {
+                            waveWeight = 1.0;
+                        }
+
+                        if (player && player.skin && player.skin.rightArm && waveWeight > 0.001) {
+                            // Rychlé přátelské kmitání ruky
+                            const waveOsc = Math.sin((elapsed / 1000) * 9.5);
+                            const idleRotZ = player.skin.rightArm.rotation.z;
+                            const idleRotX = player.skin.rightArm.rotation.x;
+                            const idleRotY = player.skin.rightArm.rotation.y;
+
+                            // Ruka zvednutá do výšky (~135°) mávající ze strany na stranu
+                            const targetWaveRotZ = -2.35 + waveOsc * 0.32;
+                            const targetWaveRotX = -0.32 + Math.cos((elapsed / 1000) * 9.5) * 0.08;
+                            const targetWaveRotY = 0.22;
+
+                            player.skin.rightArm.rotation.z = idleRotZ + (targetWaveRotZ - idleRotZ) * waveWeight;
+                            player.skin.rightArm.rotation.x = idleRotX + (targetWaveRotX - idleRotX) * waveWeight;
+                            player.skin.rightArm.rotation.y = idleRotY + (targetWaveRotY - idleRotY) * waveWeight;
+                        }
+                    }
+
+                    // 5. HLAVA NEUSTÁLE PLYNULE SLEDUJE KURZOR (ultra-smooth lerp)
+                    currentHeroHeadLookX += (targetHeroHeadLookX - currentHeroHeadLookX) * 0.045;
+                    currentHeroHeadLookY += (targetHeroHeadLookY - currentHeroHeadLookY) * 0.045;
 
                     if (player && player.skin && player.skin.head) {
-                        player.skin.head.rotation.y = currentHeroHeadLookY;
-                        player.skin.head.rotation.x = currentHeroHeadLookX + Math.sin(t * 1.4) * 0.012;
-                        player.skin.head.rotation.z = -currentHeroHeadLookY * 0.06;
+                        // Hlava kompenzuje rotaci těla, aby se v prostoru neustále dívala přímo na kurzor
+                        player.skin.head.rotation.y = -totalBodyYaw + currentHeroHeadLookY;
+                        player.skin.head.rotation.x = -totalBodyPitch + currentHeroHeadLookX + Math.sin(t * 1.4) * 0.012;
+                        // Jemný přirozený náklon hlavy k mávající ruce
+                        player.skin.head.rotation.z = -currentHeroHeadLookY * 0.06 - (waveWeight * 0.08);
                     }
                 }
             }
@@ -4592,6 +4678,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 model: isSlim ? 'slim' : 'default'
             });
 
+            heroWaveStartTime = Date.now() + 5000;
             heroSkinViewer.camera.position.set(0, 0, 68);
             heroSkinViewer.zoom = 1.05;
             heroSkinViewer.fov = 48;
@@ -4600,7 +4687,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             heroSkinViewer.animation = createHeroIdleAnimation() || new window.skinview3d.IdleAnimation();
 
             // Set default resting pose
-            heroSkinViewer.playerWrapper.rotation.set(DEFAULT_HERO_ROT_X, DEFAULT_HERO_ROT_Y, 0);
+            heroSkinViewer.playerWrapper.rotation.set(0, 0, 0);
 
             // Drag to rotate with pointer events & smooth auto-return
             canvas.style.cursor = 'grab';
@@ -4608,12 +4695,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             canvas.onpointerdown = (e) => {
                 if (!heroSkinViewer) return;
                 isDraggingHero = true;
-                cancelHeroReturn();
-
-                startPointerX = e.clientX;
-                startPointerY = e.clientY;
-                startHeroRotY = heroSkinViewer.playerWrapper.rotation.y;
-                startHeroRotX = heroSkinViewer.playerWrapper.rotation.x;
+                startDragPointerX = e.clientX;
+                startDragPointerY = e.clientY;
+                lastDragPointerX = e.clientX;
+                lastDragPointerY = e.clientY;
+                heroDragVelocityY = 0;
+                heroDragVelocityX = 0;
 
                 canvas.style.cursor = 'grabbing';
                 try {
@@ -4622,18 +4709,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             };
 
             canvas.onpointermove = (e) => {
-                if (!isDraggingHero || !heroSkinViewer) return;
-                cancelHeroReturn();
+                if (!isDraggingHero) return;
 
-                const dx = e.clientX - startPointerX;
-                const dy = e.clientY - startPointerY;
+                const dx = e.clientX - lastDragPointerX;
+                const dy = e.clientY - lastDragPointerY;
+                lastDragPointerX = e.clientX;
+                lastDragPointerY = e.clientY;
 
-                // Horizontal rotation: 0.014 rad per pixel
-                heroSkinViewer.playerWrapper.rotation.y = startHeroRotY + dx * 0.014;
+                // Track immediate drag velocity for momentum / dojezd
+                heroDragVelocityY = dx * 0.014;
+                heroDragVelocityX = dy * 0.008;
 
-                // Subtle vertical tilt clamped between -0.25 and 0.25 rad
-                const rawX = startHeroRotX + dy * 0.008;
-                heroSkinViewer.playerWrapper.rotation.x = Math.max(-0.25, Math.min(0.25, rawX));
+                heroManualRotY += heroDragVelocityY;
+                heroManualRotX = Math.max(-0.25, Math.min(0.25, heroManualRotX + heroDragVelocityX));
             };
 
             const onPointerEnd = (e) => {
@@ -4646,7 +4734,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 } catch (_) { }
 
-                scheduleHeroReturn();
+                // Rychlý klik bez posunu vyvolá přátelské mávnutí
+                const dist = Math.hypot(e.clientX - startDragPointerX, e.clientY - startDragPointerY);
+                if (dist < 6) {
+                    triggerHeroWave();
+                }
             };
 
             canvas.onpointerup = onPointerEnd;
