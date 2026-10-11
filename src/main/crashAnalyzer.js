@@ -327,15 +327,19 @@ async function autoResolveMissingDependencies(gameDir, combinedText, launchConfi
     // 2. Chybějící nebo nekompatibilní závislosti automaticky stáhneme z Modrinthu
     for (const dep of missingDeps) {
         try {
-            console.log(`[CRASH AUTO-RESOLVE] Automaticky stahuji vyžadovanou závislost ${dep.depName || dep.depId} z Modrinthu (MC ${targetVersion}, ${targetLoader})...`);
+            const isFabricSubmodule = (dep.depId.startsWith('fabric-') || dep.depId.startsWith('fabric_')) && dep.depId !== 'fabricloader' && dep.depId !== 'fabric-loader';
+            const targetModId = isFabricSubmodule ? 'fabric-api' : dep.depId;
+            const targetModTitle = isFabricSubmodule ? 'Fabric API' : (dep.depName || dep.depId);
+
+            console.log(`[CRASH AUTO-RESOLVE] Automaticky stahuji vyžadovanou závislost ${targetModTitle} z Modrinthu (MC ${targetVersion}, ${targetLoader})...`);
 
             // Zjistíme, zda existuje starší nebo nekompatibilní soubor k nahrazení
-            const existingCheck = isModInstalledInDir(modsDir, dep.depId);
+            const existingCheck = isModInstalledInDir(modsDir, targetModId);
             const oldFilename = existingCheck ? existingCheck.filename : null;
 
             const dlRes = await downloadModOrPack({
-                id: dep.depId,
-                title: dep.depName || dep.depId,
+                id: targetModId,
+                title: targetModTitle,
                 projectType: 'mod',
                 version: targetVersion,
                 loader: targetLoader,

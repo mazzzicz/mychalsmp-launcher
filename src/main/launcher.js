@@ -1784,6 +1784,24 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
 
     let files = [];
     try { files = fs.readdirSync(modsDir); } catch (_) { return; }
+
+    // 0. Obnovíme dříve nechtěně deaktivované módy (.disabled), např. Sodium nebo MidnightLib
+    for (const f of files) {
+        if (f.toLowerCase().endsWith('.jar.disabled')) {
+            const orig = path.join(modsDir, f);
+            const enabled = orig.replace(/\.disabled$/i, '');
+            if (!fs.existsSync(enabled)) {
+                try {
+                    fs.renameSync(orig, enabled);
+                    if (typeof onLog === 'function') {
+                        onLog(`[ZÁVISLOSTI] 🔄 Obnoven dříve deaktivovaný mód: ${path.basename(enabled)}`);
+                    }
+                } catch (_) {}
+            }
+        }
+    }
+
+    try { files = fs.readdirSync(modsDir); } catch (_) { return; }
     const jarFiles = files.filter(f => f.toLowerCase().endsWith('.jar'));
     if (jarFiles.length === 0) return;
 
@@ -1836,6 +1854,19 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
         } catch (_) {}
     }
 
+    // Zkontrolujeme přítomnost kompletního Fabric API v profilu
+    let hasFabricApi = jarFiles.some(f => {
+        const l = f.toLowerCase();
+        return (l.includes('fabric-api') || l.includes('fabric_api')) && !l.includes('fabric-api-base');
+    }) || installedModIds.has('fabric-api') || installedModIds.has('fabric_api');
+
+    function isFabricApiSubmodule(id) {
+        if (!id) return false;
+        const d = id.toLowerCase();
+        if (d === 'fabric-api' || d === 'fabric_api') return true;
+        return d.startsWith('fabric-') || d.startsWith('fabric_');
+    }
+
     const ignoredDeps = new Set([
         'minecraft', 'java', 'fabricloader', 'fabric-loader', 'fabric',
         'quilt_loader', 'quiltloader'
@@ -1856,6 +1887,67 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
             const normDepUnderscore = normDep.replace(/-/g, '_');
             if (ignoredDeps.has(normDep) || ignoredDeps.has(normDepHyphen) || ignoredDeps.has(normDepUnderscore)) {
                 continue;
+            }
+
+            // Ošetření Fabric API a jeho interních podmodulů (např. fabric-block-getter-api-v2, fabric-resource-loader-v0)
+            if (isFabricApiSubmodule(normDep)) {
+                // Pokud je Fabric API již nainstalován, všechny jeho podmoduly jsou automaticky splněny
+                if (hasFabricApi) {
+                    continue;
+                }
+
+                // Pokud Fabric API chybí, stáhneme kompletní Fabric API z Modrinthu
+                if (typeof onLog === 'function') {
+                    onLog(`[ZÁVISLOSTI] 🔍 Mód "${pm.modName}" vyžaduje Fabric API (${depId}). Automaticky stahuji kompletní Fabric API...`);
+                }
+
+                let dlApiSuccess = false;
+                if (typeof downloadModOrPack === 'function') {
+                    try {
+                        const dlRes = await downloadModOrPack({
+                            id: 'fabric-api',
+                            title: 'Fabric API',
+                            projectType: 'mod',
+                            version: targetVersion,
+                            loader: 'fabric'
+                        }, gameInstanceDir);
+
+                        if (dlRes && dlRes.success) {
+                            dlApiSuccess = true;
+                            hasFabricApi = true;
+                            installedModIds.add('fabric-api');
+                            installedModIds.add('fabric_api');
+                            installedModsMap.set('fabric-api', {
+                                filename: dlRes.filename,
+                                fullPath: path.join(modsDir, dlRes.filename),
+                                version: ''
+                            });
+                            if (typeof onLog === 'function') {
+                                onLog(`[ZÁVISLOSTI] ✔ Úspěšně stažen Fabric API (${dlRes.filename})`);
+                            }
+                        }
+                    } catch (fapiErr) {
+                        if (typeof onLog === 'function') {
+                            onLog(`[ZÁVISLOSTI] ⚠️ Nepodařilo se stáhnout Fabric API: ${fapiErr.message}`);
+                        }
+                    }
+                }
+
+                if (dlApiSuccess || hasFabricApi) {
+                    continue;
+                }
+
+                // Pokud Fabric API selhal a chybí, teprve pak deaktivujeme mateřský mód
+                try {
+                    const disabledPath = pm.fullPath + '.disabled';
+                    if (fs.existsSync(pm.fullPath)) {
+                        fs.renameSync(pm.fullPath, disabledPath);
+                        if (typeof onLog === 'function') {
+                            onLog(`[ZÁVISLOSTI] ⚠️ Fabric API není k dispozici. Mód "${pm.modName}" (${pm.filename}) byl dočasně deaktivován (.disabled).`);
+                        }
+                    }
+                } catch (_) {}
+                break;
             }
 
             const installedMod = installedModsMap.get(normDep) || installedModsMap.get(normDepHyphen) || installedModsMap.get(normDepUnderscore);
