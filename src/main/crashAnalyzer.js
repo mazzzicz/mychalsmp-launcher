@@ -324,11 +324,10 @@ async function autoResolveMissingDependencies(gameDir, combinedText, launchConfi
     const targetVersion = launchConfig.version || '26.2';
     const targetLoader = launchConfig.loader || 'fabric';
 
-    // 2. Chybějící nebo nekompatibilní závislosti automaticky stáhneme z Modrinthu
     for (const dep of missingDeps) {
         try {
             const isFabricSubmodule = (dep.depId.startsWith('fabric-') || dep.depId.startsWith('fabric_')) && dep.depId !== 'fabricloader' && dep.depId !== 'fabric-loader';
-            const targetModId = isFabricSubmodule ? 'fabric-api' : dep.depId;
+            let targetModId = isFabricSubmodule ? 'fabric-api' : dep.depId.replace(/_/g, '-');
             const targetModTitle = isFabricSubmodule ? 'Fabric API' : (dep.depName || dep.depId);
 
             console.log(`[CRASH AUTO-RESOLVE] Automaticky stahuji vyžadovanou závislost ${targetModTitle} z Modrinthu (MC ${targetVersion}, ${targetLoader})...`);

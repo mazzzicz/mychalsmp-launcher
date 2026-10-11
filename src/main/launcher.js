@@ -1785,18 +1785,20 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
     let files = [];
     try { files = fs.readdirSync(modsDir); } catch (_) { return; }
 
-    // 0. Obnovíme dříve nechtěně deaktivované módy (.disabled), např. Sodium nebo MidnightLib
+    // 1. Obnovíme VŠECHNY dříve deaktivované módy (.disabled) zpět na plnohodnotné .jar
     for (const f of files) {
-        if (f.toLowerCase().endsWith('.jar.disabled')) {
+        if (f.toLowerCase().endsWith('.disabled')) {
             const orig = path.join(modsDir, f);
             const enabled = orig.replace(/\.disabled$/i, '');
             if (!fs.existsSync(enabled)) {
                 try {
                     fs.renameSync(orig, enabled);
                     if (typeof onLog === 'function') {
-                        onLog(`[ZÁVISLOSTI] 🔄 Obnoven dříve deaktivovaný mód: ${path.basename(enabled)}`);
+                        onLog(`[ZÁVISLOSTI] 🔄 Obnoven mód: ${path.basename(enabled)}`);
                     }
                 } catch (_) {}
+            } else {
+                try { fs.unlinkSync(orig); } catch (_) {}
             }
         }
     }
@@ -1805,21 +1807,31 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
     const jarFiles = files.filter(f => f.toLowerCase().endsWith('.jar'));
     if (jarFiles.length === 0) return;
 
-    let downloadModOrPack, isModInstalledInDir;
+    let downloadModOrPack;
     try {
         const modrinthModule = require('./modrinth');
         downloadModOrPack = modrinthModule.downloadModOrPack;
-        isModInstalledInDir = modrinthModule.isModInstalledInDir;
     } catch (_) {
         return;
     }
 
-    const installedModIds = new Set();
-    const installedModsMap = new Map();
-    const parsedMods = [];
+    let hasIris = false;
+    let sodiumMod = null;
+    let hasFabricApi = false;
 
     for (const f of jarFiles) {
         const fullPath = path.join(modsDir, f);
+        const lName = f.toLowerCase();
+        if ((lName.includes('fabric-api') || lName.includes('fabric_api')) && !lName.includes('fabric-api-base')) {
+            hasFabricApi = true;
+        }
+        if ((lName.startsWith('sodium-') || lName.startsWith('sodium_') || lName === 'sodium.jar') && !lName.includes('extra') && !lName.includes('options')) {
+            sodiumMod = { filename: f, fullPath, version: '' };
+        }
+        if (lName.startsWith('iris-') || lName.startsWith('iris_') || lName === 'iris.jar') {
+            hasIris = true;
+        }
+
         try {
             const zip = new AdmZip(fullPath);
             const fabEntry = zip.getEntry('fabric.mod.json');
@@ -1827,244 +1839,84 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
                 const fab = JSON.parse(fabEntry.getData().toString('utf8'));
                 if (fab.id) {
                     const idLower = fab.id.toLowerCase();
-                    const modInfo = {
-                        filename: f,
-                        fullPath,
-                        id: fab.id,
-                        name: fab.name || fab.id,
-                        version: String(fab.version || '')
-                    };
-                    installedModIds.add(idLower);
-                    installedModIds.add(idLower.replace(/_/g, '-'));
-                    installedModIds.add(idLower.replace(/-/g, '_'));
-                    installedModsMap.set(idLower, modInfo);
-                    installedModsMap.set(idLower.replace(/_/g, '-'), modInfo);
-                    installedModsMap.set(idLower.replace(/-/g, '_'), modInfo);
-                }
-                if (fab.depends && typeof fab.depends === 'object') {
-                    parsedMods.push({
-                        filename: f,
-                        fullPath,
-                        modName: fab.name || fab.id,
-                        modId: fab.id,
-                        depends: fab.depends
-                    });
+                    if (idLower === 'iris') {
+                        hasIris = true;
+                    }
+                    if (idLower === 'sodium') {
+                        sodiumMod = {
+                            filename: f,
+                            fullPath,
+                            id: fab.id,
+                            version: String(fab.version || '')
+                        };
+                    }
+                    if (idLower === 'fabric-api' || idLower === 'fabric_api') {
+                        hasFabricApi = true;
+                    }
                 }
             }
         } catch (_) {}
     }
 
-    // Zkontrolujeme přítomnost kompletního Fabric API v profilu
-    let hasFabricApi = jarFiles.some(f => {
-        const l = f.toLowerCase();
-        return (l.includes('fabric-api') || l.includes('fabric_api')) && !l.includes('fabric-api-base');
-    }) || installedModIds.has('fabric-api') || installedModIds.has('fabric_api');
-
-    function isFabricApiSubmodule(id) {
-        if (!id) return false;
-        const d = id.toLowerCase();
-        if (d === 'fabric-api' || d === 'fabric_api') return true;
-        return d.startsWith('fabric-') || d.startsWith('fabric_');
-    }
-
-    const ignoredDeps = new Set([
-        'minecraft', 'java', 'fabricloader', 'fabric-loader', 'fabric',
-        'quilt_loader', 'quiltloader'
-    ]);
-
     const targetVersion = config.version || '26.2';
 
-    for (const pm of parsedMods) {
-        // Pokud byl tento mód již dříve deaktivován v tomto běhu, přeskočíme ho
-        if (!fs.existsSync(pm.fullPath)) continue;
+    // 2. KLÍČOVÁ KONTROLA: Iris na Minecraftu 26.2 striktně vyžaduje Sodium 0.9.x
+    if (hasIris) {
+        const sodiumNeedsUpdate = !sodiumMod || 
+            (!sodiumMod.version.startsWith('0.9') && !sodiumMod.filename.toLowerCase().includes('0.9'));
 
-        for (const [depId, constraint] of Object.entries(pm.depends)) {
-            // Pokud byl tento mód deaktivován kvůli předchozí chybějící závislosti, končíme pro něj
-            if (!fs.existsSync(pm.fullPath)) break;
-
-            const normDep = depId.toLowerCase();
-            const normDepHyphen = normDep.replace(/_/g, '-');
-            const normDepUnderscore = normDep.replace(/-/g, '_');
-            if (ignoredDeps.has(normDep) || ignoredDeps.has(normDepHyphen) || ignoredDeps.has(normDepUnderscore)) {
-                continue;
-            }
-
-            // Ošetření Fabric API a jeho interních podmodulů (např. fabric-block-getter-api-v2, fabric-resource-loader-v0)
-            if (isFabricApiSubmodule(normDep)) {
-                // Pokud je Fabric API již nainstalován, všechny jeho podmoduly jsou automaticky splněny
-                if (hasFabricApi) {
-                    continue;
-                }
-
-                // Pokud Fabric API chybí, stáhneme kompletní Fabric API z Modrinthu
-                if (typeof onLog === 'function') {
-                    onLog(`[ZÁVISLOSTI] 🔍 Mód "${pm.modName}" vyžaduje Fabric API (${depId}). Automaticky stahuji kompletní Fabric API...`);
-                }
-
-                let dlApiSuccess = false;
-                if (typeof downloadModOrPack === 'function') {
-                    try {
-                        const dlRes = await downloadModOrPack({
-                            id: 'fabric-api',
-                            title: 'Fabric API',
-                            projectType: 'mod',
-                            version: targetVersion,
-                            loader: 'fabric'
-                        }, gameInstanceDir);
-
-                        if (dlRes && dlRes.success) {
-                            dlApiSuccess = true;
-                            hasFabricApi = true;
-                            installedModIds.add('fabric-api');
-                            installedModIds.add('fabric_api');
-                            installedModsMap.set('fabric-api', {
-                                filename: dlRes.filename,
-                                fullPath: path.join(modsDir, dlRes.filename),
-                                version: ''
-                            });
-                            if (typeof onLog === 'function') {
-                                onLog(`[ZÁVISLOSTI] ✔ Úspěšně stažen Fabric API (${dlRes.filename})`);
-                            }
-                        }
-                    } catch (fapiErr) {
-                        if (typeof onLog === 'function') {
-                            onLog(`[ZÁVISLOSTI] ⚠️ Nepodařilo se stáhnout Fabric API: ${fapiErr.message}`);
-                        }
-                    }
-                }
-
-                if (dlApiSuccess || hasFabricApi) {
-                    continue;
-                }
-
-                // Pokud Fabric API selhal a chybí, teprve pak deaktivujeme mateřský mód
-                try {
-                    const disabledPath = pm.fullPath + '.disabled';
-                    if (fs.existsSync(pm.fullPath)) {
-                        fs.renameSync(pm.fullPath, disabledPath);
-                        if (typeof onLog === 'function') {
-                            onLog(`[ZÁVISLOSTI] ⚠️ Fabric API není k dispozici. Mód "${pm.modName}" (${pm.filename}) byl dočasně deaktivován (.disabled).`);
-                        }
-                    }
-                } catch (_) {}
-                break;
-            }
-
-            const installedMod = installedModsMap.get(normDep) || installedModsMap.get(normDepHyphen) || installedModsMap.get(normDepUnderscore);
-
-            // Zvláštní kontrola verze: Iris na Minecraftu 26.2 striktně vyžaduje Sodium 0.9.x
-            let isOutdated = false;
-            if (installedMod) {
-                if (normDep === 'sodium' && pm.modId.toLowerCase() === 'iris') {
-                    if (!installedMod.version.startsWith('0.9') && !installedMod.filename.toLowerCase().includes('0.9')) {
-                        isOutdated = true;
-                    }
-                }
-            }
-
-            // Pokud je závislost přítomna a je kompatibilní, pokračujeme
-            if (installedMod && !isOutdated) {
-                continue;
-            }
-
-            let oldFilenameToReplace = installedMod ? installedMod.filename : null;
-
-            // Pokud závislost není přímo načtena, zkusíme najít soubor ve složce (např. .disabled)
-            if (!installedMod && typeof isModInstalledInDir === 'function') {
-                const check = isModInstalledInDir(modsDir, depId);
-                if (check && check.installed) {
-                    if (check.disabled && check.fullPath) {
-                        // Zkontrolujeme, zda soubor .disabled není zastaralý
-                        let disabledOutdated = false;
-                        if (normDep === 'sodium' && pm.modId.toLowerCase() === 'iris') {
-                            try {
-                                const dZip = new AdmZip(check.fullPath);
-                                const dFabEntry = dZip.getEntry('fabric.mod.json');
-                                if (dFabEntry) {
-                                    const dFab = JSON.parse(dFabEntry.getData().toString('utf8'));
-                                    if (dFab.version && !String(dFab.version).startsWith('0.9')) {
-                                        disabledOutdated = true;
-                                    }
-                                }
-                            } catch (_) {}
-                        }
-
-                        if (!disabledOutdated) {
-                            try {
-                                const enabled = check.fullPath.replace(/\.disabled$/i, '');
-                                fs.renameSync(check.fullPath, enabled);
-                                installedModIds.add(normDep);
-                                installedModsMap.set(normDep, { filename: path.basename(enabled), fullPath: enabled, version: '' });
-                                if (typeof onLog === 'function') {
-                                    onLog(`[ZÁVISLOSTI] ✔ Re-aktivována nalezená závislost: ${check.filename}`);
-                                }
-                                continue;
-                            } catch (_) {}
-                        } else {
-                            oldFilenameToReplace = check.filename;
-                        }
-                    } else {
-                        oldFilenameToReplace = check.filename;
-                    }
-                }
-            }
-
-            // Závislost chybí nebo je zastaralá! Automaticky se ji pokusíme stáhnout z Modrinthu
+        if (sodiumNeedsUpdate) {
             if (typeof onLog === 'function') {
-                if (isOutdated) {
-                    onLog(`[ZÁVISLOSTI] ⚠️ Zjištěna nekompatibilní verze ${installedMod.name} (${installedMod.version}). Mód "${pm.modName}" vyžaduje novější verzi pro MC ${targetVersion}. Automaticky stahuji kompatibilní verzi...`);
+                if (sodiumMod) {
+                    onLog(`[ZÁVISLOSTI] ⚠️ Zjištěna nekompatibilní verze Sodium (${sodiumMod.version || sodiumMod.filename}). Iris vyžaduje Sodium 0.9.x pro MC ${targetVersion}. Automaticky aktualizuji Sodium...`);
                 } else {
-                    onLog(`[ZÁVISLOSTI] 🔍 Mód "${pm.modName}" vyžaduje "${depId}". Automaticky stahuji z Modrinthu...`);
+                    onLog(`[ZÁVISLOSTI] 🔍 Mód Iris vyžaduje Sodium 0.9.x. Automaticky stahuji Sodium z Modrinthu...`);
                 }
             }
 
-            let dlSuccess = false;
-            if (typeof downloadModOrPack === 'function') {
-                try {
-                    const dlRes = await downloadModOrPack({
-                        id: depId,
-                        title: depId,
-                        projectType: 'mod',
-                        version: targetVersion,
-                        loader: 'fabric',
-                        oldFilename: oldFilenameToReplace
-                    }, gameInstanceDir);
+            try {
+                const dlRes = await downloadModOrPack({
+                    id: 'sodium',
+                    title: 'Sodium',
+                    projectType: 'mod',
+                    version: targetVersion,
+                    loader: 'fabric',
+                    oldFilename: sodiumMod ? sodiumMod.filename : null
+                }, gameInstanceDir);
 
-                    if (dlRes && dlRes.success) {
-                        dlSuccess = true;
-                        installedModIds.add(normDep);
-                        installedModsMap.set(normDep, {
-                            filename: dlRes.filename,
-                            fullPath: path.join(modsDir, dlRes.filename),
-                            version: '0.9.x'
-                        });
-                        if (typeof onLog === 'function') {
-                            onLog(`[ZÁVISLOSTI] ✔ Úspěšně stažena vyžadovaná závislost: ${depId} (${dlRes.filename})`);
-                        }
-                    }
-                } catch (dlErr) {
+                if (dlRes && dlRes.success) {
                     if (typeof onLog === 'function') {
-                        onLog(`[ZÁVISLOSTI] ⚠️ Nepodařilo se stáhnout závislost "${depId}": ${dlErr.message}`);
+                        onLog(`[ZÁVISLOSTI] ✔ Úspěšně staženo kompatibilní Sodium: ${dlRes.filename}`);
                     }
                 }
-            }
-
-            // Fallback: Pokud se závislost nepodařilo stáhnout/aktualizovat, deaktivujeme problematický mód (.disabled),
-            // aby Minecraft nespadl na Fabric FormattedException!
-            if (!dlSuccess) {
-                try {
-                    const disabledPath = pm.fullPath + '.disabled';
-                    if (fs.existsSync(pm.fullPath)) {
-                        fs.renameSync(pm.fullPath, disabledPath);
-                        if (typeof onLog === 'function') {
-                            onLog(`[ZÁVISLOSTI] ⚠️ Závislost "${depId}" není dostupná. Mód "${pm.modName}" (${pm.filename}) byl automaticky deaktivován (.disabled), aby hra nespadla.`);
-                        }
-                    }
-                } catch (disErr) {
-                    console.error('[ZÁVISLOSTI] Chyba při deaktivaci problematického módu:', disErr);
+            } catch (sodErr) {
+                if (typeof onLog === 'function') {
+                    onLog(`[ZÁVISLOSTI] ⚠️ Nepodařilo se stáhnout Sodium: ${sodErr.message}`);
                 }
             }
         }
+    }
+
+    // 3. KONTROLA FABRIC API: Pokud v profilu chybí Fabric API, automaticky ho doplníme
+    if (!hasFabricApi) {
+        if (typeof onLog === 'function') {
+            onLog(`[ZÁVISLOSTI] 🔍 Zjištěna absence Fabric API. Automaticky stahuji z Modrinthu...`);
+        }
+        try {
+            const dlRes = await downloadModOrPack({
+                id: 'fabric-api',
+                title: 'Fabric API',
+                projectType: 'mod',
+                version: targetVersion,
+                loader: 'fabric'
+            }, gameInstanceDir);
+
+            if (dlRes && dlRes.success) {
+                if (typeof onLog === 'function') {
+                    onLog(`[ZÁVISLOSTI] ✔ Úspěšně stažen Fabric API: ${dlRes.filename}`);
+                }
+            }
+        } catch (_) {}
     }
 }
 
