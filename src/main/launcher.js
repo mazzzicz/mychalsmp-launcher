@@ -3,7 +3,7 @@ const Handler = require('minecraft-launcher-core/components/handler');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const { Readable } = require('stream');
 const { pipeline } = require('stream/promises');
 const { BASE_DIR } = require('./config');
@@ -777,7 +777,17 @@ function getJavaMajorVersion(binPath) {
     if (!binPath) return 0;
     const testBin = resolveJavaConsoleBinary(binPath);
     try {
-        const out = execSync(`"${testBin}" -version 2>&1`, { timeout: 3500, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
+        let out = '';
+        try {
+            out = execFileSync(testBin, ['-version'], { timeout: 3500, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
+        } catch (procErr) {
+            out = (procErr.stderr || procErr.stdout || '').toString();
+        }
+        if (!out) {
+            try {
+                out = execSync(`"${testBin}" -version 2>&1`, { timeout: 3500, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
+            } catch (_) {}
+        }
         const match = out.match(/(?:version|Runtime Environment)\s+"?(\d+)(?:\.(\d+))?/i);
         if (match) {
             const v1 = parseInt(match[1], 10);
@@ -811,7 +821,23 @@ function testJavaExecutable(binPath, minMajor = 0) {
     if (!binPath) return false;
     const testBin = resolveJavaConsoleBinary(binPath);
     try {
-        execSync(`"${testBin}" -version`, { timeout: 3500, stdio: ['ignore', 'pipe', 'pipe'] });
+        let ok = false;
+        try {
+            execFileSync(testBin, ['-version'], { timeout: 3500, stdio: ['ignore', 'pipe', 'pipe'] });
+            ok = true;
+        } catch (procErr) {
+            if ((procErr.stderr && procErr.stderr.length > 0) || procErr.status === 0) {
+                ok = true;
+            }
+        }
+        if (!ok) {
+            try {
+                execSync(`"${testBin}" -version`, { timeout: 3500, stdio: ['ignore', 'pipe', 'pipe'] });
+                ok = true;
+            } catch (_) {}
+        }
+        if (!ok) return false;
+
         if (minMajor > 0) {
             const major = getJavaMajorVersion(testBin);
             return major >= minMajor;
@@ -1110,7 +1136,12 @@ function getAvailableJavas() {
         if (fs.existsSync(binPath)) {
             const major = getJavaMajorVersion(binPath);
             try {
-                const verOut = execSync(`"${binPath}" -version 2>&1`, { encoding: 'utf-8', timeout: 2000, stdio: ['ignore', 'pipe', 'pipe'] });
+                let verOut = '';
+                try {
+                    verOut = execFileSync(binPath, ['-version'], { encoding: 'utf-8', timeout: 2000, stdio: ['ignore', 'pipe', 'pipe'] });
+                } catch (procErr) {
+                    verOut = (procErr.stderr || procErr.stdout || '').toString();
+                }
                 const firstLine = (verOut.split(/\r?\n/)[0] || '').replace(/"/g, '').trim();
                 list.push({ path: binPath, major, label: `${label} (${firstLine || `Java ${major}`})` });
             } catch (e) {

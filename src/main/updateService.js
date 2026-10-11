@@ -66,6 +66,10 @@ async function checkForUpdates() {
         if (isPortable) {
             preferredAsset = winPortableAsset || winAsset;
             isDelta = false;
+        } else if (process.platform === 'win32' && (winSetupAsset || winAsset)) {
+            // Na Windows instalacích preferujeme čistý instalátor, aby nedocházelo k zamykání a poškozování app.asar
+            preferredAsset = winSetupAsset || winAsset;
+            isDelta = false;
         } else if (deltaAsset) {
             preferredAsset = deltaAsset;
             isDelta = true;

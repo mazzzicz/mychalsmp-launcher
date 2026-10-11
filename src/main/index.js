@@ -1,3 +1,33 @@
+// Globální ochrana proti neošetřeným výjimkám v hlavním procesu (zabrání crash dialogům na Windows)
+process.on('uncaughtException', (err) => {
+    console.error('[MAIN PROCESS] Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[MAIN PROCESS] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+// Ochrana před poškozenými JSON soubory v node_modules (např. har-schema nebo jiné knihovny)
+try {
+    const originalJsonExtension = require.extensions['.json'];
+    if (originalJsonExtension) {
+        require.extensions['.json'] = function (module, filename) {
+            try {
+                return originalJsonExtension(module, filename);
+            } catch (jsonErr) {
+                console.error(`[MODULE] Varování: Chyba parsování JSON souboru ${filename}:`, jsonErr);
+                try {
+                    const fsMod = require('fs');
+                    const raw = fsMod.readFileSync(filename, 'utf8');
+                    const cleaned = raw.replace(/^[\s\S]*?(\{[\s\S]*\}|\[[\s\S]*\])[\s\S]*$/, '$1');
+                    module.exports = JSON.parse(cleaned);
+                } catch (_) {
+                    module.exports = {};
+                }
+            }
+        };
+    }
+} catch (_) {}
+
 const { app, BrowserWindow, screen, ipcMain, shell, dialog, Tray, Menu, nativeImage, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -392,9 +422,9 @@ ipcMain.handle('get-config', () => {
 ipcMain.handle('save-config', (event, newConfig) => {
     const saved = saveConfig(newConfig);
     try {
-        if (saved.enableDiscordRpc === false) {
+        if (saved && saved.enableDiscordRpc === false) {
             discordRpc.clearActivity();
-        } else if (!isGameRunning()) {
+        } else if (saved && !isGameRunning()) {
             const activeProfile = (saved.profiles || []).find(p => p.id === saved.activeProfileId);
             discordRpc.updateActivity({
                 username: saved.username || 'Hráč',
@@ -2608,7 +2638,8 @@ ipcMain.handle('restart-launcher', () => {
                 '        )',
                 '    )',
                 '    copy /y "%PENDING%" "%TARGET%" >nul 2>&1',
-                '    if not exist "%PENDING%" (',
+                '    if exist "%TARGET%" (',
+                '        del /f /q "%PENDING%" >nul 2>&1',
                 '        goto launch_app',
                 '    )',
                 ')',

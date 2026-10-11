@@ -2132,8 +2132,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         ${upgradeBtnHtml}
                         <button class="mc-btn ${(() => {
                     if (isRunning && isActive) return 'mc-btn-red';
-                    const isInst = Array.isArray(installedVersions) && installedVersions.includes(p.version);
-                    return isInst ? 'mc-btn-green' : 'mc-btn-primary';
+                    return 'mc-btn-primary';
                 })()} btn-launch-profile" data-profile-id="${escapeHtml(p.id)}">
                             <span>${(() => {
                     if (isRunning && isActive) return '<svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg> Stop';
@@ -2158,11 +2157,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Bind Play buttons
         list.querySelectorAll('.btn-launch-profile').forEach(btn => {
-            btn.addEventListener('click', (e) => {
+            btn.addEventListener('click', async (e) => {
                 e.stopPropagation();
-                const pid = btn.dataset.profileId;
-                selectActiveProfile(pid);
-                startLaunch(pid, null);
+                try {
+                    const pid = btn.dataset.profileId;
+                    selectActiveProfile(pid);
+                    await startLaunch(pid, null);
+                } catch (launchErr) {
+                    console.error('[LAUNCH ERROR]', launchErr);
+                    showToast('Nepodařilo se spustit hru.', 'error');
+                }
             });
         });
 
@@ -2360,9 +2364,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── Launch Minecraft ────────────────────────────────────────────────────
     async function startLaunch(profileId, serverIp) {
-        if (typeof autoSaveSettings === 'function') {
-            await autoSaveSettings(true);
+        if (isLaunching) {
+            console.warn('[LAUNCH] Spuštění již probíhá...');
+            return;
         }
+
+        const targetPid = profileId || currentConfig.activeProfileId || 'minecraft-26.2';
+        const targetProf = (currentConfig.profiles || []).find(x => x.id === targetPid);
+
         if (isRunning) {
             if (confirm('Chceš ukončit běžící Minecraft proces?')) {
                 await window.api.killGame();
@@ -2371,12 +2380,29 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
+        try {
+            if (typeof autoSaveSettings === 'function') {
+                await Promise.race([
+                    autoSaveSettings(true),
+                    new Promise(r => setTimeout(r, 600))
+                ]).catch(() => {});
+            }
+        } catch (_) {}
+
         isLaunching = true;
         if (sidebarPlayBtn) sidebarPlayBtn.style.opacity = '0.5';
-        refreshVersionStatuses();
 
-        const targetPid = profileId || currentConfig.activeProfileId || 'minecraft-26.2';
-        const targetProf = (currentConfig.profiles || []).find(x => x.id === targetPid);
+        // Okamžitá vizuální odezva na kartě profilu (žádné ticho ani zamrznutí)
+        const clickedCard = document.querySelector(`.profile-row-card[data-profile-id="${targetPid}"]`);
+        if (clickedCard) {
+            const btn = clickedCard.querySelector('.btn-launch-profile');
+            if (btn) {
+                btn.disabled = true;
+                btn.style.opacity = '0.75';
+                btn.innerHTML = '<span><svg class="ui-icon-svg ui-icon-svg--xs ui-icon-spin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="12"></circle></svg> Spouštím...</span>';
+            }
+        }
+        refreshVersionStatuses();
 
         const isAlreadyInstalled = targetProf && Array.isArray(installedVersions) && installedVersions.includes(targetProf.version);
         const hasBeenPlayed = targetProf && (Boolean(targetProf.lastPlayed) || (typeof targetProf.playtimeSeconds === 'number' && targetProf.playtimeSeconds > 0));
@@ -2624,16 +2650,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (sidebarPlayBtn) {
             sidebarPlayBtn.style.opacity = '1';
-            sidebarPlayBtn.style.background = '#22c55e';
+            sidebarPlayBtn.style.background = 'var(--brand-blue)';
             sidebarPlayBtn.querySelector('span').innerHTML = '<svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
         }
         document.querySelectorAll('.btn-launch-profile').forEach(btn => {
+            btn.disabled = false;
+            btn.style.opacity = '1';
             const pid = btn.dataset.profileId;
             const prof = (currentConfig.profiles || []).find(p => p.id === pid);
             const isInst = prof && Array.isArray(installedVersions) && installedVersions.includes(prof.version);
             btn.innerHTML = `<span>${isInst ? '<svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> Hrát' : '<svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Stáhnout'}</span>`;
-            btn.classList.remove('mc-btn-red', 'mc-btn-green', 'mc-btn-primary');
-            btn.classList.add(isInst ? 'mc-btn-green' : 'mc-btn-primary');
+            btn.classList.remove('mc-btn-red', 'mc-btn-green');
+            btn.classList.add('mc-btn-primary');
         });
         const activeP = (currentConfig.profiles || []).find(x => x.id === (currentConfig.activeProfileId || 'minecraft-26.2'));
         const activeInst = activeP && Array.isArray(installedVersions) && installedVersions.includes(activeP.version);

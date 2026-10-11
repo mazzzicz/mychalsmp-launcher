@@ -208,7 +208,31 @@ function loadConfig() {
     return { ...DEFAULT_CONFIG, baseDir: BASE_DIR };
 }
 
+function safeAtomicWriteSync(filePath, content) {
+    const tmpFile = `${filePath}.tmp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    try {
+        fs.writeFileSync(tmpFile, content, 'utf-8');
+        if (process.platform === 'win32') {
+            try {
+                fs.copyFileSync(tmpFile, filePath);
+                try { fs.unlinkSync(tmpFile); } catch (_) {}
+                return;
+            } catch (_) {}
+        }
+        fs.renameSync(tmpFile, filePath);
+    } catch (err) {
+        // Fallback: přímý zápis pokud rename/copy selže
+        try {
+            fs.writeFileSync(filePath, content, 'utf-8');
+            try { fs.unlinkSync(tmpFile); } catch (_) {}
+        } catch (e2) {
+            console.error(`[CONFIG] Kritická chyba zápisu do ${filePath}:`, e2);
+        }
+    }
+}
+
 function saveConfig(newConfig) {
+    let merged = null;
     try {
         ensureDirSync(BASE_DIR);
         const current = loadConfig();
@@ -218,7 +242,7 @@ function saveConfig(newConfig) {
                 cleanedNewConfig[k] = v;
             }
         }
-        const merged = {
+        merged = {
             ...current,
             ...cleanedNewConfig,
             resolution: (cleanedNewConfig && cleanedNewConfig.resolution)
@@ -226,16 +250,15 @@ function saveConfig(newConfig) {
                 : current.resolution
         };
         delete merged.baseDir;
-        const tmpFile = `${CONFIG_FILE}.tmp`;
-        fs.writeFileSync(tmpFile, JSON.stringify(merged, null, 2), 'utf-8');
-        fs.renameSync(tmpFile, CONFIG_FILE);
+
+        safeAtomicWriteSync(CONFIG_FILE, JSON.stringify(merged, null, 2));
         try {
             fs.copyFileSync(CONFIG_FILE, `${CONFIG_FILE}.bak`);
         } catch (e) {}
         return { ...merged, baseDir: BASE_DIR };
     } catch (err) {
         console.error('Chyba při ukládání konfigurace launcheru:', err);
-        return null;
+        return merged ? { ...merged, baseDir: BASE_DIR } : { ...DEFAULT_CONFIG, baseDir: BASE_DIR };
     }
 }
 
