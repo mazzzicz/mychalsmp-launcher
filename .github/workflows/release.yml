@@ -102,6 +102,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 10
 
       - name: Get Version for Release
         id: pkg_version
@@ -149,15 +151,41 @@ jobs:
           echo "=== Seznam souborů k vydání ==="
           ls -la
 
+      - name: Generate Changelog from Commit Message
+        id: changelog
+        shell: bash
+        run: |
+          # 1. Zjistit zprávu posledního commitu (git commit -m "zprava")
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
+          if [ -z "$COMMIT_MSG" ]; then
+            COMMIT_MSG=$(git log -1 --pretty=format:"%B" 2>/dev/null || true)
+          fi
+          
+          # Pokud je commit pouze generický bump "Release v...", zkusit vzít předchozí commit zprávu
+          if [[ "$COMMIT_MSG" =~ ^Release\ v[0-9] ]] || [[ "$COMMIT_MSG" =~ ^v[0-9] ]]; then
+            PREV_MSG=$(git log -2 --pretty=format:"%s" 2>/dev/null | tail -n +2 | head -n 1 || true)
+            if [ -n "$PREV_MSG" ] && [[ ! "$PREV_MSG" =~ ^Release\ v ]]; then
+              COMMIT_MSG="$PREV_MSG"
+            fi
+          fi
+
+          if [ -z "$COMMIT_MSG" ]; then
+            COMMIT_MSG="Aktualizace launcheru v${{ steps.pkg_version.outputs.version }}"
+          fi
+
+          echo "Changelog pro release: $COMMIT_MSG"
+          printf "%s\n" "$COMMIT_MSG" > release_notes.txt
+
       - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.pkg_version.outputs.version }}
           name: "MYCHAL SMP Launcher v${{ steps.pkg_version.outputs.version }}"
+          body_path: release_notes.txt
           draft: false
           prerelease: false
           make_latest: true
-          generate_release_notes: true
+          generate_release_notes: false
           files: |
             release-assets/*.exe
             release-assets/*.tar.gz

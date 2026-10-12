@@ -87,7 +87,7 @@ echo ""
 echo "🚀 Vytvářím Git commit, tag a odesílám na GitHub..."
 git add -A
 git commit -m "$COMMIT_MSG" || echo "ℹ Žádné další změny k uložení kromě verze."
-git tag -a "v$NEW_VERSION" -m "MYCHAL SMP Launcher v$NEW_VERSION" -f
+git tag -a "v$NEW_VERSION" -m "$COMMIT_MSG" -f
 
 echo "📤 Odesílám kód a tag na GitHub (origin main)..."
 git push origin main

@@ -1234,7 +1234,8 @@
                                 <input type="checkbox" id="checkAutoUpdateMods" checked>
                                 <div class="perf-toggle-info">
                                     <span class="perf-toggle-title">Automatická aktualizace módů</span>
-                                    <span class="perf-toggle-desc">Při spuštění hry zkontrolovat a stáhnout novější verze módů.</span>
+                                    <span class="perf-toggle-desc">Při spuštění hry zkontrolovat a stáhnout novější
+                                        verze módů.</span>
                                 </div>
                             </label>
 
@@ -1423,12 +1424,21 @@
                     <div class="console-header">
                         <span>Herní konzole & Logy</span>
                         <div class="console-actions">
-                            <button type="button" class="btn-mini" id="btnCopyLog" title="Zkopírovat celý log do schránky">
-                                <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            <button type="button" class="btn-mini" id="btnCopyLog"
+                                title="Zkopírovat celý log do schránky">
+                                <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
                                 <span>Kopírovat log</span>
                             </button>
-                            <button type="button" class="btn-mini" id="btnDownloadLog" title="Stáhnout log jako textový soubor">
-                                <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            <button type="button" class="btn-mini" id="btnDownloadLog"
+                                title="Stáhnout log jako textový soubor">
+                                <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                    <polyline points="7 10 12 15 17 10"></polyline>
+                                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                                </svg>
                                 <span>Stáhnout log</span>
                             </button>
                             <button type="button" class="btn-mini" id="btnClearLog">Vymazat log</button>
@@ -2629,8 +2639,21 @@
                 <p style="font-size: 13px; color: #94a3b8; line-height: 1.5; margin-bottom: 12px;" id="updateModalDesc">
                     K dispozici je nová verze launcheru.
                 </p>
-                <div id="updateReleaseNotes"
-                    style="max-height: 140px; overflow-y: auto; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px; font-size: 12px; color: #cbd5e1; white-space: pre-wrap; display: none;">
+                <div id="updateReleaseNotesBox" style="display: none; margin-bottom: 12px;">
+                    <div
+                        style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #64748b; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                        <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" style="stroke: #0a67e5;">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                            <line x1="16" y1="13" x2="8" y2="13"></line>
+                            <line x1="16" y1="17" x2="8" y2="17"></line>
+                            <polyline points="10 9 9 9 8 9"></polyline>
+                        </svg>
+                        <span>Seznam změn</span>
+                    </div>
+                    <div id="updateReleaseNotes"
+                        style="max-height: 140px; overflow-y: auto; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #cbd5e1; line-height: 1.5; white-space: pre-wrap;">
+                    </div>
                 </div>
 
                 <!-- PROGRESS BAR CONTAINER (zobrazí se při stahování) -->

@@ -1350,7 +1350,7 @@ async function executeCrashFix(autoFix, gameDir, config, saveConfigFn, detectJav
 
         case 'REDOWNLOAD_VERSION_JAR': {
             const targetVer = config.version || '26.2';
-            const baseDir = config.baseDir || BASE_DIR;
+            const baseDir = config.baseDir || gameDir;
             const verDir = path.join(baseDir, 'versions');
             const vJar = path.join(verDir, targetVer, `${targetVer}.jar`);
             try {
@@ -1358,6 +1358,7 @@ async function executeCrashFix(autoFix, gameDir, config, saveConfigFn, detectJav
             } catch (_) {}
             return {
                 success: true,
+                relaunch: true,
                 message: `Soubor verze ${targetVer} byl resetován. Při příštím spuštění launcher stáhne čerstvou kopii!`
             };
         }

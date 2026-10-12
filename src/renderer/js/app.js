@@ -1675,11 +1675,24 @@ document.addEventListener('DOMContentLoaded', async () => {
             desc.style.display = 'block';
         }
 
+        const notesBox = document.getElementById('updateReleaseNotesBox');
         if (notes && update.releaseNotes) {
-            notes.textContent = update.releaseNotes;
-            notes.style.display = 'block';
+            let cleanNotes = String(update.releaseNotes).trim();
+            if (cleanNotes.startsWith('**Full Changelog**:') || cleanNotes.includes('/compare/')) {
+                cleanNotes = cleanNotes.replace(/\*\*Full Changelog\*\*:[^\n]*/gi, '').trim();
+            }
+            if (cleanNotes) {
+                notes.textContent = cleanNotes;
+                notes.style.display = 'block';
+                if (notesBox) notesBox.style.display = 'block';
+            } else {
+                notes.textContent = 'Aktualizace a vylepšení launcheru.';
+                notes.style.display = 'block';
+                if (notesBox) notesBox.style.display = 'block';
+            }
         } else if (notes) {
             notes.style.display = 'none';
+            if (notesBox) notesBox.style.display = 'none';
         }
 
         // Reset progress & countdown
@@ -1760,6 +1773,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (title) title.textContent = 'Stahování aktualizace';
             if (desc) desc.style.display = 'none';
             if (notes) notes.style.display = 'none';
+            const notesBox = document.getElementById('updateReleaseNotesBox');
+            if (notesBox) notesBox.style.display = 'none';
             if (updateModalFoot) updateModalFoot.style.display = 'none';
 
             if (updateProgressContainer) {
@@ -4439,11 +4454,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     let heroWaveStartTime = Date.now() + 2000;
     let heroWaveDuration = 2400;
     let isQuickWave = false;
+    let lastHeroWaveTime = Date.now() + 2000;
+    const HERO_WAVE_COOLDOWN_MS = 30000; // 30s cooldown mezi máváním
 
-    function triggerHeroWave(isQuick = false) {
+    function triggerHeroWave(isQuick = false, force = false) {
+        const now = Date.now();
+        // Pokud od posledního mávnutí neuplynulo alespoň 30 sekund, ignorujeme
+        if (!force && (now - lastHeroWaveTime < HERO_WAVE_COOLDOWN_MS)) {
+            return;
+        }
+        lastHeroWaveTime = now;
         isQuickWave = !!isQuick;
         heroWaveDuration = isQuick ? 1200 : 2400;
-        heroWaveStartTime = Date.now();
+        heroWaveStartTime = now;
     }
 
     // Minecraft click punch physics (panáček hitne jako by klikal na tlačítko)
@@ -4457,12 +4480,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Launch excitement & celebration spin physics
     let isHeroLaunchSpinning = false;
     let heroSpinAngle = 0;
+    let heroCelebrationWeight = 0;
 
     function setHeroLaunchCelebration(active) {
         isHeroLaunchSpinning = !!active;
-        if (!active && heroSkinViewer) {
-            if (heroSkinViewer.playerObject) {
-                heroSkinViewer.playerObject.position.y = -1;
+        if (!active) {
+            heroCelebrationWeight = 0;
+            if (heroSkinViewer) {
+                if (heroSkinViewer.playerObject) {
+                    heroSkinViewer.playerObject.position.y = -1;
+                }
             }
         }
     }
@@ -4579,36 +4606,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                     if (!heroSkinViewer) return;
 
-                    // ── STAV A: SPOUŠTĚNÍ HRY (CELEBRATION SPIN & ARMS UP) ─────────────────
-                    if (isHeroLaunchSpinning) {
-                        // Postava se energicky točí dokola (360° spin)
-                        heroSpinAngle = (heroSpinAngle + 0.075) % (Math.PI * 2);
-                        heroSkinViewer.playerWrapper.rotation.y = heroSpinAngle;
-                        heroSkinViewer.playerWrapper.rotation.x = 0;
-                        heroSkinViewer.playerWrapper.rotation.z = 0;
+                    // ── A. SPOUŠTĚNÍ HRY (PLYNULÉ OSLAVNÉ ROZTÁČENÍ & RUCE NAHOŘE) ─────────────────
+                    // Plynulý přechod váhy oslavy (0 -> 1 při startu, 1 -> 0 po spuštění hry / erroru)
+                    const targetCelebWeight = isHeroLaunchSpinning ? 1.0 : 0.0;
+                    heroCelebrationWeight += (targetCelebWeight - heroCelebrationWeight) * 0.12;
+                    if (Math.abs(heroCelebrationWeight) < 0.001) heroCelebrationWeight = 0;
 
-                        // Ruce zvednuté vysoko do vzduchu v radostném gestu (nadšený)
-                        if (player && player.skin) {
-                            if (player.skin.leftArm) {
-                                player.skin.leftArm.rotation.x = -2.85 + Math.sin(t * 7) * 0.14;
-                                player.skin.leftArm.rotation.z = -0.32 + Math.cos(t * 7) * 0.08;
-                                player.skin.leftArm.rotation.y = 0.1;
-                            }
-                            if (player.skin.rightArm) {
-                                player.skin.rightArm.rotation.x = -2.85 + Math.sin(t * 7 + 0.4) * 0.14;
-                                player.skin.rightArm.rotation.z = 0.32 - Math.cos(t * 7) * 0.08;
-                                player.skin.rightArm.rotation.y = -0.1;
-                            }
-                            if (player.skin.head) {
-                                player.skin.head.rotation.x = -0.22 + Math.sin(t * 5) * 0.05;
-                                player.skin.head.rotation.y = 0;
-                                player.skin.head.rotation.z = Math.sin(t * 6) * 0.06;
-                            }
-                            if (heroSkinViewer.playerObject) {
-                                heroSkinViewer.playerObject.position.y = -1 + Math.abs(Math.sin(t * 7)) * 1.2;
-                            }
-                        }
-                        return; // Při spouštění hry se neprovádí idle těla ani sledování kurzoru
+                    if (heroCelebrationWeight > 0.001) {
+                        // Příjemné, plynulejší točení dokola (původní bylo příliš zbrklé)
+                        heroSpinAngle = (heroSpinAngle + 0.032 * heroCelebrationWeight) % (Math.PI * 2);
+                    } else {
+                        heroSpinAngle = 0;
                     }
 
                     // 2. Přirozené střídání poloh těla: plynulé jemné otáčení doleva a doprava
@@ -4616,6 +4624,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const idleBodyYaw = Math.sin(t * 0.38) * 0.24 + Math.sin(t * 0.19) * 0.06;
 
                     // 3. Fyzika rotace tažením myší (momentum dojezd + hladké vracení zpět)
+                    // Hráč může s postavou PLNĚ interaktovat i během točení při spouštění hry!
                     if (!isDraggingHero) {
                         // Setrvačný hladký dojezd (momentum friction)
                         if (Math.abs(heroDragVelocityY) > 0.0002) {
@@ -4638,15 +4647,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (Math.abs(heroManualRotX) < 0.0008) heroManualRotX = 0;
                     }
 
-                    // Celková rotace těla (přirozený idle pohyb + manuální rotace s dojezdem)
-                    const totalBodyYaw = idleBodyYaw + heroManualRotY;
+                    // Celková rotace těla: kombinuje idle vlnění, točení při spuštění a ruční manipulaci myší
+                    const totalBodyYaw = (idleBodyYaw * (1 - heroCelebrationWeight)) + (heroSpinAngle * heroCelebrationWeight) + heroManualRotY;
                     const totalBodyPitch = heroManualRotX;
 
                     heroSkinViewer.playerWrapper.rotation.y = totalBodyYaw;
                     heroSkinViewer.playerWrapper.rotation.x = totalBodyPitch;
                     heroSkinViewer.playerWrapper.rotation.z = 0;
 
-                    // 4. Přátelské zamávání rukou (2s po zapnutí nebo rychlé zamávání po otevření z traye)
+                    // 4. Přátelské zamávání rukou (2s po zapnutí nebo po obnovení z traye)
                     let waveWeight = 0;
                     const duration = heroWaveDuration || 2400;
                     if (now >= heroWaveStartTime && now <= heroWaveStartTime + duration) {
@@ -4660,24 +4669,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                         } else {
                             waveWeight = 1.0;
                         }
-
-                        if (player && player.skin && player.skin.rightArm && waveWeight > 0.001) {
-                            // Rychlé přátelské kmitání ruky
-                            const waveSpeed = isQuickWave ? 14.0 : 9.5;
-                            const waveOsc = Math.sin((elapsed / 1000) * waveSpeed);
-                            const idleRotZ = player.skin.rightArm.rotation.z;
-                            const idleRotX = player.skin.rightArm.rotation.x;
-                            const idleRotY = player.skin.rightArm.rotation.y;
-
-                            // Ruka zvednutá do výšky (~135°) mávající ze strany na stranu
-                            const targetWaveRotZ = -2.35 + waveOsc * 0.32;
-                            const targetWaveRotX = -0.32 + Math.cos((elapsed / 1000) * waveSpeed) * 0.08;
-                            const targetWaveRotY = 0.22;
-
-                            player.skin.rightArm.rotation.z = idleRotZ + (targetWaveRotZ - idleRotZ) * waveWeight;
-                            player.skin.rightArm.rotation.x = idleRotX + (targetWaveRotX - idleRotX) * waveWeight;
-                            player.skin.rightArm.rotation.y = idleRotY + (targetWaveRotY - idleRotY) * waveWeight;
-                        }
                     }
 
                     // 5. Minecraft Punch Hit swing (při kliknutí na jakékoliv tlačítko v launcheru)
@@ -4687,21 +4678,87 @@ document.addEventListener('DOMContentLoaded', async () => {
                         punchWeight = Math.sin(p * Math.PI); // 0 -> 1 -> 0
                     }
 
-                    if (player && player.skin && player.skin.rightArm && punchWeight > 0.001) {
-                        const baseRotX = player.skin.rightArm.rotation.x;
-                        const baseRotY = player.skin.rightArm.rotation.y;
-                        const baseRotZ = player.skin.rightArm.rotation.z;
+                    // 6. Fyzika a rotace paží: 100% spolehlivý návrat do výchozí klidové polohy po JAKÉKOLIV animaci
+                    if (player && player.skin) {
+                        // LEVÁ RUKA (ruce nahoře při oslavě, jinak 100% klid v poloze z IdleAnimation)
+                        if (player.skin.leftArm) {
+                            const idleLeftRotX = player.skin.leftArm.rotation.x;
+                            let targetLeftRotX = idleLeftRotX;
+                            let targetLeftRotY = 0;
+                            let targetLeftRotZ = 0;
 
-                        const punchTargetX = -1.45;
-                        const punchTargetY = 0.42;
-                        const punchTargetZ = -0.22;
+                            if (heroCelebrationWeight > 0.0001) {
+                                const celebLeftX = -2.75 + Math.sin(t * 6) * 0.12;
+                                const celebLeftZ = -0.32 + Math.cos(t * 6) * 0.06;
+                                const celebLeftY = 0.1;
 
-                        player.skin.rightArm.rotation.x = baseRotX + (punchTargetX - baseRotX) * punchWeight;
-                        player.skin.rightArm.rotation.y = baseRotY + (punchTargetY - baseRotY) * punchWeight;
-                        player.skin.rightArm.rotation.z = baseRotZ + (punchTargetZ - baseRotZ) * punchWeight;
+                                targetLeftRotX = idleLeftRotX + (celebLeftX - idleLeftRotX) * heroCelebrationWeight;
+                                targetLeftRotY = celebLeftY * heroCelebrationWeight;
+                                targetLeftRotZ = celebLeftZ * heroCelebrationWeight;
+                            }
 
-                        if (player.skin.head) {
-                            player.skin.head.rotation.x += punchWeight * 0.09;
+                            // VŽDY aplikujeme spočtené rotace levé ruky
+                            player.skin.leftArm.rotation.x = targetLeftRotX;
+                            player.skin.leftArm.rotation.y = targetLeftRotY;
+                            player.skin.leftArm.rotation.z = targetLeftRotZ;
+                        }
+
+                        // PRAVÁ RUKA (oslava, mávání, úder pěstí – se zaručeným návratem)
+                        if (player.skin.rightArm) {
+                            const idleRotX = player.skin.rightArm.rotation.x;
+                            let targetRotX = idleRotX;
+                            let targetRotY = 0;
+                            let targetRotZ = 0;
+
+                            // A. Oslava spuštění (pravá ruka nahoře)
+                            if (heroCelebrationWeight > 0.0001) {
+                                const celebRightX = -2.75 + Math.sin(t * 6 + 0.4) * 0.12;
+                                const celebRightZ = 0.32 - Math.cos(t * 6) * 0.06;
+                                const celebRightY = -0.1;
+
+                                targetRotX = idleRotX + (celebRightX - idleRotX) * heroCelebrationWeight;
+                                targetRotY = celebRightY * heroCelebrationWeight;
+                                targetRotZ = celebRightZ * heroCelebrationWeight;
+                            }
+
+                            // B. Aplikace mávání rukou (pouze pokud zrovna neprobíhá oslava)
+                            if (waveWeight > 0.0001 && heroCelebrationWeight < 0.5) {
+                                const elapsed = Math.max(0, now - heroWaveStartTime);
+                                const waveSpeed = isQuickWave ? 14.0 : 9.5;
+                                const waveOsc = Math.sin((elapsed / 1000) * waveSpeed);
+
+                                const waveTargetZ = -2.35 + waveOsc * 0.32;
+                                const waveTargetX = -0.32 + Math.cos((elapsed / 1000) * waveSpeed) * 0.08;
+                                const waveTargetY = 0.22;
+
+                                const waveBlend = waveWeight * (1 - heroCelebrationWeight);
+                                targetRotX = targetRotX + (waveTargetX - targetRotX) * waveBlend;
+                                targetRotY = targetRotY + (waveTargetY - targetRotY) * waveBlend;
+                                targetRotZ = targetRotZ + (waveTargetZ - targetRotZ) * waveBlend;
+                            }
+
+                            // C. Aplikace úderu (Minecraft attack swing – funguje kdykoliv, i při spouštění!)
+                            if (punchWeight > 0.0001) {
+                                const punchTargetX = -1.35;
+                                const punchTargetY = 0.38;
+                                const punchTargetZ = -0.22;
+
+                                targetRotX = targetRotX + (punchTargetX - targetRotX) * punchWeight;
+                                targetRotY = targetRotY + (punchTargetY - targetRotY) * punchWeight;
+                                targetRotZ = targetRotZ + (punchTargetZ - targetRotZ) * punchWeight;
+                            }
+
+                            // VŽDY aplikujeme spočtené rotace – tím je 100% zaručeno,
+                            // že po skončení úderu, mávání i točení se ruka okamžitě a spolehlivě vrátí na (idleRotX, 0, 0)!
+                            player.skin.rightArm.rotation.x = targetRotX;
+                            player.skin.rightArm.rotation.y = targetRotY;
+                            player.skin.rightArm.rotation.z = targetRotZ;
+                        }
+
+                        // Radostné poskakování těla při oslavě
+                        if (heroSkinViewer.playerObject) {
+                            const celebBounce = Math.abs(Math.sin(t * 6)) * 0.9 * heroCelebrationWeight;
+                            heroSkinViewer.playerObject.position.y = -1 + celebBounce;
                         }
                     }
 
@@ -4736,7 +4793,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const targetHeadPitch = -totalBodyPitch * frontFactor + currentHeroHeadLookX * frontFactor + Math.sin(t * 1.4) * 0.012;
 
                         player.skin.head.rotation.y = targetHeadYaw;
-                        player.skin.head.rotation.x = targetHeadPitch;
+                        player.skin.head.rotation.x = targetHeadPitch + (punchWeight * 0.08);
                         player.skin.head.rotation.z = -targetHeadYaw * 0.05 - (waveWeight * 0.08);
                     }
                 }
@@ -4841,6 +4898,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
 
             heroWaveStartTime = Date.now() + 2000;
+            lastHeroWaveTime = Date.now() + 2000;
             heroSkinViewer.camera.position.set(0, 0, 70);
             heroSkinViewer.zoom = 0.88;
             heroSkinViewer.fov = 46;

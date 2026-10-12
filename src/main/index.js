@@ -2842,10 +2842,16 @@ ipcMain.handle('restart-launcher', () => {
 ipcMain.handle('apply-crash-fix', async (event, autoFix, profileId) => {
     try {
         const config = loadConfig();
+        const targetProfId = profileId || config.activeProfileId;
+        const profile = (config.profiles || []).find(p => p.id === targetProfId) || config.profiles?.[0] || null;
+        const gameDir = profile?.gameDir || config.baseDir || BASE_DIR;
         const effectiveConfig = {
             ...config,
+            baseDir: config.baseDir || BASE_DIR,
             version: profile?.version || config.version || '26.2',
-            loader: profile?.loader || config.loader || 'fabric'
+            loader: profile?.loader || config.loader || 'fabric',
+            profileId: targetProfId,
+            profileName: profile?.name || 'Minecraft'
         };
         return await executeCrashFix(autoFix, gameDir, effectiveConfig, saveConfig, detectJavaPath, downloadAndInstallJava);
     } catch (err) {

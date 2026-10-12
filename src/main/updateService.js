@@ -15,6 +15,63 @@ const GITHUB_REPO = 'mychalVidea/mychalsmp-launcher';
 const CURRENT_VERSION = packageJson.version || '1.0.0';
 
 /**
+ * Ověří, zda je zadaný text changelogu pouze generický GitHub boilerplate
+ * (např. "**Full Changelog**: https://github.com/...").
+ */
+function isGenericChangelog(notes) {
+    if (!notes || typeof notes !== 'string') return true;
+    const trimmed = notes.trim();
+    if (!trimmed) return true;
+    if (trimmed.startsWith('**Full Changelog**:') || (trimmed.includes('/compare/') && trimmed.length < 160)) {
+        const withoutCompare = trimmed.replace(/\*\*Full Changelog\*\*:[^\n]*/gi, '').trim();
+        return !withoutCompare || withoutCompare.length < 4;
+    }
+    return false;
+}
+
+/**
+ * Pokud release na GitHubu nemá vyplněné podrobné poznámky,
+ * načte z GitHub Commits API zprávy posledních commitů zadané vývojářem (git commit -m "zprava").
+ */
+async function fetchCommitChangelogFallback() {
+    try {
+        const commitsRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/commits?per_page=5&t=${Date.now()}`, {
+            headers: {
+                'User-Agent': 'mychalsmp-launcher-updater',
+                'Accept': 'application/vnd.github.v3+json'
+            }
+        });
+        if (!commitsRes.ok) return null;
+        const commits = await commitsRes.json();
+        if (!Array.isArray(commits) || commits.length === 0) return null;
+
+        const messages = [];
+        for (const c of commits) {
+            const rawMsg = c.commit?.message?.trim() || '';
+            if (!rawMsg) continue;
+            // Přeskočit čisté automatické bump commity (Release v...), pokud existují reálné commity
+            if (/^Release\s+v?[0-9]+/i.test(rawMsg)) continue;
+            const firstLine = rawMsg.split('\n')[0].trim();
+            if (firstLine && !messages.includes(firstLine)) {
+                messages.push(firstLine);
+            }
+            if (messages.length >= 3) break;
+        }
+
+        if (messages.length === 1) {
+            return messages[0];
+        } else if (messages.length > 1) {
+            return messages.map(m => `• ${m}`).join('\n');
+        } else if (commits[0]?.commit?.message) {
+            return commits[0].commit.message.trim();
+        }
+        return null;
+    } catch (_) {
+        return null;
+    }
+}
+
+/**
  * Checks for new releases from GitHub API.
  */
 async function checkForUpdates() {
@@ -86,13 +143,23 @@ async function checkForUpdates() {
             isDelta = false;
         }
 
+        let releaseNotes = (release.body || '').trim();
+        if (isGenericChangelog(releaseNotes)) {
+            const commitChangelog = await fetchCommitChangelogFallback();
+            if (commitChangelog) {
+                releaseNotes = commitChangelog;
+            } else if (releaseNotes.startsWith('**Full Changelog**:')) {
+                releaseNotes = 'Vylepšení a aktualizace herního launcheru.';
+            }
+        }
+
         return {
             hasUpdate,
             currentVersion: CURRENT_VERSION,
             latestVersion: latestTag,
             releaseName: release.name || release.tag_name,
             releaseUrl: release.html_url,
-            releaseNotes: release.body || '',
+            releaseNotes,
             publishedAt: release.published_at,
             isDelta,
             deltaName: deltaAsset ? deltaAsset.name : null,
