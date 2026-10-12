@@ -100,6 +100,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     let installedVersions = [];
     let isLaunching = false;
     let isRunning = false;
+    let runningProfileId = null;
+    let launchingProfileId = null;
     const BUNDLED_KEYARTS = {
         '1.21.11': 'assets/keyarts/1.21.11.png',
         '26.1': 'assets/keyarts/26.1.png',
@@ -146,6 +148,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             }).catch(() => {});
         }
     }
+
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && !isLaunching) {
+            resetHeroElytraFlyout();
+        }
+    });
 
     // ── Tab Navigation ──────────────────────────────────────────────────────
     function switchTab(tabId) {
@@ -534,15 +542,35 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // Check if Minecraft session is active / resumed from previous launch
             try {
-                const gameRunning = await window.api.isGameRunning();
-                if (gameRunning) {
-                    isRunning = true;
-                    if (sidebarPlayBtn) {
-                        sidebarPlayBtn.style.opacity = '1';
-                        sidebarPlayBtn.style.background = '#ef4444';
-                        sidebarPlayBtn.querySelector('span').innerHTML = '<svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg> Stop';
+                if (window.api && window.api.getActiveSession) {
+                    const session = await window.api.getActiveSession();
+                    if (session && session.running) {
+                        isRunning = true;
+                        runningProfileId = session.profileId || currentConfig.activeProfileId;
+                        if (session.profileId) {
+                            currentConfig.activeProfileId = session.profileId;
+                        }
+                        if (sidebarPlayBtn) {
+                            sidebarPlayBtn.style.opacity = '1';
+                            sidebarPlayBtn.style.background = '#ef4444';
+                            sidebarPlayBtn.querySelector('span').innerHTML = '<svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg> Stop';
+                        }
+                        renderProfilesList();
+                        refreshVersionStatuses();
                     }
-                    renderProfilesList();
+                } else {
+                    const gameRunning = await window.api.isGameRunning();
+                    if (gameRunning) {
+                        isRunning = true;
+                        runningProfileId = currentConfig.activeProfileId;
+                        if (sidebarPlayBtn) {
+                            sidebarPlayBtn.style.opacity = '1';
+                            sidebarPlayBtn.style.background = '#ef4444';
+                            sidebarPlayBtn.querySelector('span').innerHTML = '<svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg> Stop';
+                        }
+                        renderProfilesList();
+                        refreshVersionStatuses();
+                    }
                 }
             } catch (_) {}
         } catch (e) {
@@ -956,6 +984,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             const activeProfile = (currentConfig.profiles || []).find(p => p.id === currentConfig.activeProfileId);
             const activeVersion = activeProfile ? activeProfile.version : (currentConfig.version || '26.2');
 
+            const runningProfile = (isRunning && runningProfileId) ? (currentConfig.profiles || []).find(p => p.id === runningProfileId) : null;
+            const launchingProfile = (isLaunching && launchingProfileId) ? (currentConfig.profiles || []).find(p => p.id === launchingProfileId) : null;
+            const effectiveRunningVersion = runningProfile ? runningProfile.version : (isRunning ? activeVersion : null);
+            const effectiveLaunchingVersion = launchingProfile ? launchingProfile.version : (isLaunching ? activeVersion : null);
+
             const versions = ['26.2', '26.3', '1.21.11', '26.1.2'];
             for (const ver of versions) {
                 const idSuffix = ver.replace(/\./g, '');
@@ -965,8 +998,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const btnStop = document.getElementById(`btnStop${idSuffix}`);
                 const progressBox = document.getElementById(`vProgressBox${idSuffix}`);
                 const isInstalled = installedVersions.includes(ver);
-                const isThisRunning = isRunning && activeVersion === ver;
-                const isThisLaunching = isLaunching && activeVersion === ver;
+                const isThisRunning = isRunning && (effectiveRunningVersion === ver);
+                const isThisLaunching = isLaunching && (effectiveLaunchingVersion === ver);
+                const isAnyOtherBusy = (isRunning || isLaunching) && !isThisRunning && !isThisLaunching;
 
                 if (card) {
                     if (isThisRunning) {
@@ -1002,12 +1036,29 @@ document.addEventListener('DOMContentLoaded', async () => {
                         btnAction.style.display = 'flex';
                         if (isThisLaunching) {
                             btnAction.disabled = true;
+                            btnAction.classList.remove('mc-btn-disabled');
+                            btnAction.title = 'Probíhá spouštění / stahování...';
                             btnAction.innerHTML = `<span><svg class="ui-icon-svg ui-icon-svg--sm ui-icon-spin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="12"></circle></svg> Načítání hry...</span>`;
+                        } else if (isAnyOtherBusy) {
+                            btnAction.disabled = true;
+                            btnAction.classList.add('mc-btn-disabled');
+                            btnAction.title = isRunning
+                                ? 'Hra již běží. Před spuštěním nebo stažením jiné verze nejprve ukonči běžící instanci.'
+                                : 'Probíhá spouštění nebo stahování jiné verze. Počkej prosím na dokončení.';
+                            if (isInstalled) {
+                                btnAction.innerHTML = `<span><svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> Hrát Minecraft ${ver}</span>`;
+                            } else {
+                                btnAction.innerHTML = `<span><svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Stáhnout & Hrát ${ver}</span>`;
+                            }
                         } else if (isInstalled) {
                             btnAction.disabled = false;
+                            btnAction.classList.remove('mc-btn-disabled');
+                            btnAction.title = '';
                             btnAction.innerHTML = `<span><svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> Hrát Minecraft ${ver}</span>`;
                         } else {
                             btnAction.disabled = false;
+                            btnAction.classList.remove('mc-btn-disabled');
+                            btnAction.title = '';
                             btnAction.innerHTML = `<span><svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Stáhnout & Hrát ${ver}</span>`;
                         }
                     }
@@ -1134,6 +1185,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Bind quick join buttons
         trackedServersList.querySelectorAll('.btn-quick-join').forEach(btn => {
             btn.addEventListener('click', () => {
+                if (isRunning) {
+                    showToast('Hra již běží. Před připojením k serveru nejprve ukonči běžící hru.', 'error');
+                    return;
+                }
+                if (isLaunching) {
+                    showToast('Probíhá spouštění nebo stahování verze. Počkej na dokončení.', 'warning');
+                    return;
+                }
                 const srv = btn.dataset.server;
                 const targetProfileId = resolveLaunchProfileId();
                 recordServerJoin(srv);
@@ -1197,6 +1256,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Bind quick join buttons
         fullList.querySelectorAll('.btn-quick-join').forEach(btn => {
             btn.addEventListener('click', () => {
+                if (isRunning) {
+                    showToast('Hra již běží. Před připojením k serveru nejprve ukonči běžící hru.', 'error');
+                    return;
+                }
+                if (isLaunching) {
+                    showToast('Probíhá spouštění nebo stahování verze. Počkej na dokončení.', 'warning');
+                    return;
+                }
                 const srv = btn.dataset.server;
                 const targetProfileId = resolveLaunchProfileId();
                 recordServerJoin(srv);
@@ -1541,6 +1608,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnLaunchWithoutSmp = document.getElementById('btnLaunchWithoutSmp');
     if (btnLaunchWithoutSmp) {
         btnLaunchWithoutSmp.addEventListener('click', () => {
+            if (isRunning) {
+                showToast('Hra již běží. Před spuštěním jiné verze nejprve ukonči běžící hru.', 'error');
+                return;
+            }
+            if (isLaunching) {
+                showToast('Probíhá spouštění nebo stahování jiné verze.', 'warning');
+                return;
+            }
             closeWardenModal();
             appendLog('[PROFIL] Spouštím hru bez připojení k serveru MYCHAL SMP (módy povoleny pro singleplayer a jiné servery)...');
             showToast('Spouštím hru bez připojení k SMP – módy povoleny.', 'info');
@@ -1572,6 +1647,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── Quick Play MYCHAL SMP Banner ────────────────────────────────────────
     if (btnQuickPlayMychal) {
         btnQuickPlayMychal.addEventListener('click', async () => {
+            if (isRunning) {
+                showToast('Hra již běží. Před připojením k serveru nejprve ukonči běžící instanci.', 'error');
+                return;
+            }
+            if (isLaunching) {
+                showToast('Probíhá spouštění nebo stahování verze. Počkej prosím na dokončení.', 'warning');
+                return;
+            }
             const targetProfileId = resolveLaunchProfileId();
             selectActiveProfile(targetProfileId);
 
@@ -1851,8 +1934,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // 1. Profil, který právě běží (isRunning)
-        if (isRunning && currentConfig.activeProfileId) {
-            const runningProf = profiles.find(p => p.id === currentConfig.activeProfileId);
+        const currentRunningId = runningProfileId || currentConfig.activeProfileId;
+        if (isRunning && currentRunningId) {
+            const runningProf = profiles.find(p => p.id === currentRunningId);
             if (runningProf) return runningProf.id;
         }
 
@@ -1894,11 +1978,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!Array.isArray(profiles) || profiles.length === 0) return [];
 
         const activeId = currentConfig.activeProfileId;
+        const targetRunningId = runningProfileId || (isRunning ? activeId : null);
 
         return [...profiles].sort((a, b) => {
             // 1. Profil, který právě běží (isRunning), je VŽDY na 1. místě
-            const aRunning = isRunning && (a.id === activeId);
-            const bRunning = isRunning && (b.id === activeId);
+            const aRunning = isRunning && targetRunningId && (a.id === targetRunningId);
+            const bRunning = isRunning && targetRunningId && (b.id === targetRunningId);
             if (aRunning && !bRunning) return -1;
             if (!aRunning && bRunning) return 1;
 
@@ -2182,11 +2267,53 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // Upgrade button is ONLY displayed for versions older than the latest (26.3)
             const canUpgrade = p.version !== '26.3' && p.version !== '26.4';
+            const isThisRunning = isRunning && runningProfileId && (p.id === runningProfileId);
+            const isThisLaunching = isLaunching && launchingProfileId && (p.id === launchingProfileId);
+            const isBlocked = (isRunning || isLaunching) && !isThisRunning && !isThisLaunching;
+
+            const upgradeDisabled = (isRunning || isLaunching);
+            const upgradeTitle = upgradeDisabled
+                ? (isRunning ? 'Nelze provádět upgrade během běhu hry' : 'Nelze provádět upgrade během stahování / spouštění')
+                : 'Upgradovat profil a stáhnout nové verze módů';
             const upgradeBtnHtml = canUpgrade ? `
-                <button class="btn-upgrade-profile" data-profile-id="${escapeHtml(p.id)}" title="Upgradovat profil a stáhnout nové verze módů">
+                <button class="btn-upgrade-profile" data-profile-id="${escapeHtml(p.id)}" ${upgradeDisabled ? 'disabled' : ''} title="${escapeHtml(upgradeTitle)}">
                     <svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--gold" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="16 12 12 8 8 12"></polyline><line x1="12" y1="16" x2="12" y2="8"></line></svg> Upgrade
                 </button>
             ` : '';
+
+            const isInst = Array.isArray(installedVersions) && installedVersions.includes(p.version);
+            let launchBtnClass = 'mc-btn btn-launch-profile';
+            let launchBtnAttrs = `data-profile-id="${escapeHtml(p.id)}"`;
+            let launchBtnContent = '';
+
+            if (isThisRunning) {
+                launchBtnClass += ' mc-btn-red btn-stop-running';
+                launchBtnAttrs += ' title="Kliknutím ukončíš běžící hru"';
+                launchBtnContent = '<svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg> Stop';
+            } else if (isThisLaunching) {
+                launchBtnClass += ' mc-btn-primary';
+                launchBtnAttrs += ' disabled title="Probíhá spouštění / stahování hry..."';
+                launchBtnContent = '<svg class="ui-icon-svg ui-icon-svg--sm ui-icon-spin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="12"></circle></svg> Spouštím...';
+            } else if (isBlocked) {
+                launchBtnClass += ' mc-btn-primary mc-btn-disabled';
+                const blockedTooltip = isRunning
+                    ? 'Hra již běží. Před spuštěním nebo stažením jiné verze nejprve ukonči běžící instanci.'
+                    : 'Probíhá spouštění nebo stahování jiné verze. Počkej prosím na dokončení.';
+                launchBtnAttrs += ` disabled title="${escapeHtml(blockedTooltip)}"`;
+                launchBtnContent = isInst
+                    ? '<svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> Hrát'
+                    : '<svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Stáhnout';
+            } else {
+                launchBtnClass += ' mc-btn-primary';
+                launchBtnContent = isInst
+                    ? '<svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> Hrát'
+                    : '<svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Stáhnout';
+            }
+
+            const deleteDisabled = (isRunning || isLaunching);
+            const deleteTitle = deleteDisabled
+                ? 'Nelze odebírat profily během běhu nebo stahování hry'
+                : 'Odebrat a odinstalovat profil';
 
             return `
                 <div class="profile-row-card ${isActive ? 'active-profile' : ''}" data-profile-id="${escapeHtml(p.id)}">
@@ -2198,22 +2325,23 @@ document.addEventListener('DOMContentLoaded', async () => {
                         </div>
                         <div class="p-meta">${escapeHtml(meta)}</div>
                     </div>
-                    <div class="profile-actions">
-                        ${upgradeBtnHtml}
-                        <button class="mc-btn ${(() => {
-                    if (isRunning && isActive) return 'mc-btn-red';
-                    return 'mc-btn-primary';
-                })()} btn-launch-profile" data-profile-id="${escapeHtml(p.id)}">
-                            <span>${(() => {
-                    if (isRunning && isActive) return '<svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg> Stop';
-                    const isInst = Array.isArray(installedVersions) && installedVersions.includes(p.version);
-                    return isInst ? '<svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> Hrát' : '<svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Stáhnout';
-                })()}</span>
-                        </button>
-                        <button class="mc-btn mc-btn-secondary btn-profile-settings" data-profile-id="${escapeHtml(p.id)}" title="Nastavení profilu"><svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
-                        ${sortedProfiles.length > 1 ? `
-                        <button class="mc-btn mc-btn-secondary btn-profile-delete" data-profile-id="${escapeHtml(p.id)}" title="Odebrat a odinstalovat profil"><svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--red" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
-                        ` : ''}
+                    <div class="profile-card-right">
+                        <div class="profile-card-tools">
+                            <button class="profile-tool-btn btn-profile-settings" data-profile-id="${escapeHtml(p.id)}" title="Nastavení profilu">
+                                <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                            </button>
+                            ${sortedProfiles.length > 1 ? `
+                            <button class="profile-tool-btn btn-profile-delete" data-profile-id="${escapeHtml(p.id)}" ${deleteDisabled ? 'disabled' : ''} title="${escapeHtml(deleteTitle)}">
+                                <svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--red" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                            </button>
+                            ` : ''}
+                        </div>
+                        <div class="profile-actions">
+                            ${upgradeBtnHtml}
+                            <button class="${launchBtnClass}" ${launchBtnAttrs}>
+                                <span>${launchBtnContent}</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             `;
@@ -2222,8 +2350,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Bind card click for selection
         list.querySelectorAll('.profile-row-card').forEach(card => {
             card.addEventListener('click', (e) => {
-                if (e.target.closest('button')) return;
+                if (e.target.closest('button, .profile-tool-btn')) return;
                 const pid = card.dataset.profileId;
+                if (isRunning && runningProfileId && pid !== runningProfileId) {
+                    showToast('Hra již běží. Před výběrem jiného profilu nejprve ukonči běžící hru.', 'info');
+                    return;
+                }
                 selectActiveProfile(pid);
             });
         });
@@ -2231,14 +2363,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Bind Play buttons
         list.querySelectorAll('.btn-launch-profile').forEach(btn => {
             btn.addEventListener('pointerenter', () => {
-                if (typeof prewarmLaunchEnvironment === 'function') {
+                if (!btn.disabled && typeof prewarmLaunchEnvironment === 'function') {
                     prewarmLaunchEnvironment(btn.dataset.profileId);
                 }
             }, { passive: true });
             btn.addEventListener('click', async (e) => {
                 e.stopPropagation();
+                if (btn.disabled) return;
+                const pid = btn.dataset.profileId;
+                const isThisRunning = isRunning && (runningProfileId ? pid === runningProfileId : pid === currentConfig.activeProfileId);
+                if (isThisRunning) {
+                    if (confirm('Chceš ukončit běžící Minecraft proces?')) {
+                        try {
+                            await window.api.killGame();
+                        } catch (err) {}
+                        resetPlayState();
+                    }
+                    return;
+                }
+                if (isRunning) {
+                    showToast('Hra již běží. Před spuštěním nebo stažením jiné verze nejprve ukonči běžící hru.', 'error');
+                    return;
+                }
+                if (isLaunching) {
+                    showToast('Probíhá stahování nebo spouštění jiné verze. Počkej prosím na dokončení.', 'warning');
+                    return;
+                }
                 try {
-                    const pid = btn.dataset.profileId;
                     selectActiveProfile(pid);
                     await startLaunch(pid, null);
                 } catch (launchErr) {
@@ -2252,6 +2403,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         list.querySelectorAll('.btn-upgrade-profile').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
+                if (btn.disabled || isRunning || isLaunching) {
+                    showToast(isRunning ? 'Nelze provádět upgrade profilu během běhu hry.' : 'Nelze provádět upgrade během stahování / spouštění.', 'warning');
+                    return;
+                }
                 const pid = btn.dataset.profileId;
                 openUpgradeModal(pid);
             });
@@ -2270,6 +2425,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         list.querySelectorAll('.btn-profile-delete').forEach(btn => {
             btn.addEventListener('click', async (e) => {
                 e.stopPropagation();
+                if (btn.disabled || isRunning || isLaunching) {
+                    showToast(isRunning ? 'Nelze mazat profily během běhu hry.' : 'Nelze mazat profily během stahování / spouštění.', 'warning');
+                    return;
+                }
                 const pid = btn.dataset.profileId;
                 const p = (currentConfig.profiles || []).find(x => x.id === pid);
                 const pName = p ? p.name : pid;
@@ -2303,6 +2462,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function selectActiveProfile(profileId, isManual = true) {
+        if (isRunning && runningProfileId && profileId !== runningProfileId) {
+            return;
+        }
         if (isManual) {
             hasUserManuallySelectedProfile = true;
         }
@@ -2367,23 +2529,46 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (sidebarPlayBtn) {
         sidebarPlayBtn.addEventListener('click', () => {
+            if (isRunning) {
+                if (confirm('Chceš ukončit běžící Minecraft proces?')) {
+                    window.api.killGame().catch(console.error);
+                    resetPlayState();
+                }
+                return;
+            }
+            if (isLaunching) {
+                showToast('Probíhá spouštění nebo stahování verze. Počkej prosím na dokončení.', 'warning');
+                return;
+            }
             const targetProfileId = resolveLaunchProfileId();
             selectActiveProfile(targetProfileId, true);
             startLaunch(targetProfileId, null);
         });
         sidebarPlayBtn.addEventListener('pointerenter', () => {
-            prewarmLaunchEnvironment();
+            if (!isRunning && !isLaunching) {
+                prewarmLaunchEnvironment();
+            }
         }, { passive: true });
     }
 
     // Version tab installer buttons & stop buttons
     document.querySelectorAll('.btn-install-v').forEach(btn => {
         btn.addEventListener('pointerenter', () => {
+            if (btn.disabled || isRunning || isLaunching) return;
             const ver = btn.dataset.version;
             const pid = currentConfig.activeProfileId || `minecraft-${ver}`;
             prewarmLaunchEnvironment(pid);
         }, { passive: true });
         btn.addEventListener('click', async () => {
+            if (btn.disabled) return;
+            if (isRunning) {
+                showToast('Hra již běží. Před spuštěním nebo stažením jiné verze nejprve ukonči běžící instanci.', 'error');
+                return;
+            }
+            if (isLaunching) {
+                showToast('Probíhá stahování nebo spouštění jiné verze. Počkej prosím na dokončení.', 'warning');
+                return;
+            }
             const ver = btn.dataset.version;
             const profiles = currentConfig.profiles || [];
             let matchedProfile = profiles.find(p => p.id === currentConfig.activeProfileId && p.version === ver);
@@ -2505,6 +2690,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function startLaunch(profileId, serverIp) {
         if (isLaunching) {
             console.warn('[LAUNCH] Spuštění již probíhá...');
+            showToast('Probíhá spouštění nebo stahování verze. Počkej na dokončení.', 'warning');
             return;
         }
 
@@ -2512,9 +2698,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const targetProf = (currentConfig.profiles || []).find(x => x.id === targetPid);
 
         if (isRunning) {
-            if (confirm('Chceš ukončit běžící Minecraft proces?')) {
-                await window.api.killGame();
-                resetPlayState();
+            const currentRunningPid = runningProfileId || currentConfig.activeProfileId;
+            if (targetPid === currentRunningPid) {
+                if (confirm('Chceš ukončit běžící Minecraft proces?')) {
+                    await window.api.killGame();
+                    resetPlayState();
+                }
+            } else {
+                showToast('Hra již běží. Před spuštěním nebo stažením jiné verze nejprve ukonči běžící instanci.', 'error');
             }
             return;
         }
@@ -2529,19 +2720,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (_) {}
 
         isLaunching = true;
+        launchingProfileId = targetPid;
         setHeroLaunchCelebration(true);
         if (sidebarPlayBtn) sidebarPlayBtn.style.opacity = '0.5';
 
-        // Okamžitá vizuální odezva na kartě profilu (žádné ticho ani zamrznutí)
-        const clickedCard = document.querySelector(`.profile-row-card[data-profile-id="${targetPid}"]`);
-        if (clickedCard) {
-            const btn = clickedCard.querySelector('.btn-launch-profile');
-            if (btn) {
-                btn.disabled = true;
-                btn.style.opacity = '0.75';
-                btn.innerHTML = '<span><svg class="ui-icon-svg ui-icon-svg--xs ui-icon-spin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="12"></circle></svg> Spouštím...</span>';
-            }
-        }
+        renderProfilesList();
         refreshVersionStatuses();
 
         const isAlreadyInstalled = targetProf && Array.isArray(installedVersions) && installedVersions.includes(targetProf.version);
@@ -2689,12 +2872,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
+        if (isAlreadyInstalled) {
+            // Verze je již stažena v mezipaměti – spustíme odlet na začátku bootstrapu JVM
+            triggerHeroElytraFlyout();
+        }
+
         try {
             const res = await window.api.launchGame(targetPid, actualServerIp);
             if (res && res.success) {
                 isRunning = true;
+                runningProfileId = targetPid;
                 isLaunching = false;
+                launchingProfileId = null;
                 setHeroLaunchCelebration(false);
+                triggerHeroElytraFlyout();
 
                 try {
                     installedVersions = await window.api.getInstalledVersions();
@@ -2706,13 +2897,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                     launchedProfile.lastPlayed = Date.now();
                     currentConfig.activeProfileId = targetPid;
                     window.api.saveConfig({ profiles: currentConfig.profiles, activeProfileId: targetPid });
-                    renderProfilesList();
                 }
+
+                renderProfilesList();
+                refreshVersionStatuses();
 
                 if (sidebarPlayBtn) {
                     sidebarPlayBtn.style.opacity = '1';
                     sidebarPlayBtn.style.background = '#ef4444';
-                    sidebarPlayBtn.querySelector('span').innerHTML = '<svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>';
+                    sidebarPlayBtn.querySelector('span').innerHTML = '<svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg> Stop';
                 }
                 const activeCard = document.querySelector(`.profile-row-card[data-profile-id="${targetPid}"]`);
                 if (activeCard) {
@@ -2861,8 +3054,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function resetPlayState() {
         isRunning = false;
+        runningProfileId = null;
         isLaunching = false;
+        launchingProfileId = null;
         setHeroLaunchCelebration(false);
+        resetHeroElytraFlyout();
         lastProgressData = null;
         maxRenderedProgress = 0;
         activePreLaunchModUpdate = null;
@@ -4482,14 +4678,257 @@ document.addEventListener('DOMContentLoaded', async () => {
     let heroSpinAngle = 0;
     let heroCelebrationWeight = 0;
 
+    // ── 3D Elytra Fly-out Cinematic State & Physics ──────────────────────────
+    let isHeroFlyingOut = false;
+    let heroFlyoutStartTime = 0;
+    const HERO_FLYOUT_DURATION = 1350; // ms: přesně synchronizováno s přirozeným startem JVM
+    let heroInitialCanvasRect = null;
+    let heroFlightOriginalBackEquipment = null;
+    let heroFlightResetTimer = null;
+    let heroFlightStartX = 0;
+    let heroFlightStartY = 0;
+    let heroFlightWorldW = 0;
+    let heroFlightWorldH = 0;
+
+    /**
+     * Vytvoří autentickou tmavě šedou texturu Elytry pro případ,
+     * kdy hráč nemá načtený žádný vlastní plášť.
+     */
+    function getDefaultElytraDataUrl() {
+        try {
+            const c = document.createElement('canvas');
+            c.width = 64;
+            c.height = 32;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#474950';
+            ctx.fillRect(0, 0, 64, 32);
+            ctx.fillStyle = '#36373d';
+            ctx.fillRect(0, 0, 32, 4);
+            ctx.fillRect(10, 0, 12, 22);
+            ctx.fillRect(36, 0, 12, 22);
+            ctx.fillStyle = '#26272b';
+            ctx.fillRect(0, 16, 64, 16);
+            ctx.fillStyle = '#5c5e66';
+            ctx.fillRect(2, 4, 8, 14);
+            ctx.fillRect(34, 4, 8, 14);
+            return c.toDataURL();
+        } catch (_) {
+            return null;
+        }
+    }
+
+    /**
+     * Zahájí plynulý vzlet postavy s Elytrou:
+     * - Bounding box canvasu se rozšíří na celé okno s pointer-events: none (plně proklikatelné).
+     * - Přesná 3D kompenzace zajistí nulový skok – postava začíná na přesném pixelu své pozice.
+     * - Nasadí se Elytra a postava vyskočí a odletí dopředu před kameru.
+     */
+    function triggerHeroElytraFlyout() {
+        if (isHeroFlyingOut) return;
+        const canvas = document.getElementById('heroSkinCanvas3D');
+        if (!canvas || !heroSkinViewer || !heroSkinViewer.playerObject) return;
+        if (heroSkinViewer.disposed) return;
+
+        // Pokud předchozí reset ještě čekal, zrušíme ho
+        if (heroFlightResetTimer) {
+            clearTimeout(heroFlightResetTimer);
+            heroFlightResetTimer = null;
+        }
+
+        heroSkinViewer.renderPaused = false;
+        heroFlightOriginalBackEquipment = heroSkinViewer.playerObject.backEquipment;
+        heroInitialCanvasRect = canvas.getBoundingClientRect();
+
+        // 1. Nasazení Elytry (pokud nemá cape texture, vygenerujeme standardní texturu)
+        if (!heroSkinViewer.capeTexture) {
+            const elytraTex = getDefaultElytraDataUrl();
+            if (elytraTex) {
+                try {
+                    heroSkinViewer.loadCape(elytraTex, { backEquipment: 'elytra' });
+                } catch (_) {
+                    heroSkinViewer.playerObject.backEquipment = 'elytra';
+                }
+            } else {
+                heroSkinViewer.playerObject.backEquipment = 'elytra';
+            }
+        } else {
+            heroSkinViewer.playerObject.backEquipment = 'elytra';
+        }
+
+        // 2. Rozšíření bounding boxu na celé okno s pointer-events: none (žádné blokování klikání)
+        const wrapperEl = document.getElementById('heroSkinWrapper');
+        if (wrapperEl) wrapperEl.classList.add('has-flyout');
+        canvas.classList.add('hero-elytra-flyout');
+
+        const W = window.innerWidth || document.documentElement.clientWidth || 1100;
+        const H = window.innerHeight || document.documentElement.clientHeight || 700;
+        heroSkinViewer.setSize(W, H);
+
+        // 3. Přepočet souřadnic 2D obrazovky do 3D světa na Z = 0 pro absolutní kontinuitu bez poskočení
+        const cx = heroInitialCanvasRect.left + (heroInitialCanvasRect.width / 2);
+        const cy = heroInitialCanvasRect.top + (heroInitialCanvasRect.height / 2);
+
+        const camZ = heroSkinViewer.camera.position.z || 70;
+        const halfFovRad = ((heroSkinViewer.camera.fov || 46) * Math.PI) / 360;
+        heroFlightWorldH = 2 * camZ * Math.tan(halfFovRad);
+        heroFlightWorldW = heroFlightWorldH * (W / H);
+
+        heroFlightStartX = ((cx - (W / 2)) / W) * heroFlightWorldW;
+        heroFlightStartY = -((cy - (H / 2)) / H) * heroFlightWorldH;
+
+        if (heroSkinViewer.playerWrapper) {
+            heroSkinViewer.playerWrapper.position.set(heroFlightStartX, heroFlightStartY, 0);
+            heroSkinViewer.playerWrapper.rotation.set(0, 0, 0);
+        }
+        if (heroSkinViewer.playerObject) {
+            heroSkinViewer.playerObject.position.set(0, 0, 0);
+            heroSkinViewer.playerObject.rotation.set(0, 0, 0);
+        }
+
+        isHeroFlyingOut = true;
+        heroFlyoutStartTime = Date.now();
+
+        // 4. Bezpečnostní návrat do původního stavu po 10 sekundách nebo dalším otevření
+        heroFlightResetTimer = setTimeout(() => {
+            resetHeroElytraFlyout();
+        }, 10000);
+    }
+
+    /**
+     * Vykreslení jednoho snímku letové animace s Elytrou.
+     */
+    function updateHeroElytraFlyoutFrame(player, p, elapsed) {
+        if (!heroSkinViewer) return;
+        const wrapper = heroSkinViewer.playerWrapper;
+        const camZ = heroSkinViewer.camera.position.z || 70;
+
+        // Fáze 1: Příprava / Přikrčení (0 <= p <= 0.14, cca 0 - 190 ms)
+        if (p <= 0.14) {
+            const prep = p / 0.14;
+            const crouchAmt = Math.sin(prep * Math.PI) * 2.8;
+
+            wrapper.position.x = heroFlightStartX;
+            wrapper.position.y = heroFlightStartY - crouchAmt;
+            wrapper.position.z = 0;
+
+            if (player.skin) {
+                player.skin.body.rotation.x = prep * 0.35;
+                player.skin.head.rotation.x = -prep * 0.2;
+                player.skin.leftLeg.rotation.x = -prep * 0.55;
+                player.skin.rightLeg.rotation.x = -prep * 0.55;
+                player.skin.leftArm.rotation.x = prep * 0.45;
+                player.skin.rightArm.rotation.x = prep * 0.45;
+            }
+
+            if (player.elytra) {
+                player.elytra.leftWing.rotation.x = 0.35;
+                player.elytra.leftWing.rotation.y = 0.05;
+                player.elytra.leftWing.rotation.z = 0.26;
+                player.elytra.updateRightWing();
+            }
+            return;
+        }
+
+        // Fáze 2 & 3: Odraz, rozevření křídel a dramatický průlet ke kameře (0.14 < p <= 1.0)
+        const flightProgress = (p - 0.14) / 0.86;
+        const speedP = Math.pow(flightProgress, 1.55);
+
+        const targetEndX = heroFlightStartX + (heroFlightWorldW * 0.42);
+        const targetEndY = heroFlightStartY + (heroFlightWorldH * 0.52);
+        const targetEndZ = camZ + 25; // přeletí za rovinu kamery
+
+        wrapper.position.x = heroFlightStartX + (targetEndX - heroFlightStartX) * Math.sin(speedP * Math.PI * 0.5);
+        wrapper.position.y = heroFlightStartY + (targetEndY - heroFlightStartY) * speedP;
+        wrapper.position.z = speedP * targetEndZ;
+
+        // Aerodynamický sklon těla v letu (~82° dopředu)
+        const flightPitch = Math.min(1.43, flightProgress * 1.6);
+        wrapper.rotation.x = flightPitch;
+        wrapper.rotation.z = -0.25 * Math.sin(flightProgress * Math.PI);
+        wrapper.rotation.y = 0.25 * (1 - flightProgress);
+
+        if (player.skin && player.skin.head) {
+            player.skin.head.rotation.x = -0.65;
+            player.skin.head.rotation.y = 0;
+        }
+
+        // Křídla Elytry: plynulé rozevření do aerofoil profilu s vlněním
+        if (player.elytra) {
+            const wingDeploy = Math.min(1, flightProgress * 3.2);
+            const wingFlutter = Math.sin(elapsed * 0.025) * 0.12;
+
+            player.elytra.leftWing.rotation.x = 0.35 + (wingFlutter * 0.4);
+            player.elytra.leftWing.rotation.y = 0.32;
+            player.elytra.leftWing.rotation.z = (0.26 + (1.28 - 0.26) * wingDeploy) + wingFlutter;
+            player.elytra.updateRightWing();
+        }
+
+        if (player.skin) {
+            player.skin.leftArm.rotation.x = 0.12;
+            player.skin.leftArm.rotation.z = 0.45;
+            player.skin.rightArm.rotation.x = 0.12;
+            player.skin.rightArm.rotation.z = -0.45;
+            player.skin.leftLeg.rotation.x = 0.15;
+            player.skin.rightLeg.rotation.x = 0.15;
+        }
+    }
+
+    /**
+     * Vrátí postavu čistě zpět do výchozího stavu na podstavec.
+     */
+    function resetHeroElytraFlyout() {
+        if (heroFlightResetTimer) {
+            clearTimeout(heroFlightResetTimer);
+            heroFlightResetTimer = null;
+        }
+
+        if (!isHeroFlyingOut) return;
+        isHeroFlyingOut = false;
+        heroFlyoutStartTime = 0;
+
+        const canvas = document.getElementById('heroSkinCanvas3D');
+        if (canvas) {
+            canvas.classList.remove('hero-elytra-flyout');
+        }
+        const wrapperEl = document.getElementById('heroSkinWrapper');
+        if (wrapperEl) {
+            wrapperEl.classList.remove('has-flyout');
+        }
+
+        if (!heroSkinViewer || heroSkinViewer.disposed) return;
+
+        try {
+            heroSkinViewer.setSize(220, 280);
+
+            if (heroSkinViewer.playerWrapper) {
+                heroSkinViewer.playerWrapper.position.set(0, 0, 0);
+                heroSkinViewer.playerWrapper.rotation.set(0, 0, 0);
+            }
+            if (heroSkinViewer.playerObject) {
+                heroSkinViewer.playerObject.position.set(0, -1, 0);
+                heroSkinViewer.playerObject.rotation.set(0, 0, 0);
+                heroSkinViewer.playerObject.resetJoints();
+
+                // Obnovení původního pláště (nebo null pokud plášť neměl)
+                if (heroFlightOriginalBackEquipment === null) {
+                    heroSkinViewer.loadCape(null);
+                } else {
+                    heroSkinViewer.playerObject.backEquipment = heroFlightOriginalBackEquipment;
+                }
+            }
+
+            heroSkinViewer.animation = createHeroIdleAnimation() || new window.skinview3d.IdleAnimation();
+        } catch (e) {
+            console.warn('[HERO FLYOUT] resetHeroElytraFlyout error:', e);
+        }
+    }
+
     function setHeroLaunchCelebration(active) {
         isHeroLaunchSpinning = !!active;
         if (!active) {
             heroCelebrationWeight = 0;
-            if (heroSkinViewer) {
-                if (heroSkinViewer.playerObject) {
-                    heroSkinViewer.playerObject.position.y = -1;
-                }
+            if (heroSkinViewer && heroSkinViewer.playerObject && !isHeroFlyingOut) {
+                heroSkinViewer.playerObject.position.y = -1;
             }
         }
     }
@@ -4606,6 +5045,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                     if (!heroSkinViewer) return;
 
+                    // ── 0. ELYTRA FLY-OUT CINEMATIC (ODLET PŘI SPUŠTĚNÍ HRY) ───────────────────
+                    if (isHeroFlyingOut) {
+                        const elapsed = Date.now() - heroFlyoutStartTime;
+                        const p = Math.min(1, Math.max(0, elapsed / HERO_FLYOUT_DURATION));
+                        updateHeroElytraFlyoutFrame(player, p, elapsed);
+                        return;
+                    }
+
                     // ── A. SPOUŠTĚNÍ HRY (PLYNULÉ OSLAVNÉ ROZTÁČENÍ & RUCE NAHOŘE) ─────────────────
                     // Plynulý přechod váhy oslavy (0 -> 1 při startu, 1 -> 0 po spuštění hry / erroru)
                     const targetCelebWeight = isHeroLaunchSpinning ? 1.0 : 0.0;
@@ -4640,7 +5087,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                             heroDragVelocityX = 0;
                         }
 
-                        // Hladké a plynulé vracení manuální rotace do výchozí pozice (0) bez skoku
+                        // Hladké a plynulé vracení manuální rotace do výchozí pozice (0) nejkratší možnou trasou:
+                        // Normalizujeme kumulovaný úhel do intervalu (-PI, PI].
+                        // Tím se postava při puštění NIKDY neroztáčí zpět o několik celých otáček dokola,
+                        // ale hladce se vrátí tou nejkratší přímou trasou (co nejbližší poloha) zpět do čela!
+                        const twoPi = Math.PI * 2;
+                        heroManualRotY = ((heroManualRotY % twoPi) + twoPi) % twoPi;
+                        if (heroManualRotY > Math.PI) heroManualRotY -= twoPi;
+
                         heroManualRotY *= 0.945;
                         heroManualRotX *= 0.945;
                         if (Math.abs(heroManualRotY) < 0.0008) heroManualRotY = 0;
@@ -6122,6 +6576,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const percent = maxRenderedProgress;
         const statusText = data.text || 'Načítání hry...';
 
+        // ── Predikce a spuštění odletu postavy s Elytrou ─────────────────────────
+        // Jakmile stahování dosáhne 98%+ nebo začne spouštění Minecraftu, aktivujeme odlet:
+        if (rawPercent >= 98 || (statusText && (statusText.includes('Spouštím Minecraft') || statusText.includes('připraveny')))) {
+            triggerHeroElytraFlyout();
+        }
+
         if (progressContainer) {
             progressContainer.style.display = 'flex';
             if (progressBar) progressBar.style.width = `${percent}%`;
@@ -6229,10 +6689,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Zero-overhead during gameplay & background pause (Tray restore)
     if (window.api && window.api.onGameStarted) {
-        window.api.onGameStarted(() => {
+        window.api.onGameStarted((data) => {
             appendLog('[VÝKON] Hra spuštěna – launcher minimalizován do Tray lišty, pozastaveno 3D vykreslování pro 0% zátěž CPU/GPU.');
             isRunning = true;
             isLaunching = false;
+            launchingProfileId = null;
+            if (data && data.profileId) {
+                runningProfileId = data.profileId;
+            } else if (!runningProfileId) {
+                runningProfileId = currentConfig.activeProfileId;
+            }
             setHeroLaunchCelebration(false);
             if (sidebarPlayBtn) {
                 sidebarPlayBtn.style.opacity = '1';
@@ -6240,7 +6706,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 sidebarPlayBtn.querySelector('span').innerHTML = '<svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg> Stop';
             }
             renderProfilesList();
-            if (heroSkinViewer) heroSkinViewer.renderPaused = true;
+            refreshVersionStatuses();
+            if (isHeroFlyingOut) {
+                setTimeout(() => {
+                    if (heroSkinViewer) heroSkinViewer.renderPaused = true;
+                }, 350);
+            } else {
+                if (heroSkinViewer) heroSkinViewer.renderPaused = true;
+            }
             if (skinViewer) skinViewer.renderPaused = true;
         });
     }
@@ -6249,6 +6722,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.api.onGameStopped(() => {
             appendLog('[VÝKON] Hra ukončena – okno launcheru obnoveno ze systémové lišty.');
             resetPlayState();
+            resetHeroElytraFlyout();
             const curTab = document.querySelector('.nav-btn.active')?.dataset?.tab || 'play';
             if (heroSkinViewer) heroSkinViewer.renderPaused = (curTab !== 'play');
             if (skinViewer) skinViewer.renderPaused = (curTab !== 'character');
@@ -7897,6 +8371,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     let activeUpgradeSourceProfileId = null;
 
     function openUpgradeModal(profileId) {
+        if (isRunning || isLaunching) {
+            showToast(isRunning ? 'Nelze provádět upgrade profilu během běhu hry.' : 'Nelze provádět upgrade během stahování / spouštění.', 'warning');
+            return;
+        }
         activeUpgradeSourceProfileId = profileId;
         const profile = (currentConfig.profiles || []).find(p => p.id === profileId) || currentConfig.profiles[0];
 
@@ -7935,6 +8413,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btnConfirmUpgrade) {
         btnConfirmUpgrade.addEventListener('click', async () => {
             if (!activeUpgradeSourceProfileId) return;
+            if (isRunning || isLaunching) {
+                showToast(isRunning ? 'Nelze provádět upgrade profilu během běhu hry.' : 'Nelze provádět upgrade během stahování / spouštění.', 'warning');
+                return;
+            }
 
             const targetVer = upgradeTargetVersionSelect ? upgradeTargetVersionSelect.value : '26.3';
             btnConfirmUpgrade.disabled = true;

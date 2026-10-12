@@ -256,7 +256,10 @@ function createWindow() {
     mainWindow.webContents.once('did-finish-load', () => {
         const isLive = checkAndResumeActiveSession();
         if (isLive) {
-            mainWindow.webContents.send('game-started');
+            mainWindow.webContents.send('game-started', {
+                profileId: activeSessionData ? activeSessionData.profileId : null,
+                version: activeSessionData ? activeSessionData.version : null
+            });
         }
     });
 
@@ -383,6 +386,7 @@ if (!gotTheLock) {
     });
 
     app.whenReady().then(() => {
+        checkAndResumeActiveSession();
         ensureLinuxDesktopShortcut();
         setupTray();
         createSplashWindow();
@@ -1557,6 +1561,9 @@ function checkAndResumeActiveSession() {
 }
 
 ipcMain.handle('is-game-running', () => {
+    if (!activeSessionData) {
+        checkAndResumeActiveSession();
+    }
     return isGameRunning() || (activeSessionData !== null && isProcessAlive(activeSessionData.pid));
 });
 
@@ -1571,7 +1578,21 @@ ipcMain.handle('kill-game', () => {
     return true;
 });
 
+ipcMain.handle('get-active-session', () => {
+    if (!activeSessionData) {
+        checkAndResumeActiveSession();
+    }
+    const running = isGameRunning() || (activeSessionData !== null && isProcessAlive(activeSessionData.pid));
+    return {
+        running,
+        profileId: activeSessionData ? activeSessionData.profileId : null,
+        version: activeSessionData ? activeSessionData.version : null,
+        pid: activeSessionData ? activeSessionData.pid : null
+    };
+});
+
 ipcMain.handle('cancel-launch', () => {
+    isLaunchingProcess = false;
     cancelLaunch();
     return true;
 });
@@ -1595,13 +1616,31 @@ ipcMain.handle('preload-launch-environment', async (event, profileId) => {
     }
 });
 
+let isLaunchingProcess = false;
+
 ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
+    if (isLaunchingProcess) {
+        return {
+            success: false,
+            error: 'Již probíhá spouštění nebo stahování jiné verze hry.'
+        };
+    }
+    const alreadyRunning = isGameRunning() || (activeSessionData !== null && isProcessAlive(activeSessionData.pid));
+    if (alreadyRunning) {
+        return {
+            success: false,
+            error: 'Hra již běží. Před spuštěním jiné verze nejprve ukonči běžící hru.'
+        };
+    }
+    isLaunchingProcess = true;
+
     const config = loadConfig();
     let authData;
 
     if (config.authType === 'microsoft' && config.microsoftAccount) {
         const validMs = await getValidMicrosoftSession(false);
         if (!validMs.success) {
+            isLaunchingProcess = false;
             return {
                 success: false,
                 sessionExpired: true,
@@ -1695,6 +1734,7 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
     if (serverIp && (serverIp.includes('mychalsmp.xyz') || serverIp.includes('mychalsmp'))) {
         const probeScan = scanProfileForBlacklistedMods(launchConfig.baseDir);
         if (!probeScan.clean) {
+            isLaunchingProcess = false;
             return {
                 success: false,
                 blockedByWarden: true,
@@ -1948,7 +1988,10 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
 
         // Teprve pokud proces stabilně běží, schováme okno do lišty a pošleme 'game-started'
         if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('game-started');
+            mainWindow.webContents.send('game-started', {
+                profileId: activeSessionData ? activeSessionData.profileId : profileId,
+                version: activeSessionData ? activeSessionData.version : null
+            });
             mainWindow.hide();
         }
 
@@ -1959,6 +2002,8 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
         }
         console.error('Chyba při spouštění hry:', err);
         return { success: false, error: err.message };
+    } finally {
+        isLaunchingProcess = false;
     }
 });
 

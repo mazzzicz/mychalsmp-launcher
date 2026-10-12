@@ -985,6 +985,11 @@ body.is-maximized {
     will-change: transform;
 }
 
+.stage-skin-wrapper.has-flyout {
+    transform: none !important;
+    will-change: auto !important;
+}
+
 .hero-3d-canvas {
     width: 220px;
     height: 280px;
@@ -1003,6 +1008,21 @@ body.is-maximized {
 
 .hero-3d-canvas:active {
     cursor: grabbing;
+}
+
+/* 3D Elytra Flyout Cinematic Overlay - expands over entire launcher with pointer-events: none */
+.hero-3d-canvas.hero-elytra-flyout {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 99999 !important;
+    pointer-events: none !important;
+    cursor: default !important;
+    background: transparent !important;
+    transform: none !important;
+    filter: drop-shadow(0 24px 50px rgba(0, 0, 0, 0.75)) !important;
 }
 
 /* Levitating Pedestal & Ground Shadow under 3D Character */
@@ -1362,12 +1382,150 @@ body.is-maximized {
     z-index: 2;
 }
 
-.profile-actions {
+.profile-card-right {
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-end;
     gap: 6px;
     position: relative;
     z-index: 2;
+    flex-shrink: 0;
+}
+
+.profile-card-tools {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.profile-tool-btn {
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    color: #94a3b8;
+    cursor: pointer;
+    transition: all 0.16s ease;
+    padding: 0;
+}
+
+.profile-tool-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.22);
+    color: #ffffff;
+    transform: translateY(-1px);
+}
+
+.profile-tool-btn.btn-profile-delete:hover:not(:disabled) {
+    background: rgba(245, 21, 21, 0.16);
+    border-color: rgba(245, 21, 21, 0.4);
+    color: #f87171;
+}
+
+.profile-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+    z-index: 2;
+}
+
+.profile-actions .btn-launch-profile {
+    padding: 8px 22px !important;
+    min-height: 38px !important;
+    min-width: 104px !important;
+    font-size: 13.5px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.3px !important;
+    border-radius: var(--radius-control) !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 7px !important;
+    box-shadow: 0 4px 14px rgba(10, 103, 229, 0.32);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.profile-actions .btn-launch-profile span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    font-size: 13.5px;
+    font-weight: 700;
+}
+
+.profile-actions .btn-launch-profile svg {
+    width: 15px;
+    height: 15px;
+}
+
+.profile-actions .btn-launch-profile:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(10, 103, 229, 0.45);
+}
+
+.profile-actions .btn-upgrade-profile {
+    min-height: 38px;
+    padding: 7px 14px;
+    font-size: 12.5px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: var(--radius-control);
+}
+
+.profile-actions .btn-launch-profile:disabled,
+.profile-actions .btn-launch-profile.mc-btn-disabled,
+.profile-actions .btn-upgrade-profile:disabled,
+.profile-actions .btn-profile-delete:disabled,
+.profile-tool-btn:disabled,
+.profile-tool-btn.mc-btn-disabled,
+.btn-launch-profile:disabled,
+.btn-launch-profile.mc-btn-disabled,
+.btn-install-v:disabled,
+.btn-install-v.mc-btn-disabled {
+    opacity: 0.38 !important;
+    cursor: not-allowed !important;
+    pointer-events: auto !important;
+    box-shadow: none !important;
+    transform: none !important;
+    filter: grayscale(0.25);
+}
+
+.profile-actions .btn-launch-profile:disabled:hover,
+.profile-actions .btn-launch-profile.mc-btn-disabled:hover,
+.btn-install-v:disabled:hover,
+.btn-install-v.mc-btn-disabled:hover {
+    background: var(--brand-blue) !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
+
+.profile-actions .btn-upgrade-profile:disabled:hover,
+.profile-actions .btn-profile-delete:disabled:hover,
+.profile-tool-btn:disabled:hover {
+    box-shadow: none !important;
+    transform: none !important;
+}
+
+.btn-stop-running {
+    background: #ef4444 !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35) !important;
+    cursor: pointer !important;
+    opacity: 1 !important;
+}
+
+.btn-stop-running:hover {
+    background: #dc2626 !important;
+    box-shadow: 0 6px 20px rgba(239, 68, 68, 0.5) !important;
+    transform: translateY(-1px) !important;
 }
 
 .profile-title-line {

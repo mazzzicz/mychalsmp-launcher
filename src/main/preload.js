@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('api', {
     killGame: () => ipcRenderer.invoke('kill-game'),
     cancelLaunch: () => ipcRenderer.invoke('cancel-launch'),
     isGameRunning: () => ipcRenderer.invoke('is-game-running'),
+    getActiveSession: () => ipcRenderer.invoke('get-active-session'),
     detectJava: () => ipcRenderer.invoke('detect-java'),
     getAvailableJavas: () => ipcRenderer.invoke('get-available-javas'),
     getInstalledVersions: () => ipcRenderer.invoke('get-installed-versions'),
