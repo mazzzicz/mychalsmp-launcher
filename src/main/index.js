@@ -78,11 +78,15 @@ const { scanLauncherCache, cleanLauncherCache } = require('./cleaner');
 const { discordRpc } = require('./discordRpc');
 const keybindManager = require('./keybindManager');
 
-// ⚡ Optimalizace hardwarové akcelerace Electronu (hladký 144Hz+ rendering rozhraní bez záseků CPU)
+// ⚡ Optimalizace hardwarové akcelerace Electronu (hladký 60/120/144Hz+ rendering rozhraní bez záseků CPU)
 try {
     app.commandLine.appendSwitch('enable-gpu-rasterization');
     app.commandLine.appendSwitch('enable-zero-copy');
     app.commandLine.appendSwitch('ignore-gpu-blocklist');
+    app.commandLine.appendSwitch('enable-native-gpu-memory-buffers');
+    app.commandLine.appendSwitch('enable-accelerated-2d-canvas');
+    app.commandLine.appendSwitch('enable-accelerated-video-decode');
+    app.commandLine.appendSwitch('force_high_performance_gpu');
 } catch (_) { }
 
 // ⚡ Na Windows je nezbytné nastavit AppUserModelId odpovídající appId z electron-builder.yml (xyz.mychalsmp.launcher).
@@ -104,6 +108,18 @@ let splashWindow = null;
 let appTray = null;
 let isQuitting = false;
 
+function restoreAndFocusMainWindow() {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        if (!mainWindow.isVisible()) mainWindow.show();
+        mainWindow.show();
+        mainWindow.focus();
+        try {
+            mainWindow.webContents.send('window-restored-from-tray');
+        } catch (_) { }
+    }
+}
+
 function setupTray() {
     if (appTray && !appTray.isDestroyed()) return appTray;
     try {
@@ -117,11 +133,7 @@ function setupTray() {
                 {
                     label: 'Zobrazit launcher',
                     click: () => {
-                        if (mainWindow && !mainWindow.isDestroyed()) {
-                            if (mainWindow.isMinimized()) mainWindow.restore();
-                            mainWindow.show();
-                            mainWindow.focus();
-                        }
+                        restoreAndFocusMainWindow();
                     }
                 },
                 {
@@ -148,9 +160,7 @@ function setupTray() {
                     if (mainWindow.isVisible()) {
                         mainWindow.hide();
                     } else {
-                        if (mainWindow.isMinimized()) mainWindow.restore();
-                        mainWindow.show();
-                        mainWindow.focus();
+                        restoreAndFocusMainWindow();
                     }
                 }
             });
@@ -159,9 +169,7 @@ function setupTray() {
                     if (mainWindow.isVisible()) {
                         mainWindow.hide();
                     } else {
-                        if (mainWindow.isMinimized()) mainWindow.restore();
-                        mainWindow.show();
-                        mainWindow.focus();
+                        restoreAndFocusMainWindow();
                     }
                 }
             });
@@ -234,7 +242,8 @@ function createWindow() {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
-            sandbox: false
+            sandbox: false,
+            backgroundThrottling: false
         }
     });
 
@@ -353,9 +362,7 @@ if (!gotTheLock) {
 } else {
     app.on('second-instance', () => {
         if (mainWindow && !mainWindow.isDestroyed()) {
-            if (mainWindow.isMinimized()) mainWindow.restore();
-            if (!mainWindow.isVisible()) mainWindow.show();
-            mainWindow.focus();
+            restoreAndFocusMainWindow();
         } else if (splashWindow && !splashWindow.isDestroyed()) {
             if (splashWindow.isMinimized()) splashWindow.restore();
             splashWindow.focus();
@@ -1554,6 +1561,25 @@ ipcMain.handle('kill-game', () => {
 ipcMain.handle('cancel-launch', () => {
     cancelLaunch();
     return true;
+});
+
+ipcMain.handle('preload-launch-environment', async (event, profileId) => {
+    try {
+        const dns = require('dns');
+        // Nenápadný asynchronní pre-warm DNS a systémových cache bez dopadu na výkon
+        dns.lookup('mychalsmp.xyz', { all: false }, () => {});
+        dns.lookup('join.mychalsmp.xyz', { all: false }, () => {});
+        detectJavaPath(false).catch(() => {});
+        const config = loadConfig();
+        const pid = profileId || config.activeProfileId || 'minecraft-26.2';
+        const profile = (config.profiles || []).find(p => p.id === pid);
+        const version = profile ? profile.version : (config.version || '26.2');
+        const verJson = path.join(BASE_DIR, 'versions', version, `${version}.json`);
+        fs.promises.access(verJson, fs.constants.R_OK).catch(() => {});
+        return { success: true };
+    } catch (_) {
+        return { success: false };
+    }
 });
 
 ipcMain.handle('launch-game', async (event, profileId, serverIp) => {

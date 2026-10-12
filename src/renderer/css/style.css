@@ -620,17 +620,23 @@ body.is-maximized {
 
 .tab-pane.active {
     display: block;
-    animation: tabPaneFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    animation: tabPaneFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    will-change: transform, opacity, filter;
 }
 
 @keyframes tabPaneFadeIn {
-    from {
+    0% {
         opacity: 0;
-        transform: translateY(4px);
+        transform: translateY(6px);
+        filter: blur(4px);
     }
-    to {
+    50% {
+        filter: blur(1.5px);
+    }
+    100% {
         opacity: 1;
         transform: translateY(0);
+        filter: blur(0px);
     }
 }
 
@@ -975,6 +981,8 @@ body.is-maximized {
     border-radius: var(--radius-md);
     transition: var(--transition);
     overflow: visible;
+    transform: translateZ(0);
+    will-change: transform;
 }
 
 .hero-3d-canvas {
@@ -990,6 +998,7 @@ body.is-maximized {
     user-select: none;
     touch-action: none;
     -webkit-user-drag: none;
+    transform: translateZ(0);
 }
 
 .hero-3d-canvas:active {
@@ -1056,11 +1065,22 @@ body.is-maximized {
 }
 
 .stage-skin {
+    position: absolute;
+    top: 22px;
+    left: 50%;
+    transform: translateX(-50%);
     width: 110px;
     height: auto;
+    z-index: 1;
     image-rendering: pixelated;
     filter: drop-shadow(0 12px 20px rgba(0, 0, 0, 0.6));
-    transition: var(--transition);
+    transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    pointer-events: none;
+}
+
+.stage-skin.is-hidden {
+    opacity: 0;
+    pointer-events: none;
 }
 
 .stage-nick-pill {

@@ -151,5 +151,9 @@ contextBridge.exposeInMainWorld('api', {
     },
     onGameStopped: (callback) => {
         ipcRenderer.on('game-stopped', () => callback());
-    }
+    },
+    onWindowRestoredFromTray: (callback) => {
+        ipcRenderer.on('window-restored-from-tray', () => callback());
+    },
+    preloadLaunchEnvironment: (profileId) => ipcRenderer.invoke('preload-launch-environment', profileId)
 });

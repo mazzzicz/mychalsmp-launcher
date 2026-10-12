@@ -2215,6 +2215,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Bind Play buttons
         list.querySelectorAll('.btn-launch-profile').forEach(btn => {
+            btn.addEventListener('pointerenter', () => {
+                if (typeof prewarmLaunchEnvironment === 'function') {
+                    prewarmLaunchEnvironment(btn.dataset.profileId);
+                }
+            }, { passive: true });
             btn.addEventListener('click', async (e) => {
                 e.stopPropagation();
                 try {
@@ -2330,16 +2335,39 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    let hoverPreloadTimer = null;
+    let lastHoverPreloadedPid = null;
+
+    function prewarmLaunchEnvironment(profileId) {
+        if (hoverPreloadTimer) clearTimeout(hoverPreloadTimer);
+        hoverPreloadTimer = setTimeout(() => {
+            const targetPid = profileId || resolveLaunchProfileId();
+            if (targetPid === lastHoverPreloadedPid) return;
+            lastHoverPreloadedPid = targetPid;
+            if (window.api && window.api.preloadLaunchEnvironment) {
+                window.api.preloadLaunchEnvironment(targetPid).catch(() => {});
+            }
+        }, 160);
+    }
+
     if (sidebarPlayBtn) {
         sidebarPlayBtn.addEventListener('click', () => {
             const targetProfileId = resolveLaunchProfileId();
             selectActiveProfile(targetProfileId, true);
             startLaunch(targetProfileId, null);
         });
+        sidebarPlayBtn.addEventListener('pointerenter', () => {
+            prewarmLaunchEnvironment();
+        }, { passive: true });
     }
 
     // Version tab installer buttons & stop buttons
     document.querySelectorAll('.btn-install-v').forEach(btn => {
+        btn.addEventListener('pointerenter', () => {
+            const ver = btn.dataset.version;
+            const pid = currentConfig.activeProfileId || `minecraft-${ver}`;
+            prewarmLaunchEnvironment(pid);
+        }, { passive: true });
         btn.addEventListener('click', async () => {
             const ver = btn.dataset.version;
             const profiles = currentConfig.profiles || [];
@@ -2486,6 +2514,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (_) {}
 
         isLaunching = true;
+        setHeroLaunchCelebration(true);
         if (sidebarPlayBtn) sidebarPlayBtn.style.opacity = '0.5';
 
         // Okamžitá vizuální odezva na kartě profilu (žádné ticho ani zamrznutí)
@@ -2517,6 +2546,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 } catch (_) {}
             } else {
                 isLaunching = false;
+                setHeroLaunchCelebration(false);
                 if (sidebarPlayBtn) sidebarPlayBtn.style.opacity = '1';
                 promptFirstLaunchOptimizer(targetProf, () => {
                     startLaunch(targetPid, serverIp);
@@ -2649,6 +2679,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (res && res.success) {
                 isRunning = true;
                 isLaunching = false;
+                setHeroLaunchCelebration(false);
 
                 try {
                     installedVersions = await window.api.getInstalledVersions();
@@ -2816,6 +2847,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function resetPlayState() {
         isRunning = false;
         isLaunching = false;
+        setHeroLaunchCelebration(false);
         lastProgressData = null;
         maxRenderedProgress = 0;
         activePreLaunchModUpdate = null;
@@ -4403,12 +4435,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     let currentHeroHeadLookY = 0;
     let isHeroHoverTrackingActive = false;
 
-    // Greeting wave physics: waves automatically 5s after startup or on click
-    let heroWaveStartTime = Date.now() + 5000;
-    const HERO_WAVE_DURATION = 2600;
+    // Greeting wave physics: waves automatically 2s after startup or on click / tray restore
+    let heroWaveStartTime = Date.now() + 2000;
+    let heroWaveDuration = 2400;
+    let isQuickWave = false;
 
-    function triggerHeroWave() {
+    function triggerHeroWave(isQuick = false) {
+        isQuickWave = !!isQuick;
+        heroWaveDuration = isQuick ? 1200 : 2400;
         heroWaveStartTime = Date.now();
+    }
+
+    // Minecraft click punch physics (panáček hitne jako by klikal na tlačítko)
+    let heroPunchStartTime = 0;
+    const HERO_PUNCH_DURATION = 240;
+
+    function triggerHeroPunch() {
+        heroPunchStartTime = Date.now();
+    }
+
+    // Launch excitement & celebration spin physics
+    let isHeroLaunchSpinning = false;
+    let heroSpinAngle = 0;
+
+    function setHeroLaunchCelebration(active) {
+        isHeroLaunchSpinning = !!active;
+        if (!active && heroSkinViewer) {
+            if (heroSkinViewer.playerObject) {
+                heroSkinViewer.playerObject.position.y = -1;
+            }
+        }
     }
 
     function cancelHeroReturn() {
@@ -4465,6 +4521,30 @@ document.addEventListener('DOMContentLoaded', async () => {
             targetHeroHeadLookX = 0;
             targetHeroHeadLookY = 0;
         });
+
+        // Bleskurychlé mávnutí při obnovení z lišty nebo focusu okna
+        if (window.api && window.api.onWindowRestoredFromTray) {
+            window.api.onWindowRestoredFromTray(() => {
+                triggerHeroWave(true);
+            });
+        }
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                triggerHeroWave(true);
+            }
+        });
+
+        window.addEventListener('focus', () => {
+            triggerHeroWave(true);
+        });
+
+        // Úder / Minecraft punch swing při kliknutí na jakékoliv tlačítko v launcheru
+        document.addEventListener('pointerdown', (e) => {
+            if (e.target && !e.target.closest('#heroSkinCanvas3D') && e.target.closest('button, .mc-btn, .sidebar-nav-item, .dash-action-chip, .stage-nick-pill, .profile-row-card, .btn, .icon-btn, .tab-btn, [role="button"], a.btn-primary, .control-field, .action-btn')) {
+                triggerHeroPunch();
+            }
+        }, { passive: true });
     }
 
     /**
@@ -4488,6 +4568,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 animate(player) {
                     super.animate(player);
                     const t = this.progress * 3;
+                    const now = Date.now();
 
                     // 1. Organické vlnění pláště ve větru
                     if (player && player.cape) {
@@ -4497,6 +4578,38 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
 
                     if (!heroSkinViewer) return;
+
+                    // ── STAV A: SPOUŠTĚNÍ HRY (CELEBRATION SPIN & ARMS UP) ─────────────────
+                    if (isHeroLaunchSpinning) {
+                        // Postava se energicky točí dokola (360° spin)
+                        heroSpinAngle = (heroSpinAngle + 0.075) % (Math.PI * 2);
+                        heroSkinViewer.playerWrapper.rotation.y = heroSpinAngle;
+                        heroSkinViewer.playerWrapper.rotation.x = 0;
+                        heroSkinViewer.playerWrapper.rotation.z = 0;
+
+                        // Ruce zvednuté vysoko do vzduchu v radostném gestu (nadšený)
+                        if (player && player.skin) {
+                            if (player.skin.leftArm) {
+                                player.skin.leftArm.rotation.x = -2.85 + Math.sin(t * 7) * 0.14;
+                                player.skin.leftArm.rotation.z = -0.32 + Math.cos(t * 7) * 0.08;
+                                player.skin.leftArm.rotation.y = 0.1;
+                            }
+                            if (player.skin.rightArm) {
+                                player.skin.rightArm.rotation.x = -2.85 + Math.sin(t * 7 + 0.4) * 0.14;
+                                player.skin.rightArm.rotation.z = 0.32 - Math.cos(t * 7) * 0.08;
+                                player.skin.rightArm.rotation.y = -0.1;
+                            }
+                            if (player.skin.head) {
+                                player.skin.head.rotation.x = -0.22 + Math.sin(t * 5) * 0.05;
+                                player.skin.head.rotation.y = 0;
+                                player.skin.head.rotation.z = Math.sin(t * 6) * 0.06;
+                            }
+                            if (heroSkinViewer.playerObject) {
+                                heroSkinViewer.playerObject.position.y = -1 + Math.abs(Math.sin(t * 7)) * 1.2;
+                            }
+                        }
+                        return; // Při spouštění hry se neprovádí idle těla ani sledování kurzoru
+                    }
 
                     // 2. Přirozené střídání poloh těla: plynulé jemné otáčení doleva a doprava
                     // Dva harmonické kmitočty vytváří organický živý pohyb těla (cca ±16°)
@@ -4533,12 +4646,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                     heroSkinViewer.playerWrapper.rotation.x = totalBodyPitch;
                     heroSkinViewer.playerWrapper.rotation.z = 0;
 
-                    // 4. Přátelské zamávání rukou (5s po zapnutí nebo na kliknutí)
+                    // 4. Přátelské zamávání rukou (2s po zapnutí nebo rychlé zamávání po otevření z traye)
                     let waveWeight = 0;
-                    const now = Date.now();
-                    if (now >= heroWaveStartTime && now <= heroWaveStartTime + HERO_WAVE_DURATION) {
+                    const duration = heroWaveDuration || 2400;
+                    if (now >= heroWaveStartTime && now <= heroWaveStartTime + duration) {
                         const elapsed = now - heroWaveStartTime;
-                        const p = elapsed / HERO_WAVE_DURATION;
+                        const p = elapsed / duration;
                         // Hladký náběh (0 až 0.18), držení mávání (0.18 až 0.82), hladký dojezd dolů (0.82 až 1.0)
                         if (p < 0.18) {
                             waveWeight = 0.5 - 0.5 * Math.cos((p / 0.18) * Math.PI);
@@ -4550,14 +4663,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                         if (player && player.skin && player.skin.rightArm && waveWeight > 0.001) {
                             // Rychlé přátelské kmitání ruky
-                            const waveOsc = Math.sin((elapsed / 1000) * 9.5);
+                            const waveSpeed = isQuickWave ? 14.0 : 9.5;
+                            const waveOsc = Math.sin((elapsed / 1000) * waveSpeed);
                             const idleRotZ = player.skin.rightArm.rotation.z;
                             const idleRotX = player.skin.rightArm.rotation.x;
                             const idleRotY = player.skin.rightArm.rotation.y;
 
                             // Ruka zvednutá do výšky (~135°) mávající ze strany na stranu
                             const targetWaveRotZ = -2.35 + waveOsc * 0.32;
-                            const targetWaveRotX = -0.32 + Math.cos((elapsed / 1000) * 9.5) * 0.08;
+                            const targetWaveRotX = -0.32 + Math.cos((elapsed / 1000) * waveSpeed) * 0.08;
                             const targetWaveRotY = 0.22;
 
                             player.skin.rightArm.rotation.z = idleRotZ + (targetWaveRotZ - idleRotZ) * waveWeight;
@@ -4566,7 +4680,32 @@ document.addEventListener('DOMContentLoaded', async () => {
                         }
                     }
 
-                    // 5. HLAVA PLYNULE SLEDUJE KURZOR S FYZIOLOGICKÝM LIMITEM (MAX ±90° OD STŘEDU TĚLA)
+                    // 5. Minecraft Punch Hit swing (při kliknutí na jakékoliv tlačítko v launcheru)
+                    let punchWeight = 0;
+                    if (heroPunchStartTime > 0 && now <= heroPunchStartTime + HERO_PUNCH_DURATION) {
+                        const p = (now - heroPunchStartTime) / HERO_PUNCH_DURATION;
+                        punchWeight = Math.sin(p * Math.PI); // 0 -> 1 -> 0
+                    }
+
+                    if (player && player.skin && player.skin.rightArm && punchWeight > 0.001) {
+                        const baseRotX = player.skin.rightArm.rotation.x;
+                        const baseRotY = player.skin.rightArm.rotation.y;
+                        const baseRotZ = player.skin.rightArm.rotation.z;
+
+                        const punchTargetX = -1.45;
+                        const punchTargetY = 0.42;
+                        const punchTargetZ = -0.22;
+
+                        player.skin.rightArm.rotation.x = baseRotX + (punchTargetX - baseRotX) * punchWeight;
+                        player.skin.rightArm.rotation.y = baseRotY + (punchTargetY - baseRotY) * punchWeight;
+                        player.skin.rightArm.rotation.z = baseRotZ + (punchTargetZ - baseRotZ) * punchWeight;
+
+                        if (player.skin.head) {
+                            player.skin.head.rotation.x += punchWeight * 0.09;
+                        }
+                    }
+
+                    // 6. HLAVA PLYNULE SLEDUJE KURZOR S FYZIOLOGICKÝM LIMITEM (MAX ±90° OD STŘEDU TĚLA)
                     currentHeroHeadLookX += (targetHeroHeadLookX - currentHeroHeadLookX) * 0.045;
                     currentHeroHeadLookY += (targetHeroHeadLookY - currentHeroHeadLookY) * 0.045;
 
@@ -4701,7 +4840,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 model: isSlim ? 'slim' : 'default'
             });
 
-            heroWaveStartTime = Date.now() + 5000;
+            heroWaveStartTime = Date.now() + 2000;
             heroSkinViewer.camera.position.set(0, 0, 70);
             heroSkinViewer.zoom = 0.88;
             heroSkinViewer.fov = 46;
@@ -4787,8 +4926,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const effectiveCape = getEffectiveCape();
 
                 const pSkin = heroSkinViewer.loadSkin(skinSrc, { model: isSlim ? 'slim' : 'default' });
-                if (pSkin && typeof pSkin.catch === 'function') {
-                    pSkin.catch(err => console.warn('[HERO 3D] loadSkin init failed:', err));
+                if (pSkin && typeof pSkin.then === 'function') {
+                    pSkin.then(() => {
+                        if (heroSkinImg) heroSkinImg.classList.add('is-hidden');
+                    }).catch(err => {
+                        console.warn('[HERO 3D] loadSkin init failed:', err);
+                        if (heroSkinImg) heroSkinImg.classList.remove('is-hidden');
+                    });
                 }
                 if (effectiveCape) {
                     const pCape = heroSkinViewer.loadCape(effectiveCape, { backEquipment: 'cape' });
@@ -4799,7 +4943,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         } catch (e) {
             console.warn('[HERO 3D] Inicializace hero 3D prohlížeče selhala:', e);
-            if (heroSkinImg) heroSkinImg.style.display = 'block';
+            if (heroSkinImg) {
+                heroSkinImg.classList.remove('is-hidden');
+                heroSkinImg.style.display = 'block';
+            }
         }
 
         // Aktivace interaktivního sledování tlačítek (lean & glance)
@@ -4819,8 +4966,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             heroSkinViewer.setSize(220, 280);
             if (skinUrl) {
                 const pSkin = heroSkinViewer.loadSkin(skinUrl, { model: isSlim ? 'slim' : 'default' });
-                if (pSkin && typeof pSkin.catch === 'function') {
-                    pSkin.catch(err => console.warn('[HERO 3D] loadSkin failed:', err));
+                if (pSkin && typeof pSkin.then === 'function') {
+                    pSkin.then(() => {
+                        if (heroSkinImg) heroSkinImg.classList.add('is-hidden');
+                    }).catch(err => {
+                        console.warn('[HERO 3D] loadSkin failed:', err);
+                        if (heroSkinImg) heroSkinImg.classList.remove('is-hidden');
+                    });
                 }
             }
             const capeToLoad = capeUrl !== undefined ? capeUrl : getEffectiveCape();
@@ -6015,6 +6167,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             appendLog('[VÝKON] Hra spuštěna – launcher minimalizován do Tray lišty, pozastaveno 3D vykreslování pro 0% zátěž CPU/GPU.');
             isRunning = true;
             isLaunching = false;
+            setHeroLaunchCelebration(false);
             if (sidebarPlayBtn) {
                 sidebarPlayBtn.style.opacity = '1';
                 sidebarPlayBtn.style.background = '#ef4444';
@@ -7186,6 +7339,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (window.api && window.api.onCrash) {
         window.api.onCrash((crashData) => {
+            setHeroLaunchCelebration(false);
             if (!crashData || !modalCrashAnalyzer) return;
             currentCrashData = crashData;
 
