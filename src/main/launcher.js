@@ -39,7 +39,44 @@ function isJarFileValid(filePath) {
             const tailLen = Math.min(stats.size, 65557);
             const tailBuf = Buffer.alloc(tailLen);
             fs.readSync(fd, tailBuf, 0, tailLen, stats.size - tailLen);
-            return tailBuf.includes(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+            const eocdIndex = tailBuf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+            if (eocdIndex === -1) {
+                return false;
+            }
+
+            // Ověření integrity Central Directory (CEN) hlavičky pro prevenci java.util.zip.ZipException: invalid CEN header
+            if (eocdIndex + 20 <= tailLen) {
+                let cenOffset = tailBuf.readUInt32LE(eocdIndex + 16);
+                const cenSize = tailBuf.readUInt32LE(eocdIndex + 12);
+                const totalEntries = tailBuf.readUInt16LE(eocdIndex + 10);
+
+                // Zip64 podpora pro velké archivy
+                if (cenOffset === 0xFFFFFFFF || cenSize === 0xFFFFFFFF || totalEntries === 0xFFFF) {
+                    const locIndex = tailBuf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x06, 0x07]));
+                    if (locIndex !== -1 && locIndex + 16 <= tailLen) {
+                        const zip64EocdOffset = Number(tailBuf.readBigUInt64LE(locIndex + 8));
+                        if (zip64EocdOffset < stats.size) {
+                            const zip64Buf = Buffer.alloc(56);
+                            fs.readSync(fd, zip64Buf, 0, 56, zip64EocdOffset);
+                            if (zip64Buf[0] === 0x50 && zip64Buf[1] === 0x4b && zip64Buf[2] === 0x06 && zip64Buf[3] === 0x06) {
+                                cenOffset = Number(zip64Buf.readBigUInt64LE(48));
+                            }
+                        }
+                    }
+                }
+
+                if (cenSize > 0) {
+                    if (cenOffset >= stats.size) return false;
+                    const cenSigBuf = Buffer.alloc(4);
+                    fs.readSync(fd, cenSigBuf, 0, 4, cenOffset);
+                    // CEN signature musí být přesně 0x02014b50 (PK\1\2)
+                    if (cenSigBuf[0] !== 0x50 || cenSigBuf[1] !== 0x4b || cenSigBuf[2] !== 0x01 || cenSigBuf[3] !== 0x02) {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
         } finally {
             fs.closeSync(fd);
         }
@@ -373,11 +410,26 @@ Handler.prototype.getJar = async function() {
     }
 
     try {
+        let launcherVersion = '1.3.10';
+        try {
+            const { app } = require('electron');
+            launcherVersion = (app && typeof app.getVersion === 'function') ? app.getVersion() : require('../../package.json').version;
+        } catch (_) {
+            try { launcherVersion = require('../../package.json').version; } catch (__) {}
+        }
+        const resolvedLoader = (this.options.version?.custom?.toLowerCase().includes('fabric') ? 'fabric'
+            : (this.options.version?.custom?.toLowerCase().includes('neoforge') ? 'neoforge'
+            : (this.options.version?.custom?.toLowerCase().includes('forge') ? 'forge'
+            : (this.options.config?.loader || 'vanilla').toLowerCase())));
+        const customBrand = `smpclient/${launcherVersion}-${resolvedLoader}-${this.options.version?.number || '26.2'}`;
+
         injectSMPClientBrandIntoJars(
             this.options.root || BASE_DIR,
             this.options.version?.number,
             this.options.version,
-            (msg) => this.client.emit('debug', msg)
+            (msg) => this.client.emit('debug', msg),
+            this.options.javaPath,
+            customBrand
         );
     } catch (_) {}
 };
@@ -1352,10 +1404,6 @@ function injectRawSkinIntoJar(jarPath, activeSkinPath, activeCapePath, onLog = c
         const relativePaths = entriesToUpdate.map(e => e.path);
         execFileSync('zip', ['-u', jarPath, ...relativePaths], { cwd: tmpDir, stdio: 'ignore' });
 
-        try {
-            execFileSync('zip', ['-d', jarPath, 'META-INF/MOJANGCS.SF', 'META-INF/MOJANGCS.RSA', 'META-INF/MOJANG_C.SF', 'META-INF/MOJANG_C.RSA'], { stdio: 'ignore' });
-        } catch (_) {}
-
         try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
         success = true;
     } catch (cliErr) {
@@ -1363,10 +1411,6 @@ function injectRawSkinIntoJar(jarPath, activeSkinPath, activeCapePath, onLog = c
         try {
             const AdmZip = require('adm-zip');
             const zip = new AdmZip(jarPath);
-            try { zip.deleteFile('META-INF/MOJANGCS.SF'); } catch (_) {}
-            try { zip.deleteFile('META-INF/MOJANGCS.RSA'); } catch (_) {}
-            try { zip.deleteFile('META-INF/MOJANG_C.SF'); } catch (_) {}
-            try { zip.deleteFile('META-INF/MOJANG_C.RSA'); } catch (_) {}
 
             for (const entry of entriesToUpdate) {
                 zip.addFile(entry.path, entry.buf);
@@ -1448,13 +1492,81 @@ function ensureSMPClientBrandJar(baseDir) {
 }
 
 /**
- * 🏷️ Injektuje třídu net/minecraft/client/ClientBrandRetriever přímo do herních JARů
- * (Vanilla, Fabric, Forge, NeoForge), aby klient posílal identifikátor SMPClient.
+ * Vyhledá oficiální nástroj `jar` (OpenJDK) v runtime adresářích, PATH nebo JAVA_HOME.
  */
-function injectSMPClientBrandIntoJars(baseDir, targetVersion = null, versionOpts = null, onLog = console.log) {
+function findJarCli(javaPath, baseDir) {
+    const jarName = process.platform === 'win32' ? 'jar.exe' : 'jar';
+    const candidates = [];
+    if (javaPath) {
+        candidates.push(path.join(path.dirname(javaPath), jarName));
+    }
+    if (process.env.JAVA_HOME) {
+        candidates.push(path.join(process.env.JAVA_HOME, 'bin', jarName));
+    }
+    if (baseDir) {
+        candidates.push(path.join(baseDir, 'runtime', 'java-25', 'bin', jarName));
+        candidates.push(path.join(baseDir, 'runtime', 'java-21', 'bin', jarName));
+        try {
+            const rtDir = path.join(baseDir, 'runtime');
+            if (fs.existsSync(rtDir)) {
+                for (const sub of fs.readdirSync(rtDir)) {
+                    candidates.push(path.join(rtDir, sub, 'bin', jarName));
+                }
+            }
+        } catch (_) {}
+    }
+    if (process.platform !== 'win32') {
+        candidates.push(
+            '/usr/lib/jvm/java-25-openjdk-amd64/bin/jar',
+            '/usr/lib/jvm/java-25-openjdk/bin/jar',
+            '/usr/lib/jvm/openjdk-25/bin/jar',
+            '/usr/lib/jvm/java-21-openjdk-amd64/bin/jar',
+            '/usr/lib/jvm/java-21-openjdk/bin/jar',
+            '/usr/lib/jvm/default-runtime/bin/jar',
+            '/usr/bin/jar'
+        );
+    }
+    for (const cand of candidates) {
+        if (cand && fs.existsSync(cand)) return cand;
+    }
+    try {
+        const { execSync } = require('child_process');
+        execSync(process.platform === 'win32' ? 'where jar' : 'which jar', { stdio: 'ignore' });
+        return 'jar';
+    } catch (_) {}
+    return null;
+}
+
+/**
+ * 🏷️ Zapisuje třídu net/minecraft/client/ClientBrandRetriever do herních JARů
+ * (Vanilla, Fabric, Forge, NeoForge), aby klient při připojení na server vždy posílal identifikaci SMPClient
+ * ve formátu: smpclient/<verze-launcheru>-<loader>-<verze-hry>
+ * (např. smpclient/1.3.10-fabric-26.2 nebo smpclient/1.3.10-vanilla-26.2).
+ * Používá oficiální nástroj OpenJDK `jar` (případně bezpečný `zip -u`), NIKDY nemaže soubory (-d),
+ * což garantuje 100% zachování integrity ZIP/CEN hlaviček a zamezuje pádu ZipException.
+ */
+function injectSMPClientBrandIntoJars(baseDir, targetVersion = null, versionOpts = null, onLog = console.log, javaPath = null, customBrand = null) {
+    // 1. Zajištění -Xbootclasspath JARu
+    ensureSMPClientBrandJar(baseDir);
+
     const targetVer = targetVersion || '26.2';
     const classBuf = Buffer.from(SMPCLIENT_BRAND_RETRIEVER_CLASS_BASE64, 'base64');
-    const brandSig = 'smpclient_brand_v1';
+
+    let launcherVersion = '1.3.10';
+    try {
+        const { app } = require('electron');
+        launcherVersion = (app && typeof app.getVersion === 'function') ? app.getVersion() : require('../../package.json').version;
+    } catch (_) {
+        try { launcherVersion = require('../../package.json').version; } catch (__) {}
+    }
+
+    const resolvedLoader = (versionOpts?.custom?.toLowerCase().includes('fabric') ? 'fabric'
+        : (versionOpts?.custom?.toLowerCase().includes('neoforge') ? 'neoforge'
+        : (versionOpts?.custom?.toLowerCase().includes('forge') ? 'forge'
+        : 'vanilla')));
+
+    const effectiveBrand = customBrand || `smpclient/${launcherVersion}-${resolvedLoader}-${targetVer}`;
+    const brandSig = `smpclient_brand_v3_${effectiveBrand.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
 
     const jarsToPatch = new Set();
     const vanillaJar = path.join(baseDir, 'versions', targetVer, `${targetVer}.jar`);
@@ -1478,44 +1590,72 @@ function injectSMPClientBrandIntoJars(baseDir, targetVersion = null, versionOpts
         } catch (_) {}
     }
 
+    if (jarsToPatch.size === 0) return;
+
+    // Detekce oficiálního OpenJDK jar nástroje
+    const jarCli = findJarCli(javaPath, baseDir);
+
     const os = require('os');
     const { execFileSync } = require('child_process');
 
     for (const jarPath of jarsToPatch) {
+        if (!fs.existsSync(jarPath) || !isJarFileValid(jarPath)) continue;
+
+        const backupPath = jarPath.replace(/\.jar$/, '.vanilla.jar');
         const sigPath = `${jarPath}.brand_sig`;
+
+        // Čistá vanilla záloha před zápisem
+        if (!fs.existsSync(backupPath)) {
+            try { fs.copyFileSync(jarPath, backupPath); } catch (_) {}
+        }
+
+        // Cache kontrola podpisu (0ms zátěž pokud již bylo aplikováno)
         if (fs.existsSync(sigPath)) {
             try {
-                if (fs.readFileSync(sigPath, 'utf8') === brandSig) {
-                    continue; // Již upraveno touto verzí
+                if (fs.readFileSync(sigPath, 'utf8').trim() === brandSig) {
+                    continue;
                 }
             } catch (_) {}
         }
 
         let success = false;
-        // Metoda A: Rychlý CLI zip (Linux / macOS / Windows s nainstalovaným zip)
+        const tmpDir = path.join(os.tmpdir(), `smpclient_brand_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`);
         try {
-            const tmpDir = path.join(os.tmpdir(), `smpclient_brand_${Date.now()}`);
             const classDest = path.join(tmpDir, 'net/minecraft/client/ClientBrandRetriever.class');
             fs.mkdirSync(path.dirname(classDest), { recursive: true });
             fs.writeFileSync(classDest, classBuf);
 
-            execFileSync('zip', ['-u', jarPath, 'net/minecraft/client/ClientBrandRetriever.class'], { cwd: tmpDir, stdio: 'ignore' });
-            try {
-                execFileSync('zip', ['-d', jarPath, 'META-INF/MOJANGCS.SF', 'META-INF/MOJANGCS.RSA', 'META-INF/MOJANG_C.SF', 'META-INF/MOJANG_C.RSA'], { stdio: 'ignore' });
-            } catch (_) {}
-
+            if (jarCli) {
+                // Metoda 1: Oficiální OpenJDK jar CLI (plná podpora Zip64, nulová korupce)
+                execFileSync(jarCli, ['uf', jarPath, 'net/minecraft/client/ClientBrandRetriever.class'], { cwd: tmpDir, stdio: 'ignore' });
+                success = true;
+            } else {
+                // Metoda 2: Fallback na zip CLI bez mazání (-u pouze)
+                try {
+                    execFileSync('zip', ['-u', jarPath, 'net/minecraft/client/ClientBrandRetriever.class'], { cwd: tmpDir, stdio: 'ignore' });
+                    success = true;
+                } catch (_) {
+                    // Metoda 3: Multiplatformní adm-zip zápis jedné třídy
+                    const AdmZip = require('adm-zip');
+                    const zip = new AdmZip(jarPath);
+                    zip.addFile('net/minecraft/client/ClientBrandRetriever.class', classBuf);
+                    zip.writeZip(jarPath);
+                    success = true;
+                }
+            }
+        } catch (patchErr) {
+            onLog(`[KLIENT] ⚠ Zápis brandu do ${path.basename(jarPath)} selhal: ${patchErr.message}`);
+        } finally {
             try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
-            success = true;
-        } catch (_) {
-            // Metoda B: Pokud CLI zip není dostupný (typicky Windows), nesaháme AdmZipem na 40MB herní jádro,
-            // protože -Xbootclasspath/a:${brandJar} již garantuje 100% načtení značky na úrovni JVM bez rizika poškození souboru.
-            onLog(`[KLIENT] ✓ Brand SMPClient zajištěn na úrovni JVM (-Xbootclasspath/a) bez nutnosti modifikace ${path.basename(jarPath)}.`);
-            success = true;
         }
 
+        // Striktní ověření integrity po zápisu
         if (success && isJarFileValid(jarPath)) {
             try { fs.writeFileSync(sigPath, brandSig, 'utf8'); } catch (_) {}
-            onLog(`[KLIENT] ✓ Brand SMPClient úspěšně zaveden do jádra hry (${path.basename(jarPath)})`);
+            onLog(`[KLIENT] ✓ Brand ${effectiveBrand} úspěšně zapsán do jádra hry (${path.basename(jarPath)})`);
+        } else if (fs.existsSync(backupPath) && isJarFileValid(backupPath)) {
+            try { fs.copyFileSync(backupPath, jarPath); } catch (_) {}
+            onLog(`[KLIENT] ⚠ Obnoveno původní jádro ${path.basename(jarPath)} ze zálohy.`);
         }
     }
 }
@@ -1609,35 +1749,11 @@ async function setupOfflineCustomSkinAndCape(gameDir, config, onLog = console.lo
     }
 
     try {
-        // Cílové JARy k RAW přepsání textur
-        const jarsToPatch = new Set();
-
-        // 1. Základní vanilla JAR (např. 26.2.jar)
+        // Aplikujeme POUZE do základního vanilla JARu (např. 26.2.jar).
+        // Nikdy nesaháme do Fabric/Forge profilů, protože mod loadery ověřují integritu své třídy a spouštěče.
         const vanillaJar = path.join(baseDir, 'versions', targetVer, `${targetVer}.jar`);
-        if (fs.existsSync(vanillaJar)) jarsToPatch.add(vanillaJar);
-
-        // 2. Custom JAR (např. Fabric profil)
-        if (versionOpts?.custom) {
-            const customJar = path.join(baseDir, 'versions', versionOpts.custom, `${versionOpts.custom}.jar`);
-            if (fs.existsSync(customJar)) jarsToPatch.add(customJar);
-        }
-
-        // 3. Prohledání všech odpovídajících složek ve versions
-        const versionsDir = path.join(baseDir, 'versions');
-        if (fs.existsSync(versionsDir)) {
-            try {
-                const dirs = fs.readdirSync(versionsDir);
-                for (const d of dirs) {
-                    if (d.includes(targetVer)) {
-                        const cand = path.join(versionsDir, d, `${d}.jar`);
-                        if (fs.existsSync(cand)) jarsToPatch.add(cand);
-                    }
-                }
-            } catch (_) {}
-        }
-
-        for (const jarPath of jarsToPatch) {
-            injectRawSkinIntoJar(jarPath, activeSkin, activeCape, onLog);
+        if (fs.existsSync(vanillaJar)) {
+            injectRawSkinIntoJar(vanillaJar, activeSkin, activeCape, onLog);
         }
     } catch (err) {
         onLog(`[POSTAVA] ⚠ Chyba při RAW aplikaci skinu/pláště: ${err.message}`);
@@ -1792,7 +1908,16 @@ async function ensureFabricProfile(centralRootDir, targetVersion, onLog = consol
         const vanillaJar = path.join(versionsDir, targetVersion, `${targetVersion}.jar`);
         const fabricJar = path.join(targetDir, `${fabricId}.jar`);
         if (fs.existsSync(fabricJar) && !isJarFileValid(fabricJar)) {
+            onLog(`[FABRIC] ⚠ Detekován poškozený soubor ${fabricId}.jar (neplatná CEN hlavička). Obnovuji...`);
             try { fs.unlinkSync(fabricJar); } catch (e) {}
+            try { fs.unlinkSync(`${fabricJar}.skin_sig`); } catch (e) {}
+            try { fs.unlinkSync(`${fabricJar}.brand_sig`); } catch (e) {}
+        }
+        if (fs.existsSync(vanillaJar) && !isJarFileValid(vanillaJar)) {
+            onLog(`[FABRIC] ⚠ Detekován poškozený vanilkový soubor ${targetVersion}.jar. Odstraňuji pro čisté znovustažení...`);
+            try { fs.unlinkSync(vanillaJar); } catch (e) {}
+            try { fs.unlinkSync(`${vanillaJar}.skin_sig`); } catch (e) {}
+            try { fs.unlinkSync(`${vanillaJar}.brand_sig`); } catch (e) {}
         }
         if (fs.existsSync(vanillaJar) && isJarFileValid(vanillaJar) && !fs.existsSync(fabricJar)) {
             try { fs.copyFileSync(vanillaJar, fabricJar); } catch (e) {}
@@ -2160,32 +2285,50 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
     // Automatická kontrola a oprava integrity version JAR před spuštěním
     const activeVersionFolder = versionOpts.custom || versionOpts.number;
     const clientJarPath = path.join(BASE_DIR, 'versions', activeVersionFolder, `${activeVersionFolder}.jar`);
+    const vanillaClientJar = path.join(BASE_DIR, 'versions', versionOpts.number, `${versionOpts.number}.jar`);
+
     if (fs.existsSync(clientJarPath) && !isJarFileValid(clientJarPath)) {
         const bak = clientJarPath.replace(/\.jar$/, '.vanilla.jar');
         if (fs.existsSync(bak) && isJarFileValid(bak)) {
+            onLog(`[OPRAVA]: Obnovuji poškozený soubor ${path.basename(clientJarPath)} z čisté vanilla zálohy...`);
             try { fs.copyFileSync(bak, clientJarPath); } catch (_) {}
+        } else if (versionOpts.custom && fs.existsSync(vanillaClientJar) && isJarFileValid(vanillaClientJar)) {
+            onLog(`[OPRAVA]: Detekován poškozený soubor klienta ${path.basename(clientJarPath)} (neplatná hlavička). Obnovuji z platného jádra ${path.basename(vanillaClientJar)}...`);
+            try { fs.unlinkSync(clientJarPath); } catch (e) {}
+            try { fs.copyFileSync(vanillaClientJar, clientJarPath); } catch (_) {}
         } else {
-            onLog(`[OPRAVA]: Detekován poškozený soubor klienta ${clientJarPath}. Odstraňuji pro čisté znovustažení...`);
+            onLog(`[OPRAVA]: Detekován poškozený soubor klienta ${path.basename(clientJarPath)}. Odstraňuji pro čisté znovustažení...`);
             try { fs.unlinkSync(clientJarPath); } catch (e) {}
         }
+        try { fs.unlinkSync(`${clientJarPath}.skin_sig`); } catch (_) {}
+        try { fs.unlinkSync(`${clientJarPath}.brand_sig`); } catch (_) {}
     }
-    const vanillaClientJar = path.join(BASE_DIR, 'versions', versionOpts.number, `${versionOpts.number}.jar`);
+
     if (fs.existsSync(vanillaClientJar) && !isJarFileValid(vanillaClientJar)) {
         const bak = vanillaClientJar.replace(/\.jar$/, '.vanilla.jar');
         if (fs.existsSync(bak) && isJarFileValid(bak)) {
+            onLog(`[OPRAVA]: Obnovuji poškozený ${path.basename(vanillaClientJar)} z vanilkové zálohy...`);
             try { fs.copyFileSync(bak, vanillaClientJar); } catch (_) {}
         } else {
-            onLog(`[OPRAVA]: Detekován poškozený soubor jádra ${vanillaClientJar}. Odstraňuji pro čisté znovustažení...`);
+            onLog(`[OPRAVA]: Detekován poškozený soubor jádra ${path.basename(vanillaClientJar)}. Odstraňuji pro čisté znovustažení...`);
             try { fs.unlinkSync(vanillaClientJar); } catch (e) {}
         }
+        try { fs.unlinkSync(`${vanillaClientJar}.skin_sig`); } catch (_) {}
+        try { fs.unlinkSync(`${vanillaClientJar}.brand_sig`); } catch (_) {}
+    }
+
+    // Pro custom zavaděče (Fabric): pokud jar chybí, ale vanilkový existuje a je platný, vytvoříme okamžitě kopii
+    if (versionOpts.custom && !fs.existsSync(clientJarPath) && fs.existsSync(vanillaClientJar) && isJarFileValid(vanillaClientJar)) {
+        onLog(`[OPRAVA]: Příprava herního jádra pro profil ${versionOpts.custom}...`);
+        try { fs.copyFileSync(vanillaClientJar, clientJarPath); } catch (_) {}
     }
 
     // 🎭 Aplikace vlastního RAW offline skinu a pláště pro warez / offline režim přímo do jádra
     await setupOfflineCustomSkinAndCape(gameInstanceDir, config, onLog, targetVersion, versionOpts);
 
-    // 🏷️ Brand klienta pro síť MYCHAL SMP: smpclient/<version>-<loader>
-    // např. smpclient/1.2.7-fabric, smpclient/1.2.7-vanilla, smpclient/1.2.7-forge, smpclient/1.2.7-neoforge
-    let launcherVersion = '1.2.7';
+    // 🏷️ Brand klienta pro síť MYCHAL SMP: smpclient/<version>-<loader>-<gameVersion>
+    // např. smpclient/1.3.10-fabric-26.2, smpclient/1.3.10-vanilla-26.2, smpclient/1.3.10-forge-26.2, smpclient/1.3.10-neoforge-26.2
+    let launcherVersion = '1.3.10';
     try {
         const { app } = require('electron');
         launcherVersion = (app && typeof app.getVersion === 'function') ? app.getVersion() : require('../../package.json').version;
@@ -2193,8 +2336,18 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
         try { launcherVersion = require('../../package.json').version; } catch (__) {}
     }
 
-    const resolvedLoader = (config.loader || (versionOpts?.custom?.includes('fabric') ? 'fabric' : 'vanilla')).toLowerCase();
-    const clientBrand = `smpclient/${launcherVersion}-${resolvedLoader}`;
+    let resolvedLoader = 'vanilla';
+    if (config.loader && config.loader.toLowerCase() !== 'vanilla') {
+        resolvedLoader = config.loader.toLowerCase();
+    } else if (versionOpts?.custom?.toLowerCase().includes('fabric')) {
+        resolvedLoader = 'fabric';
+    } else if (versionOpts?.custom?.toLowerCase().includes('neoforge')) {
+        resolvedLoader = 'neoforge';
+    } else if (versionOpts?.custom?.toLowerCase().includes('forge')) {
+        resolvedLoader = 'forge';
+    }
+
+    const clientBrand = `smpclient/${launcherVersion}-${resolvedLoader}-${targetVersion}`;
 
     if (!jvmArgs.some(a => a.startsWith('-Dsmpclient.brand='))) {
         jvmArgs.push(`-Dsmpclient.brand=${clientBrand}`);
@@ -2205,6 +2358,9 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
     if (!jvmArgs.some(a => a.startsWith('-Dsmpclient.loader='))) {
         jvmArgs.push(`-Dsmpclient.loader=${resolvedLoader}`);
     }
+    if (!jvmArgs.some(a => a.startsWith('-Dsmpclient.gameversion='))) {
+        jvmArgs.push(`-Dsmpclient.gameversion=${targetVersion}`);
+    }
 
     const brandJar = ensureSMPClientBrandJar(BASE_DIR);
     if (brandJar && !jvmArgs.some(a => a.startsWith('-Xbootclasspath/a:'))) {
@@ -2212,7 +2368,7 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
     }
 
     // Injekce třídy ClientBrandRetriever přímo do herních JARů pro všechny zavaděče
-    injectSMPClientBrandIntoJars(BASE_DIR, targetVersion, versionOpts, onLog);
+    injectSMPClientBrandIntoJars(BASE_DIR, targetVersion, versionOpts, onLog, javaExecutable, clientBrand);
     onLog(`[KLIENT] 🏷️ Spouštění oficiálního klienta s identifikací: ${clientBrand}`);
 
     // Synchronizace globálních klávesových zkratek do profilu před startem hry

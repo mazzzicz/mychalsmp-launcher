@@ -185,7 +185,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (heroSkinViewer) {
             heroSkinViewer.renderPaused = (tabId !== 'play');
             if (tabId === 'play') {
-                heroSkinViewer.setSize(180, 245);
+                heroSkinViewer.setSize(220, 280);
                 scheduleHeroReturn();
             } else {
                 cancelHeroReturn();
@@ -4450,9 +4450,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             const isInteractive = !!e.target?.closest?.('button, .mc-btn, .profile-row-card, .sidebar-nav-item, .dash-action-chip, .stage-nick-pill, .control-field');
             const focusMultiplier = isInteractive ? 1.15 : 1.0;
 
-            // POUZE hlava reaguje: horizontální rozsah ±0.44 rad (~25°), vertikální rozsah ±0.26 rad (~15°)
-            targetHeroHeadLookY = normX * 0.44 * focusMultiplier;
-            targetHeroHeadLookX = normY * 0.26 * focusMultiplier;
+            // POUZE hlava reaguje: přirozený horizontální rozsah ±0.32 rad (~18°), vertikální rozsah ±0.18 rad (~10°)
+            targetHeroHeadLookY = normX * 0.32 * focusMultiplier;
+            targetHeroHeadLookX = normY * 0.18 * focusMultiplier;
         }, { passive: true });
 
         // Návrat do klidového pohledu při opuštění okna
@@ -4566,16 +4566,39 @@ document.addEventListener('DOMContentLoaded', async () => {
                         }
                     }
 
-                    // 5. HLAVA NEUSTÁLE PLYNULE SLEDUJE KURZOR (ultra-smooth lerp)
+                    // 5. HLAVA PLYNULE SLEDUJE KURZOR S FYZIOLOGICKÝM LIMITEM (MAX ±90° OD STŘEDU TĚLA)
                     currentHeroHeadLookX += (targetHeroHeadLookX - currentHeroHeadLookX) * 0.045;
                     currentHeroHeadLookY += (targetHeroHeadLookY - currentHeroHeadLookY) * 0.045;
 
                     if (player && player.skin && player.skin.head) {
-                        // Hlava kompenzuje rotaci těla, aby se v prostoru neustále dívala přímo na kurzor
-                        player.skin.head.rotation.y = -totalBodyYaw + currentHeroHeadLookY;
-                        player.skin.head.rotation.x = -totalBodyPitch + currentHeroHeadLookX + Math.sin(t * 1.4) * 0.012;
-                        // Jemný přirozený náklon hlavy k mávající ruce
-                        player.skin.head.rotation.z = -currentHeroHeadLookY * 0.06 - (waveWeight * 0.08);
+                        // Úhel pohledu kurzoru vůči natočení těla v rozsahu [-Math.PI, Math.PI]
+                        let diffYaw = (currentHeroHeadLookY - totalBodyYaw) % (Math.PI * 2);
+                        if (diffYaw > Math.PI) diffYaw -= Math.PI * 2;
+                        if (diffYaw < -Math.PI) diffYaw += Math.PI * 2;
+
+                        // Maximální povolený limit otočení hlavy od středu těla (90° = Math.PI / 2)
+                        const MAX_HEAD_YAW = Math.PI / 2;
+                        let targetHeadYaw = 0;
+
+                        if (Math.abs(diffYaw) <= MAX_HEAD_YAW) {
+                            // Tělo směřuje dopředu (v rámci 180° zorného pole): hlava sleduje kurzor
+                            targetHeadYaw = diffYaw;
+                        } else {
+                            // Když se tělo otáčí zády k obrazovce, hlava se NESMÍ otočit dozadu ani přes 90°:
+                            // plynule se vrací do směru těla (0°), takže postava kouká přirozeně před sebe
+                            targetHeadYaw = Math.sign(diffYaw) * (Math.PI - Math.abs(diffYaw));
+                        }
+
+                        // Bezpečnostní pojistka: hlava nikdy nepřekročí 90 stupňů od středu (když je rovně)
+                        targetHeadYaw = Math.max(-MAX_HEAD_YAW, Math.min(MAX_HEAD_YAW, targetHeadYaw));
+
+                        // Hladká kompenzace vertikálního náklonu: při pohledu zezadu netlačíme hlavu za záda
+                        const frontFactor = Math.max(0, Math.cos(diffYaw));
+                        const targetHeadPitch = -totalBodyPitch * frontFactor + currentHeroHeadLookX * frontFactor + Math.sin(t * 1.4) * 0.012;
+
+                        player.skin.head.rotation.y = targetHeadYaw;
+                        player.skin.head.rotation.x = targetHeadPitch;
+                        player.skin.head.rotation.z = -targetHeadYaw * 0.05 - (waveWeight * 0.08);
                     }
                 }
             }
@@ -4673,15 +4696,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             const isSlim = currentConfig ? (currentConfig.customSkinVariant === 'slim') : false;
             heroSkinViewer = new window.skinview3d.SkinViewer({
                 canvas: canvas,
-                width: 180,
-                height: 245,
+                width: 220,
+                height: 280,
                 model: isSlim ? 'slim' : 'default'
             });
 
             heroWaveStartTime = Date.now() + 5000;
-            heroSkinViewer.camera.position.set(0, 0, 68);
-            heroSkinViewer.zoom = 1.05;
-            heroSkinViewer.fov = 48;
+            heroSkinViewer.camera.position.set(0, 0, 70);
+            heroSkinViewer.zoom = 0.88;
+            heroSkinViewer.fov = 46;
+            if (heroSkinViewer.playerObject) {
+                heroSkinViewer.playerObject.position.y = -1;
+            }
             heroSkinViewer.autoRotate = false; // Strictly no auto-rotation
             heroSkinViewer.controls.enabled = false; // Direct smooth drag on playerWrapper
             heroSkinViewer.animation = createHeroIdleAnimation() || new window.skinview3d.IdleAnimation();
@@ -4790,7 +4816,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!heroSkinViewer) return;
 
         try {
-            heroSkinViewer.setSize(180, 245);
+            heroSkinViewer.setSize(220, 280);
             if (skinUrl) {
                 const pSkin = heroSkinViewer.loadSkin(skinUrl, { model: isSlim ? 'slim' : 'default' });
                 if (pSkin && typeof pSkin.catch === 'function') {
@@ -4829,8 +4855,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
 
             skinViewer.camera.position.set(0, 0, 70);
-            skinViewer.zoom = 0.92;
-            skinViewer.fov = 48;
+            skinViewer.zoom = 0.88;
+            skinViewer.fov = 46;
+            if (skinViewer.playerObject) {
+                skinViewer.playerObject.position.y = -1;
+            }
             skinViewer.controls.enableRotate = true;
             skinViewer.controls.enableZoom = true;
             skinViewer.controls.enablePan = false;

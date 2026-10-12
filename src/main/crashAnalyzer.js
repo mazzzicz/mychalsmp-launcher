@@ -1089,7 +1089,39 @@ async function analyzeCrash(gameDir, exitCode = 1, recentMemoryLogs = [], launch
         };
     }
 
-    // ── Diagnostic Rule 7: Specific Mod Incompatibility ─────────────────────
+    // ── Diagnostic Rule 7: Corrupted Library / Version / Mod JAR (ZipException / invalid CEN header) ────────
+    if (
+        /ZipException/i.test(combinedText) ||
+        /invalid CEN header/i.test(combinedText) ||
+        /error reading\s+[^\n\r]+\.jar/i.test(combinedText)
+    ) {
+        let corruptJarPath = null;
+        const jarMatch = combinedText.match(/error reading\s+([^\n\r\t]+\.jar)/i) ||
+                         combinedText.match(/reading\s+([^\n\r\t\s]+\.jar)/i);
+        if (jarMatch && jarMatch[1]) {
+            corruptJarPath = jarMatch[1].trim();
+        }
+
+        const isVersionJar = corruptJarPath && corruptJarPath.includes('/versions/');
+        return {
+            hasCrash: true,
+            exitCode,
+            reportPath,
+            title: isVersionJar ? 'Poškozené jádro hry (ZipException: neplatná CEN hlavička)' : 'Poškozený soubor JAR (ZipException)',
+            severity: 'critical',
+            description: `Byl detekován poškozený soubor ${corruptJarPath ? path.basename(corruptJarPath) : 'JAR'}. Soubor má poškozenou interní strukturu (invalid CEN header) a Java jej nemůže přečíst.`,
+            recommendation: 'Klikni na tlačítko níže pro automatické smazání poškozeného souboru. Launcher jej při dalším spuštění automaticky obnoví z čisté verze nebo znovu stáhne.',
+            logExcerpt: logExcerpt || (corruptJarPath ? `IOException: error reading ${corruptJarPath}` : 'ZipException: invalid CEN header (bad signature)'),
+            autoFix: corruptJarPath ? {
+                id: 'DELETE_CORRUPT_JAR',
+                filePath: corruptJarPath,
+                label: `🧹 Opravit a obnovit ${path.basename(corruptJarPath)}`,
+                description: 'Odstraní poškozený soubor z disku, aby jej launcher mohl při dalším startu čistě obnovit.'
+            } : null
+        };
+    }
+
+    // ── Diagnostic Rule 8: Specific Mod Incompatibility ─────────────────────
     const modCrashMatch = combinedText.match(/(?:Caused by:\s+)?net\.fabricmc\.loader\.[^\n]+Exception:\s+([^\n\r]+)/i) ||
                           combinedText.match(/Could not execute entrypoint stage 'main' due to errors, provided by '([^']+)'/i);
     if (modCrashMatch) {
@@ -1111,7 +1143,7 @@ async function analyzeCrash(gameDir, exitCode = 1, recentMemoryLogs = [], launch
         };
     }
 
-    // ── Diagnostic Rule 8: GLFW / OpenGL / GLX Initialization Failure ────────
+    // ── Diagnostic Rule 9: GLFW / OpenGL / GLX Initialization Failure ────────
     if (
         /Failed to initialize GLFW/i.test(combinedText) ||
         /DISPLAY environment variable is missing/i.test(combinedText) ||
@@ -1134,37 +1166,6 @@ async function analyzeCrash(gameDir, exitCode = 1, recentMemoryLogs = [], launch
                 label: '⚡ Deaktivovat diskrétní GPU v nastavení',
                 description: 'Vypne vynucení NVIDIA GPU, které způsobuje pád na Intel a AMD grafických kartách.'
             }
-        };
-    }
-
-    // ── Diagnostic Rule 9: Corrupted Library / Mod JAR (ZipException) ────────
-    if (
-        /ZipException/i.test(combinedText) ||
-        /invalid CEN header/i.test(combinedText) ||
-        /error reading\s+[^\n\r]+\.jar/i.test(combinedText)
-    ) {
-        let corruptJarPath = null;
-        const jarMatch = combinedText.match(/error reading\s+([^\n\r\t]+\.jar)/i) ||
-                         combinedText.match(/reading\s+([^\n\r\t\s]+\.jar)/i);
-        if (jarMatch && jarMatch[1]) {
-            corruptJarPath = jarMatch[1].trim();
-        }
-
-        return {
-            hasCrash: true,
-            exitCode,
-            reportPath,
-            title: 'Poškozený soubor knihovny JAR (ZipException)',
-            severity: 'critical',
-            description: `Byl detekován neúplný nebo poškozený soubor knihovny ${corruptJarPath ? path.basename(corruptJarPath) : 'JAR'}. K tomu dochází při přerušeném stahování z internetu.`,
-            recommendation: 'Klikni na tlačítko níže pro automatické smazání poškozeného souboru. Launcher jej při dalším spuštění stáhne čistě.',
-            logExcerpt: logExcerpt || (corruptJarPath ? `IOException: error reading ${corruptJarPath}` : 'ZipException: invalid CEN header'),
-            autoFix: corruptJarPath ? {
-                id: 'DELETE_CORRUPT_JAR',
-                filePath: corruptJarPath,
-                label: `🧹 Odstranit poškozený ${path.basename(corruptJarPath)}`,
-                description: 'Odstraní poškozený soubor z disku, aby jej launcher mohl stáhnout znovu a v pořádku.'
-            } : null
         };
     }
 
@@ -1402,9 +1403,11 @@ async function executeCrashFix(autoFix, gameDir, config, saveConfigFn, detectJav
             if (targetFile && fs.existsSync(targetFile)) {
                 try {
                     fs.unlinkSync(targetFile);
+                    try { fs.unlinkSync(`${targetFile}.skin_sig`); } catch (_) {}
+                    try { fs.unlinkSync(`${targetFile}.brand_sig`); } catch (_) {}
                     return {
                         success: true,
-                        message: `Poškozený soubor ${path.basename(targetFile)} byl úspěšně odstraněn. Při příštím spuštění jej launcher stáhne čistě.`
+                        message: `Poškozený soubor ${path.basename(targetFile)} byl úspěšně odstraněn. Při příštím spuštění jej launcher automaticky obnoví/stáhne v bezchybném stavu.`
                     };
                 } catch (delErr) {
                     throw new Error(`Nepodařilo se odstranit soubor: ${delErr.message}`);

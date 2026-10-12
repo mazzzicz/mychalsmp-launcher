@@ -967,24 +967,25 @@ body.is-maximized {
 
 .stage-skin-wrapper {
     position: relative;
-    width: 180px;
-    height: 250px;
+    width: 220px;
+    height: 280px;
     display: flex;
     align-items: center;
     justify-content: center;
     border-radius: var(--radius-md);
     transition: var(--transition);
+    overflow: visible;
 }
 
 .hero-3d-canvas {
-    width: 180px;
-    height: 245px;
+    width: 220px;
+    height: 280px;
     display: block;
     position: relative;
     z-index: 2;
     cursor: grab;
     filter: drop-shadow(0 14px 20px rgba(0, 0, 0, 0.55));
-    border-radius: var(--radius-md);
+    border-radius: 0;
     outline: none;
     user-select: none;
     touch-action: none;
@@ -1001,7 +1002,7 @@ body.is-maximized {
     bottom: 2px;
     left: 50%;
     transform: translateX(-50%);
-    width: 140px;
+    width: 155px;
     height: 32px;
     pointer-events: none;
     z-index: 1;
