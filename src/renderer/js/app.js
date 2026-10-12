@@ -4696,9 +4696,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                             let targetLeftRotZ = baseLeftRotZ;
 
                             if (heroCelebrationWeight > 0.0001) {
-                                const celebLeftX = -2.75 + Math.sin(t * 6) * 0.12;
-                                const celebLeftZ = -0.32 + Math.cos(t * 6) * 0.06;
-                                const celebLeftY = 0.1;
+                                // Paže rozevřené do vítězného 'V' směrem ven od hlavy (žádné clipování do vlasů ani lebky)
+                                const celebLeftX = -2.68 + Math.sin(t * 6) * 0.08;
+                                const celebLeftZ = 0.55 + Math.cos(t * 6) * 0.06;
+                                const celebLeftY = 0.0;
 
                                 targetLeftRotX = baseLeftRotX + (celebLeftX - baseLeftRotX) * heroCelebrationWeight;
                                 targetLeftRotY = baseLeftRotY + (celebLeftY - baseLeftRotY) * heroCelebrationWeight;
@@ -4717,11 +4718,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                             let targetRotY = baseRightRotY;
                             let targetRotZ = baseRightRotZ;
 
-                            // A. Oslava spuštění (pravá ruka nahoře)
+                            // A. Oslava spuštění (pravá ruka rozevřená do vítězného 'V' směrem ven od hlavy)
                             if (heroCelebrationWeight > 0.0001) {
-                                const celebRightX = -2.75 + Math.sin(t * 6 + 0.4) * 0.12;
-                                const celebRightZ = 0.32 - Math.cos(t * 6) * 0.06;
-                                const celebRightY = -0.1;
+                                const celebRightX = -2.68 + Math.sin(t * 6 + 0.4) * 0.08;
+                                const celebRightZ = -0.55 - Math.cos(t * 6) * 0.06;
+                                const celebRightY = 0.0;
 
                                 targetRotX = baseRightRotX + (celebRightX - baseRightRotX) * heroCelebrationWeight;
                                 targetRotY = baseRightRotY + (celebRightY - baseRightRotY) * heroCelebrationWeight;
