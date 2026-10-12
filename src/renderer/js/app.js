@@ -4678,23 +4678,31 @@ document.addEventListener('DOMContentLoaded', async () => {
                         punchWeight = Math.sin(p * Math.PI); // 0 -> 1 -> 0
                     }
 
-                    // 6. Fyzika a rotace paží: 100% spolehlivý návrat do výchozí klidové polohy po JAKÉKOLIV animaci
+                    // 6. Fyzika a rotace paží: Pevná výchozí klidová poloha (žádný zpětnovazební feedback loop)
                     if (player && player.skin) {
-                        // LEVÁ RUKA (ruce nahoře při oslavě, jinak 100% klid v poloze z IdleAnimation)
+                        // Čisté základní klidové rotace v Minecraftu (přirozené dýchání podél těla)
+                        const baseLeftRotX = Math.sin(t * 0.8) * 0.05;
+                        const baseLeftRotY = 0;
+                        const baseLeftRotZ = 0.06;
+
+                        const baseRightRotX = -Math.sin(t * 0.8) * 0.05;
+                        const baseRightRotY = 0;
+                        const baseRightRotZ = -0.06;
+
+                        // LEVÁ RUKA (ruce nahoře při oslavě, jinak 100% klid podél těla)
                         if (player.skin.leftArm) {
-                            const idleLeftRotX = player.skin.leftArm.rotation.x;
-                            let targetLeftRotX = idleLeftRotX;
-                            let targetLeftRotY = 0;
-                            let targetLeftRotZ = 0;
+                            let targetLeftRotX = baseLeftRotX;
+                            let targetLeftRotY = baseLeftRotY;
+                            let targetLeftRotZ = baseLeftRotZ;
 
                             if (heroCelebrationWeight > 0.0001) {
                                 const celebLeftX = -2.75 + Math.sin(t * 6) * 0.12;
                                 const celebLeftZ = -0.32 + Math.cos(t * 6) * 0.06;
                                 const celebLeftY = 0.1;
 
-                                targetLeftRotX = idleLeftRotX + (celebLeftX - idleLeftRotX) * heroCelebrationWeight;
-                                targetLeftRotY = celebLeftY * heroCelebrationWeight;
-                                targetLeftRotZ = celebLeftZ * heroCelebrationWeight;
+                                targetLeftRotX = baseLeftRotX + (celebLeftX - baseLeftRotX) * heroCelebrationWeight;
+                                targetLeftRotY = baseLeftRotY + (celebLeftY - baseLeftRotY) * heroCelebrationWeight;
+                                targetLeftRotZ = baseLeftRotZ + (celebLeftZ - baseLeftRotZ) * heroCelebrationWeight;
                             }
 
                             // VŽDY aplikujeme spočtené rotace levé ruky
@@ -4703,12 +4711,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                             player.skin.leftArm.rotation.z = targetLeftRotZ;
                         }
 
-                        // PRAVÁ RUKA (oslava, mávání, úder pěstí – se zaručeným návratem)
+                        // PRAVÁ RUKA (oslava, mávání, úder pěstí – zaručený návrat do baseRightRot)
                         if (player.skin.rightArm) {
-                            const idleRotX = player.skin.rightArm.rotation.x;
-                            let targetRotX = idleRotX;
-                            let targetRotY = 0;
-                            let targetRotZ = 0;
+                            let targetRotX = baseRightRotX;
+                            let targetRotY = baseRightRotY;
+                            let targetRotZ = baseRightRotZ;
 
                             // A. Oslava spuštění (pravá ruka nahoře)
                             if (heroCelebrationWeight > 0.0001) {
@@ -4716,9 +4723,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 const celebRightZ = 0.32 - Math.cos(t * 6) * 0.06;
                                 const celebRightY = -0.1;
 
-                                targetRotX = idleRotX + (celebRightX - idleRotX) * heroCelebrationWeight;
-                                targetRotY = celebRightY * heroCelebrationWeight;
-                                targetRotZ = celebRightZ * heroCelebrationWeight;
+                                targetRotX = baseRightRotX + (celebRightX - baseRightRotX) * heroCelebrationWeight;
+                                targetRotY = baseRightRotY + (celebRightY - baseRightRotY) * heroCelebrationWeight;
+                                targetRotZ = baseRightRotZ + (celebRightZ - baseRightRotZ) * heroCelebrationWeight;
                             }
 
                             // B. Aplikace mávání rukou (pouze pokud zrovna neprobíhá oslava)
@@ -4749,7 +4756,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             }
 
                             // VŽDY aplikujeme spočtené rotace – tím je 100% zaručeno,
-                            // že po skončení úderu, mávání i točení se ruka okamžitě a spolehlivě vrátí na (idleRotX, 0, 0)!
+                            // že po skončení úderu, mávání i točení se ruka okamžitě a spolehlivě vrátí na (baseRightRotX, 0, -0.06)!
                             player.skin.rightArm.rotation.x = targetRotX;
                             player.skin.rightArm.rotation.y = targetRotY;
                             player.skin.rightArm.rotation.z = targetRotZ;
