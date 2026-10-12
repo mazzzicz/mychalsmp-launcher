@@ -175,19 +175,6 @@ function loadConfig() {
                         p.playtimeSeconds = 0;
                     }
                 });
-                if (!merged.profiles.some(p => p.id === 'minecraft-1.21.11' || p.version === '1.21.11')) {
-                    merged.profiles.push({
-                        id: 'minecraft-1.21.11',
-                        name: 'Minecraft 1.21.11',
-                        version: '1.21.11',
-                        loader: 'fabric',
-                        optimizedChosen: 'optimized',
-                        desc: 'Minecraft 1.21.11',
-                        icon: 'shield',
-                        lastPlayed: null,
-                        playtimeSeconds: 0
-                    });
-                }
             }
             if (!merged.servers || merged.servers.length === 0) {
                 merged.servers = DEFAULT_SERVERS;

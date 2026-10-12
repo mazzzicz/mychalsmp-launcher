@@ -2342,21 +2342,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             const metaParts = [loaderTag, `Verze ${p.version}`, playtimeStr, lastPlayedStr].filter(Boolean);
             const meta = metaParts.join(' • ');
 
-            // Upgrade button is ONLY displayed for versions older than the latest (26.3)
-            const canUpgrade = p.version !== '26.3' && p.version !== '26.4';
             const isThisRunning = isRunning && runningProfileId && (p.id === runningProfileId);
             const isThisLaunching = isLaunching && launchingProfileId && (p.id === launchingProfileId);
             const isBlocked = (isRunning || isLaunching) && !isThisRunning && !isThisLaunching;
-
-            const upgradeDisabled = (isRunning || isLaunching);
-            const upgradeTitle = upgradeDisabled
-                ? (isRunning ? 'Nelze provádět upgrade během běhu hry' : 'Nelze provádět upgrade během stahování / spouštění')
-                : 'Upgradovat profil a stáhnout nové verze módů';
-            const upgradeBtnHtml = canUpgrade ? `
-                <button class="btn-upgrade-profile" data-profile-id="${escapeHtml(p.id)}" ${upgradeDisabled ? 'disabled' : ''} title="${escapeHtml(upgradeTitle)}">
-                    <svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--gold" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="16 12 12 8 8 12"></polyline><line x1="12" y1="16" x2="12" y2="8"></line></svg> Upgrade
-                </button>
-            ` : '';
 
             const isInst = Array.isArray(installedVersions) && installedVersions.includes(p.version);
             let launchBtnClass = 'mc-btn btn-launch-profile';
@@ -2387,11 +2375,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     : '<svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Stáhnout';
             }
 
-            const deleteDisabled = (isRunning || isLaunching);
-            const deleteTitle = deleteDisabled
-                ? 'Nelze odebírat profily během běhu nebo stahování hry'
-                : 'Odebrat a odinstalovat profil';
-
             return `
                 <div class="profile-row-card ${isActive ? 'active-profile' : ''}" data-profile-id="${escapeHtml(p.id)}">
                     ${pKeyart ? `<div class="profile-card-keyart-bg" style="${keyartBgStyle}"></div><div class="profile-card-keyart-overlay"></div>` : ''}
@@ -2403,18 +2386,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <div class="p-meta">${escapeHtml(meta)}</div>
                     </div>
                     <div class="profile-card-right">
-                        <div class="profile-card-tools">
+                        <div class="profile-actions">
                             <button class="profile-tool-btn btn-profile-settings" data-profile-id="${escapeHtml(p.id)}" title="Nastavení profilu">
                                 <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                             </button>
-                            ${sortedProfiles.length > 1 ? `
-                            <button class="profile-tool-btn btn-profile-delete" data-profile-id="${escapeHtml(p.id)}" ${deleteDisabled ? 'disabled' : ''} title="${escapeHtml(deleteTitle)}">
-                                <svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--red" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                            </button>
-                            ` : ''}
-                        </div>
-                        <div class="profile-actions">
-                            ${upgradeBtnHtml}
                             <button class="${launchBtnClass}" ${launchBtnAttrs}>
                                 <span>${launchBtnContent}</span>
                             </button>
@@ -4728,6 +4703,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let currentHeroHeadLookY = 0;
     let targetHeroCuriosityTilt = 0;
     let currentHeroCuriosityTilt = 0;
+    let heroCuriosityVelocity = 0;
     let isHeroHoverTrackingActive = false;
 
     // Greeting wave physics: waves automatically 2s after startup or on click / tray restore
@@ -4780,6 +4756,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Safe no-op retained for API compatibility
     }
 
+    // ── Noční podřimování (Dozing off / Sleepy head-droop & startled wake-up) ───
+    let lastHeroUserActivityTime = Date.now();
+    let heroSleepWeight = 0;
+    let heroSleepCycleStart = Date.now();
+    let isForcedSleepTest = false; // Dev/test toggle via window.testHeroSleep()
+
+    window.testHeroSleep = function(enable = true) {
+        isForcedSleepTest = !!enable;
+        if (enable) {
+            lastHeroUserActivityTime = 0; // Ihned vstoupit do idle režimu
+            heroSleepCycleStart = Date.now();
+        }
+        console.log(`[Hero] Noční podřimování test mód: ${isForcedSleepTest ? 'AKTIVNÍ' : 'VYPNUTO'}`);
+    };
+
     /**
      * Plynulé sledování kurzoru a tlačítek:
      * Postava reaguje POUZE HLAVOU – tělo se natáčí organicky v idle pohybu nebo tažením myší.
@@ -4788,7 +4779,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (isHeroHoverTrackingActive) return;
         isHeroHoverTrackingActive = true;
 
+        const markHeroActivity = () => {
+            lastHeroUserActivityTime = Date.now();
+        };
+        window.addEventListener('pointerdown', markHeroActivity, { passive: true });
+        window.addEventListener('keydown', markHeroActivity, { passive: true });
+        window.addEventListener('wheel', markHeroActivity, { passive: true });
+
         window.addEventListener('pointermove', (e) => {
+            markHeroActivity();
             const canvas = document.getElementById('heroSkinCanvas3D');
             if (!canvas) return;
 
@@ -4807,8 +4806,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             const normX = Math.max(-1, Math.min(1, dx / (winW * 0.45)));
             const normY = Math.max(-1, Math.min(1, dy / (winH * 0.45)));
 
-            // 1. Zvláštní chování pro tlačítka "Hrát" (Steve se zvědavě nakloní a upře pohled na tlačítko)
+            // 1. Zvláštní chování pro tlačítka "Hrát" a postavičku (organický zvědavý pohled a náklon hlavy)
             const playBtn = e.target?.closest?.('.btn-launch-profile, #sidebarPlayBtn, #btnQuickPlayMychal, .btn-install-v');
+            const heroCanvas = e.target?.closest?.('#heroSkinWrapper, #heroSkinCanvas3D, #stageNickPill');
+
             if (playBtn) {
                 const btnRect = playBtn.getBoundingClientRect();
                 const btnCenterX = btnRect.left + btnRect.width / 2;
@@ -4819,11 +4820,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const normBtnX = Math.max(-1, Math.min(1, btnDx / (winW * 0.45)));
                 const normBtnY = Math.max(-1, Math.min(1, btnDy / (winH * 0.45)));
 
-                targetHeroHeadLookY = normBtnX * 0.44;
-                targetHeroHeadLookX = normBtnY * 0.26;
+                targetHeroHeadLookY = normBtnX * 0.42;
+                targetHeroHeadLookX = normBtnY * 0.24;
 
-                // Zvědavý náklon hlavy (curious tilt na ose Z ~13°):
-                targetHeroCuriosityTilt = (btnCenterX >= headCenterX ? 0.22 : -0.22);
+                // Zvědavý náklon hlavy (curiosity tilt na ose Z):
+                targetHeroCuriosityTilt = (btnCenterX >= headCenterX ? 0.25 : -0.25);
+            } else if (heroCanvas) {
+                // Přímé najetí myši na samotnou postavičku – zvědavý pohled zpříma do očí hráče s jemným náklonem
+                targetHeroHeadLookX = -0.06;
+                targetHeroHeadLookY = 0.0;
+                targetHeroCuriosityTilt = 0.18;
             } else {
                 targetHeroCuriosityTilt = 0;
                 // Běžné sledování kurzoru
@@ -4835,7 +4841,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }, { passive: true });
 
-        // Okamžitá reakce na najetí myši na tlačítko Hrát i bez pohybu myši
+        // Okamžitá reakce na najetí myši na tlačítko Hrát nebo postavičku i bez pohybu myši
         document.addEventListener('pointerover', (e) => {
             const playBtn = e.target?.closest?.('.btn-launch-profile, #sidebarPlayBtn, #btnQuickPlayMychal, .btn-install-v');
             if (playBtn) {
@@ -4845,13 +4851,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const headCenterX = rect.left + rect.width / 2;
                     const btnRect = playBtn.getBoundingClientRect();
                     const btnCenterX = btnRect.left + btnRect.width / 2;
-                    targetHeroCuriosityTilt = (btnCenterX >= headCenterX ? 0.22 : -0.22);
+                    targetHeroCuriosityTilt = (btnCenterX >= headCenterX ? 0.25 : -0.25);
                 }
+            } else if (e.target?.closest?.('#heroSkinWrapper, #heroSkinCanvas3D, #stageNickPill')) {
+                targetHeroCuriosityTilt = 0.18;
             }
         }, { passive: true });
 
         document.addEventListener('pointerout', (e) => {
-            if (e.target?.closest?.('.btn-launch-profile, #sidebarPlayBtn, #btnQuickPlayMychal, .btn-install-v')) {
+            if (e.target?.closest?.('.btn-launch-profile, #sidebarPlayBtn, #btnQuickPlayMychal, .btn-install-v, #heroSkinWrapper, #heroSkinCanvas3D, #stageNickPill')) {
                 targetHeroCuriosityTilt = 0;
             }
         }, { passive: true });
@@ -4912,8 +4920,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!window.skinview3d) return null;
         try {
             class HeroIdleAnimation extends window.skinview3d.IdleAnimation {
+                constructor() {
+                    super();
+                    this.lastFrameTime = performance.now();
+                }
                 animate(player) {
                     super.animate(player);
+                    const perfNow = performance.now();
+                    const dt = Math.min((perfNow - (this.lastFrameTime || perfNow)) / 1000, 0.08) || 0.016;
+                    this.lastFrameTime = perfNow;
                     const t = this.progress * 3;
                     const now = Date.now();
 
@@ -4926,52 +4941,123 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                     if (!heroSkinViewer) return;
 
-                    // ── A. SPOUŠTĚNÍ HRY (PLYNULÉ OSLAVNÉ ROZTÁČENÍ & RUCE NAHOŘE) ─────────────────
-                    // Plynulý přechod váhy oslavy (0 -> 1 při startu, 1 -> 0 po spuštění hry / erroru)
+                    // ── A. SPOUŠTĚNÍ HRY (KLIDNÉ, PLYNULÉ OSLAVNÉ ROZTÁČENÍ) ─────────────────
                     const targetCelebWeight = isHeroLaunchSpinning ? 1.0 : 0.0;
-                    heroCelebrationWeight += (targetCelebWeight - heroCelebrationWeight) * 0.12;
+                    heroCelebrationWeight += (targetCelebWeight - heroCelebrationWeight) * Math.min(1.0, dt * 7.0);
                     if (Math.abs(heroCelebrationWeight) < 0.001) heroCelebrationWeight = 0;
 
                     if (heroCelebrationWeight > 0.001) {
-                        // Příjemné, plynulejší točení dokola (původní bylo příliš zbrklé)
-                        heroSpinAngle = (heroSpinAngle + 0.032 * heroCelebrationWeight) % (Math.PI * 2);
+                        // Klidné, přirozené točení nezávislé na obnovovací frekvenci monitoru (1 otáčka za ~4.5 s)
+                        const spinSpeedRadPerSec = 1.35;
+                        heroSpinAngle = (heroSpinAngle + spinSpeedRadPerSec * dt * heroCelebrationWeight) % (Math.PI * 2);
                     } else {
                         heroSpinAngle = 0;
                     }
 
-                    // 2. Přirozené střídání poloh těla: plynulé jemné otáčení doleva a doprava
-                    // Dva harmonické kmitočty vytváří organický živý pohyb těla (cca ±16°)
-                    const idleBodyYaw = Math.sin(t * 0.38) * 0.24 + Math.sin(t * 0.19) * 0.06;
+                    // ── B. NOČNÍ PODŘIMOVÁNÍ (Podle reálného času po 23:00 / v noci v nečinnosti) ──
+                    const currentHour = new Date().getHours();
+                    // V noci (od 22:00 do 06:00 ráno nebo testovací režim)
+                    const isNightTime = (currentHour >= 22 || currentHour < 6) || isForcedSleepTest;
+                    const isUserIdle = (now - lastHeroUserActivityTime > 6500) && !isDraggingHero && !isHeroLaunchSpinning && (heroCelebrationWeight === 0);
+                    const targetSleepWeight = (isNightTime && isUserIdle) ? 1.0 : 0.0;
 
-                    // 3. Fyzika rotace tažením myší (momentum dojezd + hladké vracení zpět)
-                    // Hráč může s postavou PLNĚ interaktovat i během točení při spouštění hry!
+                    // Hladký náběh do dřímání a rychlé probuzení při aktivitě uživatele
+                    const sleepLerpRate = targetSleepWeight > heroSleepWeight ? Math.min(1.0, dt * 1.6) : Math.min(1.0, dt * 6.0);
+                    heroSleepWeight += (targetSleepWeight - heroSleepWeight) * sleepLerpRate;
+                    if (Math.abs(heroSleepWeight) < 0.001) heroSleepWeight = 0;
+
+                    let sleepHeadPitch = 0;
+                    let sleepHeadYaw = 0;
+                    let sleepHeadRoll = 0;
+                    let sleepTorsoPitch = 0;
+
+                    if (heroSleepWeight > 0.001) {
+                        const SLEEP_CYCLE_MS = 14000; // 14s cyklus podřimování
+                        const cycleTime = (now - heroSleepCycleStart) % SLEEP_CYCLE_MS;
+
+                        // 1. FÁZE (0 až 6800 ms): Pomalé, bezvládné klesání hlavy a trupu (těžká víčka)
+                        if (cycleTime < 6800) {
+                            const p = cycleTime / 6800; // 0 až 1
+                            const droop = Math.pow(p, 1.7);
+                            const sleepBreathing = Math.sin(p * Math.PI * 4) * 0.022;
+
+                            // Hlava padá dopředu (až o ~0.55 rad = cca 31 stupňů dolů)
+                            sleepHeadPitch = (droop * 0.55) + sleepBreathing;
+                            // Lehké zvrácení hlavy na stranu
+                            sleepHeadRoll = droop * 0.12;
+                            // Trup se jemně propadá do uvolněného sedu/stoje
+                            sleepTorsoPitch = droop * 0.07;
+                        }
+                        // 2. FÁZE (6800 až 7350 ms): STARTLE & JOLT! (Prudké leknutí a trhnutí hlavy zpět nahoru!)
+                        else if (cycleTime < 7350) {
+                            const joltPhase = (cycleTime - 6800) / 550; // 0 až 1
+                            if (joltPhase < 0.32) {
+                                // Okamžitý prudký záškub hlavy nahoru (vystřelení do záklonu -0.15 rad během ~170 ms)
+                                const snapNorm = joltPhase / 0.32;
+                                sleepHeadPitch = 0.55 + (-0.15 - 0.55) * Math.sin(snapNorm * Math.PI * 0.5);
+                                sleepHeadRoll = 0.12 * (1 - snapNorm);
+                                sleepTorsoPitch = 0.07 * (1 - snapNorm);
+                            } else {
+                                // Dojezd z leknutí: hlava se zbrzdí ze záklonu zpět do roviny s lehkým zmateným rozhlédnutím
+                                const settleNorm = (joltPhase - 0.32) / 0.68;
+                                sleepHeadPitch = -0.15 * (1 - Math.sin(settleNorm * Math.PI * 0.5));
+                                // Zmatené rychlé pootočení hlavy doleva a doprava ("Lekl jsem se, co se stalo?!")
+                                sleepHeadYaw = Math.sin(settleNorm * Math.PI * 2) * 0.14;
+                                sleepHeadRoll = 0;
+                                sleepTorsoPitch = 0;
+                            }
+                        }
+                        // 3. FÁZE (7350 až 14000 ms): Probuzený stav a snaha vydržet vzhůru
+                        else {
+                            const awakeElapsed = cycleTime - 7350;
+                            const settleDamp = Math.max(0, 1 - (awakeElapsed / 2000));
+                            sleepHeadYaw = Math.sin(awakeElapsed * 0.0035) * 0.04 * settleDamp;
+                            sleepHeadPitch = 0;
+                            sleepHeadRoll = 0;
+                            sleepTorsoPitch = 0;
+                        }
+                    }
+
+                    // 2. Přirozené střídání poloh těla: jemné organické dýchání a natáčení
+                    const idleBodyYaw = Math.sin(t * 0.24) * 0.14 + Math.sin(t * 0.12) * 0.04;
+
+                    // 3. Fyzika rotace tažením myší (momentum dojezd + hladké přirozené vracení zpět)
                     if (!isDraggingHero) {
-                        // Setrvačný hladký dojezd (momentum friction)
-                        if (Math.abs(heroDragVelocityY) > 0.0002) {
+                        // Setrvačný dojezd s tlumením třením
+                        const friction = Math.pow(0.88, dt * 60);
+                        if (Math.abs(heroDragVelocityY) > 0.0001) {
                             heroManualRotY += heroDragVelocityY;
-                            heroDragVelocityY *= 0.88;
+                            heroDragVelocityY *= friction;
                         } else {
                             heroDragVelocityY = 0;
                         }
-                        if (Math.abs(heroDragVelocityX) > 0.0002) {
+                        if (Math.abs(heroDragVelocityX) > 0.0001) {
                             heroManualRotX += heroDragVelocityX;
-                            heroDragVelocityX *= 0.88;
+                            heroDragVelocityX *= friction;
                         } else {
                             heroDragVelocityX = 0;
                         }
 
-                        // Hladké a plynulé vracení manuální rotace do výchozí pozice (0) nejkratší možnou trasou:
-                        // Normalizujeme kumulovaný úhel do intervalu (-PI, PI].
-                        // Tím se postava při puštění NIKDY neroztáčí zpět o několik celých otáček dokola,
-                        // ale hladce se vrátí tou nejkratší přímou trasou (co nejbližší poloha) zpět do čela!
+                        // Hladké a plynulé vracení manuální rotace do přirozené čelní pozice:
+                        // Určíme nejbližší násobek 2*PI, aby se postava po jakémkoliv otočení (i 180° a víc)
+                        // vrátila tou nejkratší přirozenou trasou plynulým dojezdem bez okamžitého snapu
                         const twoPi = Math.PI * 2;
-                        heroManualRotY = ((heroManualRotY % twoPi) + twoPi) % twoPi;
-                        if (heroManualRotY > Math.PI) heroManualRotY -= twoPi;
+                        const targetFrontAngle = Math.round(heroManualRotY / twoPi) * twoPi;
+                        const diffY = targetFrontAngle - heroManualRotY;
 
-                        heroManualRotY *= 0.945;
-                        heroManualRotX *= 0.945;
-                        if (Math.abs(heroManualRotY) < 0.0008) heroManualRotY = 0;
-                        if (Math.abs(heroManualRotX) < 0.0008) heroManualRotX = 0;
+                        if (Math.abs(diffY) > 0.001) {
+                            const returnRate = 1 - Math.pow(0.045, dt);
+                            heroManualRotY += diffY * returnRate;
+                        } else {
+                            heroManualRotY = 0;
+                        }
+
+                        if (Math.abs(heroManualRotX) > 0.001) {
+                            const returnRateX = 1 - Math.pow(0.045, dt);
+                            heroManualRotX += (0 - heroManualRotX) * returnRateX;
+                        } else {
+                            heroManualRotX = 0;
+                        }
                     }
 
                     // Celková rotace těla: kombinuje idle vlnění, točení při spuštění a ruční manipulaci myší
@@ -5098,9 +5184,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
 
                     // 6. HLAVA PLYNULE SLEDUJE KURZOR S FYZIOLOGICKÝM LIMITEM (MAX ±90° OD STŘEDU TĚLA)
-                    currentHeroHeadLookX += (targetHeroHeadLookX - currentHeroHeadLookX) * 0.045;
-                    currentHeroHeadLookY += (targetHeroHeadLookY - currentHeroHeadLookY) * 0.045;
-                    currentHeroCuriosityTilt += (targetHeroCuriosityTilt - currentHeroCuriosityTilt) * 0.065;
+                    const headLerpRate = 1 - Math.pow(0.005, dt);
+                    currentHeroHeadLookX += (targetHeroHeadLookX - currentHeroHeadLookX) * headLerpRate;
+                    currentHeroHeadLookY += (targetHeroHeadLookY - currentHeroHeadLookY) * headLerpRate;
+
+                    // Organický pružinový tlumič (Spring-Damper) pro extra hladký a přirozený náklon curiosity
+                    const curiositySpringK = 36.0;
+                    const curiosityDamping = 10.0;
+                    const curiosityDiff = targetHeroCuriosityTilt - currentHeroCuriosityTilt;
+                    heroCuriosityVelocity += curiosityDiff * curiositySpringK * dt;
+                    heroCuriosityVelocity *= Math.max(0, 1 - curiosityDamping * dt);
+                    currentHeroCuriosityTilt += heroCuriosityVelocity * dt;
 
                     if (player && player.skin && player.skin.head) {
                         // Úhel pohledu kurzoru vůči natočení těla v rozsahu [-Math.PI, Math.PI]
@@ -5126,11 +5220,27 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                         // Hladká kompenzace vertikálního náklonu: při pohledu zezadu netlačíme hlavu za záda
                         const frontFactor = Math.max(0, Math.cos(diffYaw));
+                        const curiosityIntensity = Math.abs(currentHeroCuriosityTilt);
+
+                        // Když je postava zvědavá, přirozeně mírně předkloní/zaostří hlavu dopředu
+                        const curiousPitch = 0.065 * curiosityIntensity;
                         const targetHeadPitch = -totalBodyPitch * frontFactor + currentHeroHeadLookX * frontFactor + Math.sin(t * 1.4) * 0.012;
 
-                        player.skin.head.rotation.y = targetHeadYaw;
-                        player.skin.head.rotation.x = targetHeadPitch + (punchWeight * 0.08);
-                        player.skin.head.rotation.z = -targetHeadYaw * 0.05 - (waveWeight * 0.08) + currentHeroCuriosityTilt;
+                        // Jemné dýchání/pulzování během zvědavého pohledu pro živý organický pocit
+                        const curiosityPulse = Math.sin(t * 2.2) * 0.014 * curiosityIntensity;
+
+                        // Tlumení sledování myši při spánku (spící postava nesleduje kurzor)
+                        const wakeTrackingFactor = Math.max(0, 1 - heroSleepWeight * 0.9);
+
+                        player.skin.head.rotation.y = (targetHeadYaw * wakeTrackingFactor) + (sleepHeadYaw * heroSleepWeight);
+                        player.skin.head.rotation.x = (targetHeadPitch * wakeTrackingFactor) + (punchWeight * 0.08) + curiousPitch + (sleepHeadPitch * heroSleepWeight);
+                        player.skin.head.rotation.z = (-targetHeadYaw * 0.05 * wakeTrackingFactor) - (waveWeight * 0.08) + currentHeroCuriosityTilt + curiosityPulse + (sleepHeadRoll * heroSleepWeight);
+
+                        // Anatomický protipohyb trupu pro přirozenou rovnováhu těla + uvolnění při spánku
+                        if (player.skin.torso) {
+                            player.skin.torso.rotation.z = -currentHeroCuriosityTilt * 0.12;
+                            player.skin.torso.rotation.x = sleepTorsoPitch * heroSleepWeight;
+                        }
                     }
                 }
             }
@@ -8412,6 +8522,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             deleteSec.style.display = ((currentConfig.profiles || []).length <= 1) ? 'none' : 'flex';
         }
 
+        const upgradeBanner = document.getElementById('profileQuickUpgradeBanner');
+        const canUpgrade = profile.version !== '26.3' && profile.version !== '26.4';
+        if (upgradeBanner) {
+            if (canUpgrade) {
+                upgradeBanner.style.display = 'flex';
+                const bannerTitle = document.getElementById('profileUpgradeBannerTitle');
+                const bannerDesc = document.getElementById('profileUpgradeBannerDesc');
+                if (bannerTitle) bannerTitle.textContent = `Dostupný upgrade (Verze ${profile.version || 'starší'})`;
+                if (bannerDesc) bannerDesc.textContent = `Tento profil běží na starší verzi Minecraftu. Můžeš ho jedním kliknutím upgradovat na novější doporučenou verzi a stáhnout kompatibilní módy.`;
+            } else {
+                upgradeBanner.style.display = 'none';
+            }
+        }
+
         if (modalProfileSettings) modalProfileSettings.style.display = 'flex';
 
         // Check if Sodium and Lithium are already installed in this profile
@@ -8542,20 +8666,57 @@ document.addEventListener('DOMContentLoaded', async () => {
             const profile = (currentConfig.profiles || []).find(p => p.id === activeSettingsProfileId);
             const pName = profile ? profile.name : activeSettingsProfileId;
             if ((currentConfig.profiles || []).length <= 1) {
-                alert('V launcheru musí zůstat alespoň jeden profil.');
+                showToast('V launcheru musí zůstat alespoň jeden profil.', 'warning');
                 return;
             }
-            if (!confirm(`Opravdu chceš smazat a odinstalovat profil "${pName}"?\n\nTato akce profil odstraní a odinstaluje soubory verze, které nepoužívá žádný jiný profil.`)) return;
-
-            const res = await window.api.deleteProfile(activeSettingsProfileId);
-            if (res && res.success) {
-                showToast(`Profil "${pName}" byl smazán a odinstalován.`, 'success');
-                closeProfileSettingsModal();
-                await loadConfiguration();
-                renderProfilesList();
-            } else {
-                alert(res.error || 'Profil se nepodařilo smazat.');
+            if (isRunning && runningProfileId === activeSettingsProfileId) {
+                showToast('Nelze smazat profil, který právě běží. Nejprve ukonči hru.', 'warning');
+                return;
             }
+            if (isLaunching && launchingProfileId === activeSettingsProfileId) {
+                showToast('Nelze smazat profil během stahování nebo spouštění.', 'warning');
+                return;
+            }
+            if (!confirm(`Opravdu chceš smazat a odinstalovat profil "${pName}"?\n\nTato akce profil trvale odstraní a odinstaluje soubory verze, které nepoužívá žádný jiný profil.`)) return;
+
+            btnDeleteCurrentProfile.disabled = true;
+            const origHtml = btnDeleteCurrentProfile.innerHTML;
+            btnDeleteCurrentProfile.innerHTML = '<span>Probíhá mazání...</span>';
+
+            try {
+                const targetId = activeSettingsProfileId;
+                const res = await window.api.deleteProfile(targetId);
+                if (res && res.success) {
+                    showToast(`Profil "${pName}" byl smazán a odinstalován.`, 'success');
+                    // Okamžité pročištění profilu z paměti v rendereru
+                    currentConfig.profiles = (currentConfig.profiles || []).filter(p => p.id !== targetId);
+                    if (currentConfig.activeProfileId === targetId) {
+                        currentConfig.activeProfileId = res.activeProfileId || currentConfig.profiles[0]?.id || 'minecraft-26.2';
+                        hasUserManuallySelectedProfile = false;
+                    }
+                    closeProfileSettingsModal();
+                    await loadConfiguration();
+                    renderProfilesList();
+                } else {
+                    showToast(res?.error || 'Profil se nepodařilo smazat.', 'error');
+                    btnDeleteCurrentProfile.disabled = false;
+                    btnDeleteCurrentProfile.innerHTML = origHtml;
+                }
+            } catch (err) {
+                showToast('Chyba při mazání profilu: ' + err.message, 'error');
+                btnDeleteCurrentProfile.disabled = false;
+                btnDeleteCurrentProfile.innerHTML = origHtml;
+            }
+        });
+    }
+
+    const btnModalUpgradeProfile = document.getElementById('btnModalUpgradeProfile');
+    if (btnModalUpgradeProfile) {
+        btnModalUpgradeProfile.addEventListener('click', () => {
+            if (!activeSettingsProfileId) return;
+            const targetId = activeSettingsProfileId;
+            closeProfileSettingsModal();
+            openUpgradeModal(targetId);
         });
     }
 
