@@ -152,6 +152,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden && !isLaunching) {
             resetHeroElytraFlyout();
+            const curTab = document.querySelector('.nav-btn.active')?.dataset?.tab || 'play';
+            if (heroSkinViewer) {
+                heroSkinViewer.renderPaused = (curTab !== 'play');
+                heroSkinViewer.draw();
+            }
+        }
+    });
+
+    window.addEventListener('focus', () => {
+        if (!isLaunching) {
+            resetHeroElytraFlyout();
+            const curTab = document.querySelector('.nav-btn.active')?.dataset?.tab || 'play';
+            if (heroSkinViewer) {
+                heroSkinViewer.renderPaused = (curTab !== 'play');
+                heroSkinViewer.draw();
+            }
         }
     });
 
@@ -4719,9 +4735,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     /**
      * Zahájí plynulý vzlet postavy s Elytrou:
-     * - Bounding box canvasu se rozšíří na celé okno s pointer-events: none (plně proklikatelné).
-     * - Přesná 3D kompenzace zajistí nulový skok – postava začíná na přesném pixelu své pozice.
-     * - Nasadí se Elytra a postava vyskočí a odletí dopředu před kameru.
+     * - Fáze 1 (0-450ms): Postava stojí na podstavci, otočí se, plynule rozbalí křídla a přikrčí se.
+     * - Fáze 2 (450-1300ms): Vymrští se do letové pózy s máváním křídel a obloukem plynule přeletí přes okno.
+     * - Fáze 3: Okamžitý čistý reset na podstavec bez jakéhokoliv mizení postavy při návratu.
      */
     function triggerHeroElytraFlyout() {
         if (isHeroFlyingOut) return;
@@ -4729,7 +4745,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!canvas || !heroSkinViewer || !heroSkinViewer.playerObject) return;
         if (heroSkinViewer.disposed) return;
 
-        // Pokud předchozí reset ještě čekal, zrušíme ho
         if (heroFlightResetTimer) {
             clearTimeout(heroFlightResetTimer);
             heroFlightResetTimer = null;
@@ -4737,9 +4752,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         heroSkinViewer.renderPaused = false;
         heroFlightOriginalBackEquipment = heroSkinViewer.playerObject.backEquipment;
-        heroInitialCanvasRect = canvas.getBoundingClientRect();
 
-        // 1. Nasazení Elytry (pokud nemá cape texture, vygenerujeme standardní texturu)
+        // Příprava textury Elytry (pokud nemá vlastní plášť, použije se autentická šedá)
         if (!heroSkinViewer.capeTexture) {
             const elytraTex = getDefaultElytraDataUrl();
             if (elytraTex) {
@@ -4755,121 +4769,112 @@ document.addEventListener('DOMContentLoaded', async () => {
             heroSkinViewer.playerObject.backEquipment = 'elytra';
         }
 
-        // 2. Rozšíření bounding boxu na celé okno s pointer-events: none (žádné blokování klikání)
-        const wrapperEl = document.getElementById('heroSkinWrapper');
-        if (wrapperEl) wrapperEl.classList.add('has-flyout');
-        canvas.classList.add('hero-elytra-flyout');
-
-        const W = window.innerWidth || document.documentElement.clientWidth || 1100;
-        const H = window.innerHeight || document.documentElement.clientHeight || 700;
-        heroSkinViewer.setSize(W, H);
-
-        // 3. Přepočet souřadnic 2D obrazovky do 3D světa na Z = 0 pro absolutní kontinuitu bez poskočení
-        const cx = heroInitialCanvasRect.left + (heroInitialCanvasRect.width / 2);
-        const cy = heroInitialCanvasRect.top + (heroInitialCanvasRect.height / 2);
-
-        const camZ = heroSkinViewer.camera.position.z || 70;
-        const halfFovRad = ((heroSkinViewer.camera.fov || 46) * Math.PI) / 360;
-        heroFlightWorldH = 2 * camZ * Math.tan(halfFovRad);
-        heroFlightWorldW = heroFlightWorldH * (W / H);
-
-        heroFlightStartX = ((cx - (W / 2)) / W) * heroFlightWorldW;
-        heroFlightStartY = -((cy - (H / 2)) / H) * heroFlightWorldH;
-
-        if (heroSkinViewer.playerWrapper) {
-            heroSkinViewer.playerWrapper.position.set(heroFlightStartX, heroFlightStartY, 0);
-            heroSkinViewer.playerWrapper.rotation.set(0, 0, 0);
-        }
-        if (heroSkinViewer.playerObject) {
-            heroSkinViewer.playerObject.position.set(0, 0, 0);
-            heroSkinViewer.playerObject.rotation.set(0, 0, 0);
-        }
-
         isHeroFlyingOut = true;
         heroFlyoutStartTime = Date.now();
 
-        // 4. Bezpečnostní návrat do původního stavu po 10 sekundách nebo dalším otevření
+        // V čase 450 ms (po rozbalení křídel na podstavci) zahájíme plynulý průlet přes okno
+        setTimeout(() => {
+            if (!isHeroFlyingOut) return;
+            const rect = canvas.getBoundingClientRect();
+            if (!rect || rect.width === 0) return;
+
+            // Fixní ukotvení na přesný aktuální pixel bez poskočení
+            canvas.style.position = 'fixed';
+            canvas.style.left = rect.left + 'px';
+            canvas.style.top = rect.top + 'px';
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+            canvas.style.zIndex = '99999';
+            canvas.style.pointerEvents = 'none';
+            canvas.style.transformOrigin = 'center center';
+            canvas.style.transform = 'translate3d(0, 0, 0) scale(1) rotate(0deg)';
+            canvas.style.opacity = '1';
+            canvas.classList.add('hero-elytra-flyout');
+
+            // Hardwarově akcelerovaný plynulý průlet po elegantní křivce směrem do kamery
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    if (!isHeroFlyingOut) return;
+                    canvas.style.transition = 'transform 800ms cubic-bezier(0.2, 0.8, 0.25, 1), opacity 350ms ease-in 450ms';
+                    canvas.style.transform = 'translate3d(520px, -260px, 0) scale(2.9) rotate(-12deg)';
+                    canvas.style.opacity = '0';
+                });
+            });
+        }, 450);
+
+        // Po dokončení přeletu (1350 ms) se postava interně vrátí na podstavec
         heroFlightResetTimer = setTimeout(() => {
             resetHeroElytraFlyout();
-        }, 10000);
+        }, 1350);
     }
 
     /**
-     * Vykreslení jednoho snímku letové animace s Elytrou.
+     * Vykreslení jednoho snímku 3D animace postavy a křídel.
      */
     function updateHeroElytraFlyoutFrame(player, p, elapsed) {
         if (!heroSkinViewer) return;
         const wrapper = heroSkinViewer.playerWrapper;
-        const camZ = heroSkinViewer.camera.position.z || 70;
 
-        // Fáze 1: Příprava / Přikrčení (0 <= p <= 0.14, cca 0 - 190 ms)
-        if (p <= 0.14) {
-            const prep = p / 0.14;
-            const crouchAmt = Math.sin(prep * Math.PI) * 2.8;
+        // FÁZE 1: Plynulý Equip & Windup na podstavci (0 <= elapsed < 450ms)
+        if (elapsed < 450) {
+            const windupProgress = elapsed / 450;
+            // Plynulé pootočení těla o ~40°, aby byla vidět záda a křídla
+            wrapper.position.set(0, 0, 0);
+            wrapper.rotation.y = windupProgress * 0.72;
+            wrapper.rotation.x = 0;
+            wrapper.rotation.z = 0;
 
-            wrapper.position.x = heroFlightStartX;
-            wrapper.position.y = heroFlightStartY - crouchAmt;
-            wrapper.position.z = 0;
-
+            // Přikrčení (squat / nápřah k odrazu)
+            const crouch = Math.sin(windupProgress * Math.PI) * 0.25;
             if (player.skin) {
-                player.skin.body.rotation.x = prep * 0.35;
-                player.skin.head.rotation.x = -prep * 0.2;
-                player.skin.leftLeg.rotation.x = -prep * 0.55;
-                player.skin.rightLeg.rotation.x = -prep * 0.55;
-                player.skin.leftArm.rotation.x = prep * 0.45;
-                player.skin.rightArm.rotation.x = prep * 0.45;
+                player.skin.body.rotation.x = crouch * 1.2;
+                player.skin.leftLeg.rotation.x = -crouch * 1.5;
+                player.skin.rightLeg.rotation.x = -crouch * 1.5;
+                player.skin.leftArm.rotation.x = crouch * 1.2;
+                player.skin.rightArm.rotation.x = crouch * 1.2;
             }
 
+            // Plynulé rozevření křídel Elytry ze složených (0.26 rad) na roztažená (1.1 rad)
             if (player.elytra) {
+                const wingSpread = 0.26 + (0.84 * Math.max(0, (windupProgress - 0.2) / 0.8));
                 player.elytra.leftWing.rotation.x = 0.35;
-                player.elytra.leftWing.rotation.y = 0.05;
-                player.elytra.leftWing.rotation.z = 0.26;
+                player.elytra.leftWing.rotation.y = 0.2;
+                player.elytra.leftWing.rotation.z = wingSpread;
                 player.elytra.updateRightWing();
             }
             return;
         }
 
-        // Fáze 2 & 3: Odraz, rozevření křídel a dramatický průlet ke kameře (0.14 < p <= 1.0)
-        const flightProgress = (p - 0.14) / 0.86;
-        const speedP = Math.pow(flightProgress, 1.55);
+        // FÁZE 2: Vzlet a letová póza v 3D (450ms <= elapsed <= 1300ms)
+        const flyProgress = Math.min(1, (elapsed - 450) / 850);
+        const flightPitch = Math.min(1.35, flyProgress * 1.5); // vodorovný sklon trupu v letu (~77°)
 
-        const targetEndX = heroFlightStartX + (heroFlightWorldW * 0.42);
-        const targetEndY = heroFlightStartY + (heroFlightWorldH * 0.52);
-        const targetEndZ = camZ + 25; // přeletí za rovinu kamery
-
-        wrapper.position.x = heroFlightStartX + (targetEndX - heroFlightStartX) * Math.sin(speedP * Math.PI * 0.5);
-        wrapper.position.y = heroFlightStartY + (targetEndY - heroFlightStartY) * speedP;
-        wrapper.position.z = speedP * targetEndZ;
-
-        // Aerodynamický sklon těla v letu (~82° dopředu)
-        const flightPitch = Math.min(1.43, flightProgress * 1.6);
+        wrapper.position.set(0, 0, 0);
         wrapper.rotation.x = flightPitch;
-        wrapper.rotation.z = -0.25 * Math.sin(flightProgress * Math.PI);
-        wrapper.rotation.y = 0.25 * (1 - flightProgress);
+        wrapper.rotation.y = 0.72 * (1 - flyProgress * 0.5);
+        wrapper.rotation.z = -0.18 * Math.sin(flyProgress * Math.PI);
 
         if (player.skin && player.skin.head) {
             player.skin.head.rotation.x = -0.65;
             player.skin.head.rotation.y = 0;
         }
 
-        // Křídla Elytry: plynulé rozevření do aerofoil profilu s vlněním
+        // Křídla aerodynamicky mávají za letu
         if (player.elytra) {
-            const wingDeploy = Math.min(1, flightProgress * 3.2);
-            const wingFlutter = Math.sin(elapsed * 0.025) * 0.12;
-
-            player.elytra.leftWing.rotation.x = 0.35 + (wingFlutter * 0.4);
-            player.elytra.leftWing.rotation.y = 0.32;
-            player.elytra.leftWing.rotation.z = (0.26 + (1.28 - 0.26) * wingDeploy) + wingFlutter;
+            const wingFlutter = Math.sin(elapsed * 0.024) * 0.15;
+            player.elytra.leftWing.rotation.x = 0.35 + wingFlutter * 0.5;
+            player.elytra.leftWing.rotation.y = 0.3;
+            player.elytra.leftWing.rotation.z = 1.15 + wingFlutter;
             player.elytra.updateRightWing();
         }
 
         if (player.skin) {
-            player.skin.leftArm.rotation.x = 0.12;
+            player.skin.leftArm.rotation.x = 0.15;
             player.skin.leftArm.rotation.z = 0.45;
-            player.skin.rightArm.rotation.x = 0.12;
+            player.skin.rightArm.rotation.x = 0.15;
             player.skin.rightArm.rotation.z = -0.45;
-            player.skin.leftLeg.rotation.x = 0.15;
-            player.skin.rightLeg.rotation.x = 0.15;
+            player.skin.leftLeg.rotation.x = 0.1;
+            player.skin.rightLeg.rotation.x = 0.1;
         }
     }
 
@@ -4882,13 +4887,23 @@ document.addEventListener('DOMContentLoaded', async () => {
             heroFlightResetTimer = null;
         }
 
-        if (!isHeroFlyingOut) return;
         isHeroFlyingOut = false;
         heroFlyoutStartTime = 0;
 
         const canvas = document.getElementById('heroSkinCanvas3D');
         if (canvas) {
             canvas.classList.remove('hero-elytra-flyout');
+            canvas.style.position = '';
+            canvas.style.left = '';
+            canvas.style.top = '';
+            canvas.style.width = '';
+            canvas.style.height = '';
+            canvas.style.zIndex = '';
+            canvas.style.pointerEvents = '';
+            canvas.style.transformOrigin = '';
+            canvas.style.transform = '';
+            canvas.style.transition = '';
+            canvas.style.opacity = '';
         }
         const wrapperEl = document.getElementById('heroSkinWrapper');
         if (wrapperEl) {
@@ -4898,8 +4913,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!heroSkinViewer || heroSkinViewer.disposed) return;
 
         try {
-            heroSkinViewer.setSize(220, 280);
-
             if (heroSkinViewer.playerWrapper) {
                 heroSkinViewer.playerWrapper.position.set(0, 0, 0);
                 heroSkinViewer.playerWrapper.rotation.set(0, 0, 0);
@@ -4909,7 +4922,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 heroSkinViewer.playerObject.rotation.set(0, 0, 0);
                 heroSkinViewer.playerObject.resetJoints();
 
-                // Obnovení původního pláště (nebo null pokud plášť neměl)
+                // Obnovení původního pláště (nebo null)
                 if (heroFlightOriginalBackEquipment === null) {
                     heroSkinViewer.loadCape(null);
                 } else {
@@ -4918,6 +4931,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             heroSkinViewer.animation = createHeroIdleAnimation() || new window.skinview3d.IdleAnimation();
+            heroSkinViewer.renderPaused = false;
+            heroSkinViewer.draw();
         } catch (e) {
             console.warn('[HERO FLYOUT] resetHeroElytraFlyout error:', e);
         }
@@ -6707,13 +6722,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             renderProfilesList();
             refreshVersionStatuses();
-            if (isHeroFlyingOut) {
-                setTimeout(() => {
-                    if (heroSkinViewer) heroSkinViewer.renderPaused = true;
-                }, 350);
-            } else {
-                if (heroSkinViewer) heroSkinViewer.renderPaused = true;
-            }
+            resetHeroElytraFlyout();
+            if (heroSkinViewer) heroSkinViewer.renderPaused = true;
             if (skinViewer) skinViewer.renderPaused = true;
         });
     }

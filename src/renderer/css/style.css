@@ -1010,19 +1010,14 @@ body.is-maximized {
     cursor: grabbing;
 }
 
-/* 3D Elytra Flyout Cinematic Overlay - expands over entire launcher with pointer-events: none */
+/* 3D Elytra Flyout Cinematic Overlay - flies out with hardware-accelerated transform & pointer-events: none */
 .hero-3d-canvas.hero-elytra-flyout {
     position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
     z-index: 99999 !important;
     pointer-events: none !important;
     cursor: default !important;
-    background: transparent !important;
-    transform: none !important;
     filter: drop-shadow(0 24px 50px rgba(0, 0, 0, 0.75)) !important;
+    will-change: transform, opacity !important;
 }
 
 /* Levitating Pedestal & Ground Shadow under 3D Character */
