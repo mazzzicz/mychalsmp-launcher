@@ -322,10 +322,23 @@ function ensureLinuxDesktopShortcut() {
             try { fs.copyFileSync(iconSource, iconDest); } catch (e) { }
         }
 
+        // Určení spolehlivého spouštěcího příkazu (s podporou vývoje i produkčního balíčku)
+        let execCommand = '';
+        const installedBin = path.join(homeDir, '.local', 'share', 'mychalsmp-launcher', 'mychalsmp-launcher');
+        const projectRoot = path.resolve(__dirname, '../..');
+
+        if (!app.isPackaged || execPath.includes('node_modules')) {
+            execCommand = `"${execPath}" "${projectRoot}" --no-sandbox %U`;
+        } else if (fs.existsSync(installedBin)) {
+            execCommand = `"${installedBin}" --no-sandbox %U`;
+        } else {
+            execCommand = `"${execPath}" --no-sandbox %U`;
+        }
+
         const desktopContent = `[Desktop Entry]
 Name=SMPClient
 Comment=Oficiální Minecraft klient sítě MYCHAL SMP
-Exec="${execPath}" %U
+Exec=${execCommand}
 Icon=${fs.existsSync(iconDest) ? iconDest : 'mychalsmp-launcher'}
 Terminal=false
 Type=Application
@@ -2816,6 +2829,7 @@ ipcMain.handle('restart-launcher', () => {
         return;
     }
 
+    const projectRoot = path.resolve(__dirname, '../..');
     let targetExe = path.join(require('os').homedir(), '.local', 'share', 'mychalsmp-launcher', 'SMPClient');
     if (!fs.existsSync(targetExe)) {
         targetExe = path.join(require('os').homedir(), '.local', 'share', 'mychalsmp-launcher', 'mychalsmp-launcher');
@@ -2830,10 +2844,13 @@ ipcMain.handle('restart-launcher', () => {
             }
         }
     }
-    if (fs.existsSync(targetExe)) {
-        app.relaunch({ execPath: targetExe });
+
+    if (!app.isPackaged || process.execPath.includes('node_modules')) {
+        app.relaunch({ execPath: process.execPath, args: [projectRoot, '--no-sandbox'] });
+    } else if (fs.existsSync(targetExe)) {
+        app.relaunch({ execPath: targetExe, args: ['--no-sandbox'] });
     } else {
-        app.relaunch();
+        app.relaunch({ args: ['--no-sandbox'] });
     }
     app.exit(0);
 });

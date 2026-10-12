@@ -515,12 +515,19 @@ async function applyUpdate(assetUrl, onProgress) {
         try { fs.chmodSync(targetExe, 0o755); } catch (e) {}
 
         try {
-            const appsDir = path.join(os.homedir(), '.local', 'share', 'applications');
-            const desktopFile = path.join(appsDir, 'mychalsmp-launcher.desktop');
-            if (fs.existsSync(desktopFile)) {
-                let content = fs.readFileSync(desktopFile, 'utf8');
-                content = content.replace(/Exec="?[^"\n]+"?/g, `Exec="${targetExe}"`);
-                fs.writeFileSync(desktopFile, content, 'utf8');
+            const home = os.homedir();
+            const targetDesktopFiles = [
+                path.join(home, '.local', 'share', 'applications', 'mychalsmp-launcher.desktop'),
+                path.join(home, 'Desktop', 'SMPClient.desktop'),
+                path.join(home, 'Plocha', 'SMPClient.desktop')
+            ];
+            for (const dFile of targetDesktopFiles) {
+                if (fs.existsSync(dFile)) {
+                    let content = fs.readFileSync(dFile, 'utf8');
+                    content = content.replace(/Exec="?[^"\n]+"?/g, `Exec="${targetExe}" --no-sandbox %U`);
+                    fs.writeFileSync(dFile, content, 'utf8');
+                    try { fs.chmodSync(dFile, 0o755); } catch (_) {}
+                }
             }
         } catch (e) {}
 
