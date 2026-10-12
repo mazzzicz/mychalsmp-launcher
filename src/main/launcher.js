@@ -33,7 +33,8 @@ function isJarFileValid(filePath) {
         try {
             const headBuf = Buffer.alloc(4);
             fs.readSync(fd, headBuf, 0, 4, 0);
-            if (headBuf[0] !== 0x50 || headBuf[1] !== 0x4b) {
+            // První 4 bajty musí být přesně LOC hlavička: 0x04034b50 (PK\3\4)
+            if (headBuf[0] !== 0x50 || headBuf[1] !== 0x4b || headBuf[2] !== 0x03 || headBuf[3] !== 0x04) {
                 return false;
             }
             const tailLen = Math.min(stats.size, 65557);
@@ -67,19 +68,39 @@ function isJarFileValid(filePath) {
 
                 if (cenSize > 0) {
                     if (cenOffset >= stats.size) return false;
-                    const cenSigBuf = Buffer.alloc(4);
-                    fs.readSync(fd, cenSigBuf, 0, 4, cenOffset);
+                    const cenSigBuf = Buffer.alloc(46);
+                    fs.readSync(fd, cenSigBuf, 0, 46, cenOffset);
                     // CEN signature musí být přesně 0x02014b50 (PK\1\2)
                     if (cenSigBuf[0] !== 0x50 || cenSigBuf[1] !== 0x4b || cenSigBuf[2] !== 0x01 || cenSigBuf[3] !== 0x02) {
                         return false;
                     }
+
+                    // Ověření prvního LOC headeru z CEN pro prevenci invalid LOC header (bad signature)
+                    const firstLocOffset = cenSigBuf.readUInt32LE(42);
+                    if (firstLocOffset < stats.size) {
+                        const locBuf = Buffer.alloc(4);
+                        fs.readSync(fd, locBuf, 0, 4, firstLocOffset);
+                        if (locBuf[0] !== 0x50 || locBuf[1] !== 0x4b || locBuf[2] !== 0x03 || locBuf[3] !== 0x04) {
+                            return false;
+                        }
+                    }
                 }
             }
-
-            return true;
         } finally {
             fs.closeSync(fd);
         }
+
+        // Hloubková kontrola struktury a čitelnosti pomocí adm-zip (zabrání java.util.zip.ZipException)
+        try {
+            const AdmZip = require('adm-zip');
+            const zip = new AdmZip(filePath);
+            const entries = zip.getEntries();
+            if (!entries || entries.length === 0) return false;
+        } catch (_) {
+            return false;
+        }
+
+        return true;
     } catch (e) {
         return false;
     }
@@ -1657,11 +1678,17 @@ function injectSMPClientBrandIntoJars(baseDir, targetVersion = null, versionOpts
     for (const jarPath of jarsToPatch) {
         if (!fs.existsSync(jarPath) || !isJarFileValid(jarPath)) continue;
 
+        // U Fabric profilů se brand předává bezpečně a dynamicky přes -Xbootclasspath/a a -Dsmpclient.brand.
+        // NIKDY neupravujeme fabric-loader-*.jar soubor, protože to poškozuje TinyRemapper při deobfuskování!
+        if (path.basename(jarPath).startsWith('fabric-loader-')) {
+            continue;
+        }
+
         const backupPath = jarPath.replace(/\.jar$/, '.vanilla.jar');
         const sigPath = `${jarPath}.brand_sig`;
 
-        // Čistá vanilla záloha před zápisem
-        if (!fs.existsSync(backupPath)) {
+        // Čistá vanilla záloha před zápisem (pouze pokud je původní soubor platný)
+        if (!fs.existsSync(backupPath) && isJarFileValid(jarPath)) {
             try { fs.copyFileSync(jarPath, backupPath); } catch (_) {}
         }
 
@@ -1676,28 +1703,37 @@ function injectSMPClientBrandIntoJars(baseDir, targetVersion = null, versionOpts
 
         let success = false;
         const tmpDir = path.join(os.tmpdir(), `smpclient_brand_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`);
+        const tempJar = path.join(tmpDir, 'patched.jar');
         try {
             const classDest = path.join(tmpDir, 'net/minecraft/client/ClientBrandRetriever.class');
             fs.mkdirSync(path.dirname(classDest), { recursive: true });
             fs.writeFileSync(classDest, classBuf);
 
+            // Vždy modifikujeme nejprve dočasnou kopii, abychom NIKDY nepoškodili originální JAR na disku
+            fs.copyFileSync(jarPath, tempJar);
+
             if (jarCli) {
-                // Metoda 1: Oficiální OpenJDK jar CLI (plná podpora Zip64, nulová korupce)
-                execFileSync(jarCli, ['uf', jarPath, 'net/minecraft/client/ClientBrandRetriever.class'], { cwd: tmpDir, stdio: 'ignore' });
-                success = true;
+                // Metoda 1: Oficiální OpenJDK jar CLI na dočasném souboru
+                execFileSync(jarCli, ['uf', tempJar, 'net/minecraft/client/ClientBrandRetriever.class'], { cwd: tmpDir, stdio: 'ignore' });
             } else {
                 // Metoda 2: Fallback na zip CLI bez mazání (-u pouze)
                 try {
-                    execFileSync('zip', ['-u', jarPath, 'net/minecraft/client/ClientBrandRetriever.class'], { cwd: tmpDir, stdio: 'ignore' });
-                    success = true;
+                    execFileSync('zip', ['-u', tempJar, 'net/minecraft/client/ClientBrandRetriever.class'], { cwd: tmpDir, stdio: 'ignore' });
                 } catch (_) {
                     // Metoda 3: Multiplatformní adm-zip zápis jedné třídy
                     const AdmZip = require('adm-zip');
-                    const zip = new AdmZip(jarPath);
+                    const zip = new AdmZip(tempJar);
                     zip.addFile('net/minecraft/client/ClientBrandRetriever.class', classBuf);
-                    zip.writeZip(jarPath);
-                    success = true;
+                    zip.writeZip(tempJar);
                 }
+            }
+
+            // Striktní ověření integrity dočasného souboru před nahrazením originálu
+            if (isJarFileValid(tempJar)) {
+                fs.copyFileSync(tempJar, jarPath);
+                success = true;
+            } else {
+                onLog(`[KLIENT] ⚠ Dočasný soubor po zápisu brandu neprošel ověřením integrity. Ponechávám původní JAR.`);
             }
         } catch (patchErr) {
             onLog(`[KLIENT] ⚠ Zápis brandu do ${path.basename(jarPath)} selhal: ${patchErr.message}`);
@@ -2358,6 +2394,10 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
         }
         try { fs.unlinkSync(`${clientJarPath}.skin_sig`); } catch (_) {}
         try { fs.unlinkSync(`${clientJarPath}.brand_sig`); } catch (_) {}
+        try { fs.unlinkSync(`${clientJarPath}.vanilla_bak`); } catch (_) {}
+        if (fs.existsSync(bak) && !isJarFileValid(bak)) {
+            try { fs.unlinkSync(bak); } catch (_) {}
+        }
     }
 
     if (fs.existsSync(vanillaClientJar) && !isJarFileValid(vanillaClientJar)) {
@@ -2371,6 +2411,10 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
         }
         try { fs.unlinkSync(`${vanillaClientJar}.skin_sig`); } catch (_) {}
         try { fs.unlinkSync(`${vanillaClientJar}.brand_sig`); } catch (_) {}
+        try { fs.unlinkSync(`${vanillaClientJar}.vanilla_bak`); } catch (_) {}
+        if (fs.existsSync(bak) && !isJarFileValid(bak)) {
+            try { fs.unlinkSync(bak); } catch (_) {}
+        }
     }
 
     // Pro custom zavaděče (Fabric): pokud jar chybí, ale vanilkový existuje a je platný, vytvoříme okamžitě kopii
@@ -3122,5 +3166,6 @@ module.exports = {
     downloadAndInstallJava,
     getJavaMajorVersion,
     getRequiredJavaVersion,
-    ensureProfileModsDependencies
+    ensureProfileModsDependencies,
+    isJarFileValid
 };

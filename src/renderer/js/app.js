@@ -43,13 +43,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     let activePreLaunchModUpdate = null;
 
     /**
-     * Tailored Psychological Cubic Bézier Curve (P1: [0.28, 0.44], P2: [0.20, 0.96])
-     * Vysoce uspokojivý, plynulý psychologický náběh stahování bez skákání:
-     * - Živá a okamžitá odezva při startu bez falešného skákání.
-     * - Žádné mrtvé zóny a zasekávání na 50 % – neustálý plynulý tah vpřed.
-     * - Uspokojivý finální dojezd do 100 %.
+     * Ideální psychologická Cubic Bézier křivka pro všechny progress bary:
+     * cubic-bezier(.05, 1, 1, .55)
+     * - Okamžitá a živá odezva (P1 = [0.05, 1]): okamžitý raketový náběh při spuštění stahování
+     * - Super plynulý tah a hladký dojezd do cíle (P2 = [1, 0.55])
      */
-    function evalCubicBezier(x, x1 = 0.28, y1 = 0.44, x2 = 0.20, y2 = 0.96) {
+    function evalCubicBezier(x, x1 = 0.05, y1 = 1, x2 = 1, y2 = 0.55) {
         if (x <= 0) return 0;
         if (x >= 1) return 1;
 
@@ -75,7 +74,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (isNaN(val) || val <= 0) return 0;
         if (val >= 100) return 100;
         const x = Math.max(0, Math.min(1, val / 100));
-        const perceived = evalCubicBezier(x, 0.28, 0.44, 0.20, 0.96);
+        const perceived = evalCubicBezier(x, 0.05, 1, 1, 0.55);
         const result = Math.round(perceived * 100);
         return Math.min(99, Math.max(1, result));
     }

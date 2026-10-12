@@ -2095,7 +2095,7 @@ body.is-maximized {
     background: linear-gradient(90deg, #0a67e5 0%, #21DE00 100%);
     border-radius: 3px;
     box-shadow: none;
-    transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: width 0.25s cubic-bezier(0.05, 1, 1, 0.55);
     position: relative;
     overflow: hidden;
 }
@@ -2480,7 +2480,7 @@ body.is-maximized {
     background: linear-gradient(90deg, #0a67e5, #21DE00);
     box-shadow: 0 0 10px rgba(33, 222, 0, 0.45);
     border-radius: 3px;
-    transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: width 0.25s cubic-bezier(0.05, 1, 1, 0.55);
 }
 
 .v-card-actions {
@@ -2796,7 +2796,7 @@ select option {
     stroke-linecap: round;
     stroke-dasharray: 87.96;
     stroke-dashoffset: 87.96;
-    transition: stroke-dashoffset 0.1s linear, stroke 0.2s ease;
+    transition: stroke-dashoffset 0.25s cubic-bezier(0.05, 1, 1, 0.55), stroke 0.2s ease;
 }
 
 .apple-progress-stop {
@@ -5433,7 +5433,7 @@ input[type="range"].slider.is-dragging::-webkit-slider-thumb {
     height: 100%;
     background: linear-gradient(90deg, #0a67e5, #21DE00);
     border-radius: 999px;
-    transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: width 0.3s cubic-bezier(0.05, 1, 1, 0.55);
 }
 
 /* ── Satisfying Boot Splash Screen ─────────────────────────────────── */
@@ -5598,7 +5598,7 @@ input[type="range"].slider.is-dragging::-webkit-slider-thumb {
     background: linear-gradient(90deg, #0a67e5, #21DE00);
     border-radius: 999px;
     box-shadow: 0 0 12px rgba(33, 222, 0, 0.4);
-    transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: width 0.35s cubic-bezier(0.05, 1, 1, 0.55);
 }
 
 .boot-progress-text {
@@ -5868,7 +5868,7 @@ input[type="range"].slider.is-dragging::-webkit-slider-thumb {
     background: linear-gradient(90deg, #0a67e5, #21de00);
     border-radius: 999px;
     box-shadow: 0 0 10px rgba(33, 222, 0, 0.4);
-    transition: width 0.15s ease-out;
+    transition: width 0.25s cubic-bezier(0.05, 1, 1, 0.55);
 }
 
 /* ── Profile Mods Manager Styles ────────────────────────────────────────── */

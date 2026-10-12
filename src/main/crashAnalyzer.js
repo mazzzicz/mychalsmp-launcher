@@ -3,6 +3,7 @@ const path = require('path');
 const https = require('https');
 const { shell } = require('electron');
 const { downloadModOrPack, resolveModrinthProject, isModInstalledInDir } = require('./modrinth');
+const { isJarFileValid } = require('./launcher');
 
 /**
  * Intelligent Crash Analyzer for MYCHAL SMP Launcher
@@ -1089,35 +1090,62 @@ async function analyzeCrash(gameDir, exitCode = 1, recentMemoryLogs = [], launch
         };
     }
 
-    // ── Diagnostic Rule 7: Corrupted Library / Version / Mod JAR (ZipException / invalid CEN header) ────────
+    // ── Diagnostic Rule 7: Corrupted Library / Version / Mod JAR (ZipException / invalid CEN/LOC header) ────
     if (
         /ZipException/i.test(combinedText) ||
         /invalid CEN header/i.test(combinedText) ||
+        /invalid LOC header/i.test(combinedText) ||
+        /error remapping game jars/i.test(combinedText) ||
         /error reading\s+[^\n\r]+\.jar/i.test(combinedText)
     ) {
         let corruptJarPath = null;
-        const jarMatch = combinedText.match(/error reading\s+([^\n\r\t]+\.jar)/i) ||
-                         combinedText.match(/reading\s+([^\n\r\t\s]+\.jar)/i);
+        const jarMatch = combinedText.match(/error remapping game jars\s*\[\s*([^\]]+\.jar)\s*\]/i) ||
+                         combinedText.match(/remapping game jars\s*\[\s*([^\]]+\.jar)\s*\]/i) ||
+                         combinedText.match(/error reading\s+([^\n\r\t]+\.jar)/i) ||
+                         combinedText.match(/reading\s+([^\n\r\t\s]+\.jar)/i) ||
+                         combinedText.match(/([^\s\n\r\t\'\"\[\]]+\.jar)[^\n\r]*ZipException/i) ||
+                         combinedText.match(/ZipException[^\n\r]*?([^\s\n\r\t\'\"\[\]]+\.jar)/i);
         if (jarMatch && jarMatch[1]) {
             corruptJarPath = jarMatch[1].trim();
         }
 
+        const baseDir = launchConfig?.baseDir || gameDir;
+        if (!corruptJarPath && baseDir) {
+            try {
+                const versionsDir = path.join(baseDir, 'versions');
+                if (fs.existsSync(versionsDir)) {
+                    for (const d of fs.readdirSync(versionsDir)) {
+                        const jPath = path.join(versionsDir, d, `${d}.jar`);
+                        if (fs.existsSync(jPath) && !isJarFileValid(jPath)) {
+                            corruptJarPath = jPath;
+                            break;
+                        }
+                    }
+                }
+            } catch (_) {}
+        }
+
         const isVersionJar = corruptJarPath && corruptJarPath.includes('/versions/');
+        const jarName = corruptJarPath ? path.basename(corruptJarPath) : 'herní jádro / JAR';
+        const isLoc = /invalid LOC header/i.test(combinedText);
+        const isCen = /invalid CEN header/i.test(combinedText);
+        const headerType = isLoc ? 'neplatná LOC hlavička' : (isCen ? 'neplatná CEN hlavička' : 'poškozená ZIP struktura');
+
         return {
             hasCrash: true,
             exitCode,
             reportPath,
-            title: isVersionJar ? 'Poškozené jádro hry (ZipException: neplatná CEN hlavička)' : 'Poškozený soubor JAR (ZipException)',
+            title: isVersionJar ? `Poškozené jádro hry (${headerType})` : 'Poškozený soubor JAR (ZipException)',
             severity: 'critical',
-            description: `Byl detekován poškozený soubor ${corruptJarPath ? path.basename(corruptJarPath) : 'JAR'}. Soubor má poškozenou interní strukturu (invalid CEN header) a Java jej nemůže přečíst.`,
+            description: `Byl detekován poškozený soubor ${jarName}. Soubor má poškozenou interní strukturu (${headerType}) a Java ani zavaděč jej nemůže deobfuskovat ani přečíst.`,
             recommendation: 'Klikni na tlačítko níže pro automatické smazání poškozeného souboru. Launcher jej při dalším spuštění automaticky obnoví z čisté verze nebo znovu stáhne.',
-            logExcerpt: logExcerpt || (corruptJarPath ? `IOException: error reading ${corruptJarPath}` : 'ZipException: invalid CEN header (bad signature)'),
-            autoFix: corruptJarPath ? {
+            logExcerpt: logExcerpt || (corruptJarPath ? `ZipException: error remapping/reading ${corruptJarPath}` : 'ZipException: invalid LOC/CEN header (bad signature)'),
+            autoFix: {
                 id: 'DELETE_CORRUPT_JAR',
                 filePath: corruptJarPath,
-                label: `🧹 Opravit a obnovit ${path.basename(corruptJarPath)}`,
-                description: 'Odstraní poškozený soubor z disku, aby jej launcher mohl při dalším startu čistě obnovit.'
-            } : null
+                label: corruptJarPath ? `🧹 Opravit a obnovit ${path.basename(corruptJarPath)}` : '🧹 Automaticky vyčistit a obnovit poškozené jádro',
+                description: 'Odstraní poškozený soubor i související staré zálohy z disku. Launcher jej při dalším startu čistě a bezpečně obnoví.'
+            }
         };
     }
 
@@ -1401,22 +1429,65 @@ async function executeCrashFix(autoFix, gameDir, config, saveConfigFn, detectJav
 
         case 'DELETE_CORRUPT_JAR': {
             const targetFile = autoFix.filePath;
-            if (targetFile && fs.existsSync(targetFile)) {
+            let deletedList = [];
+            const cleanJarAndBackups = (filePath) => {
+                if (!filePath) return;
                 try {
-                    fs.unlinkSync(targetFile);
-                    try { fs.unlinkSync(`${targetFile}.skin_sig`); } catch (_) {}
-                    try { fs.unlinkSync(`${targetFile}.brand_sig`); } catch (_) {}
-                    return {
-                        success: true,
-                        message: `Poškozený soubor ${path.basename(targetFile)} byl úspěšně odstraněn. Při příštím spuštění jej launcher automaticky obnoví/stáhne v bezchybném stavu.`
-                    };
-                } catch (delErr) {
-                    throw new Error(`Nepodařilo se odstranit soubor: ${delErr.message}`);
+                    if (fs.existsSync(filePath)) {
+                        fs.unlinkSync(filePath);
+                        deletedList.push(path.basename(filePath));
+                    }
+                } catch (_) {}
+                try { if (fs.existsSync(`${filePath}.skin_sig`)) fs.unlinkSync(`${filePath}.skin_sig`); } catch (_) {}
+                try { if (fs.existsSync(`${filePath}.brand_sig`)) fs.unlinkSync(`${filePath}.brand_sig`); } catch (_) {}
+                try { if (fs.existsSync(`${filePath}.vanilla_bak`)) fs.unlinkSync(`${filePath}.vanilla_bak`); } catch (_) {}
+                const vBak = filePath.replace(/\.jar$/, '.vanilla.jar');
+                try { if (fs.existsSync(vBak)) fs.unlinkSync(vBak); } catch (_) {}
+            };
+
+            if (targetFile) {
+                cleanJarAndBackups(targetFile);
+
+                // Pokud šlo o Fabric loader jar, zkontroluj a vyčisti i vanilkové jádro pokud je vadné
+                if (targetFile.includes('fabric-loader-')) {
+                    const matchVer = targetFile.match(/fabric-loader-[^-]+-([0-9.]+)\.jar/i);
+                    if (matchVer && matchVer[1]) {
+                        const vJar = path.join(path.dirname(path.dirname(targetFile)), matchVer[1], `${matchVer[1]}.jar`);
+                        if (fs.existsSync(vJar) && !isJarFileValid(vJar)) {
+                            cleanJarAndBackups(vJar);
+                        }
+                    }
                 }
             }
+
+            // Prohledej celou složku versions a odstraň všechny další neplatné JARy a poškozené zálohy
+            const versionsDir = path.join(gameDir, 'versions');
+            if (fs.existsSync(versionsDir)) {
+                try {
+                    const vDirs = fs.readdirSync(versionsDir);
+                    for (const vd of vDirs) {
+                        const vPath = path.join(versionsDir, vd);
+                        if (fs.existsSync(vPath) && fs.statSync(vPath).isDirectory()) {
+                            const files = fs.readdirSync(vPath);
+                            for (const f of files) {
+                                if (f.endsWith('.jar')) {
+                                    const fullF = path.join(vPath, f);
+                                    if (!isJarFileValid(fullF)) {
+                                        cleanJarAndBackups(fullF);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (_) {}
+            }
+
             return {
                 success: true,
-                message: 'Soubor již byl odstraněn. Můžeš hru spustit znovu.'
+                relaunch: true,
+                message: deletedList.length > 0
+                    ? `Poškozené soubory (${deletedList.join(', ')}) byly bezpečně odstraněny. Launcher je při příštím spuštění čistě obnoví a stáhne z Mojang serveru.`
+                    : 'Poškozené soubory byly vyčištěny. Můžeš hru spustit znovu.'
             };
         }
 
