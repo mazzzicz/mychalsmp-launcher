@@ -675,22 +675,78 @@ Handler.prototype.getAssets = async function() {
         ? this.version.assetIndex.url
         : null;
 
-    if (!fs.existsSync(indexFilePath) && targetUrl) {
-        await this.downloadAsync(targetUrl, path.join(assetDirectory, 'indexes'), `${indexName}.json`, true, 'asset-json');
+    // Pomocná funkce pro ověření neporušenosti JSON souboru assetů
+    const isAssetIndexValid = (filePath) => {
+        if (!fs.existsSync(filePath)) return false;
+        try {
+            const raw = fs.readFileSync(filePath, 'utf8');
+            if (!raw || raw.length < 50) return false;
+            const parsed = JSON.parse(raw);
+            return Boolean(parsed && typeof parsed === 'object' && parsed.objects && typeof parsed.objects === 'object');
+        } catch (_) {
+            return false;
+        }
+    };
+
+    // Pokud existuje poškozený / uříznutý soubor na disku, smažeme ho, aby nezpůsobil SyntaxError v MCLC
+    if (fs.existsSync(indexFilePath) && !isAssetIndexValid(indexFilePath)) {
+        try {
+            fs.unlinkSync(indexFilePath);
+            this.client.emit('debug', `[ASSETY] ⚠ Odstraněn poškozený soubor ${indexName}.json pro čisté znovustažení.`);
+        } catch (_) {}
+    }
+    if (fs.existsSync(customIndexFilePath) && !isAssetIndexValid(customIndexFilePath)) {
+        try {
+            fs.unlinkSync(customIndexFilePath);
+            this.client.emit('debug', `[ASSETY] ⚠ Odstraněn poškozený soubor ${assetId}.json pro čisté znovustažení.`);
+        } catch (_) {}
     }
 
-    if (fs.existsSync(indexFilePath) && !fs.existsSync(customIndexFilePath)) {
+    // Pokud nemáme platný soubor a chybí targetUrl, zkusíme najít URL v Mojang manifestu
+    let resolvedUrl = targetUrl;
+    if (!isAssetIndexValid(indexFilePath) && !resolvedUrl) {
+        try {
+            const manRes = await fetch('https://piston-meta.mojang.com/mc/game/version_manifest_v2.json', { signal: AbortSignal.timeout(6000) });
+            if (manRes.ok) {
+                const manifest = await manRes.json();
+                const verEntry = manifest.versions.find(v => v.id === indexName || v.id === this.options.version.number) ||
+                                 (this.options.version.number === '1.21.11' ? manifest.versions.find(v => v.id === '1.21.1') : null);
+                if (verEntry && verEntry.url) {
+                    const vRes = await fetch(verEntry.url, { signal: AbortSignal.timeout(6000) });
+                    if (vRes.ok) {
+                        const vJson = await vRes.json();
+                        if (vJson.assetIndex && vJson.assetIndex.url) {
+                            resolvedUrl = vJson.assetIndex.url;
+                        }
+                    }
+                }
+            }
+        } catch (_) {}
+    }
+
+    if (!isAssetIndexValid(indexFilePath) && resolvedUrl) {
+        await this.downloadAsync(resolvedUrl, path.join(assetDirectory, 'indexes'), `${indexName}.json`, true, 'asset-json');
+    }
+
+    if (isAssetIndexValid(indexFilePath) && !isAssetIndexValid(customIndexFilePath)) {
         try { fs.copyFileSync(indexFilePath, customIndexFilePath); } catch (e) {}
-    } else if (fs.existsSync(customIndexFilePath) && !fs.existsSync(indexFilePath)) {
+    } else if (isAssetIndexValid(customIndexFilePath) && !isAssetIndexValid(indexFilePath)) {
         try { fs.copyFileSync(customIndexFilePath, indexFilePath); } catch (e) {}
     }
 
-    const finalPath = fs.existsSync(indexFilePath) ? indexFilePath : customIndexFilePath;
-    if (!fs.existsSync(finalPath)) {
-        throw new Error(`Nepodařilo se stáhnout index assetů: ${indexName}.json`);
+    const finalPath = isAssetIndexValid(indexFilePath) ? indexFilePath : customIndexFilePath;
+    if (!isAssetIndexValid(finalPath)) {
+        throw new Error(`Nepodařilo se stáhnout nebo ověřit integritu indexu assetů: ${indexName}.json`);
     }
 
-    const index = JSON.parse(fs.readFileSync(finalPath, { encoding: 'utf8' }));
+    let index;
+    try {
+        index = JSON.parse(fs.readFileSync(finalPath, { encoding: 'utf8' }));
+    } catch (parseErr) {
+        try { if (fs.existsSync(indexFilePath)) fs.unlinkSync(indexFilePath); } catch (_) {}
+        try { if (fs.existsSync(customIndexFilePath)) fs.unlinkSync(customIndexFilePath); } catch (_) {}
+        throw new Error(`Poškozený soubor asset indexu (${indexName}.json): ${parseErr.message}`);
+    }
 
     // Povolené jazyky: čeština, slovenština, americká angličtina, britská angličtina
     const ALLOWED_LANGUAGES = new Set(['cs_cz', 'sk_sk', 'en_us', 'en_gb']);
@@ -2628,7 +2684,13 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
         }
     }
 
-    launcher.on('debug', (e) => onLog(`[DEBUG] ${e}`));
+    let lastMclcError = null;
+    launcher.on('debug', (e) => {
+        onLog(`[DEBUG] ${e}`);
+        if (typeof e === 'string' && e.includes('[MCLC]: Failed to start due to')) {
+            lastMclcError = e.replace('[MCLC]: Failed to start due to', '').replace(', closing...', '').trim();
+        }
+    });
     launcher.on('data', (e) => onLog(`[GAME] ${e}`));
 
     // ── Unified Launch & Download Progress Aggregator ───────────────────────
@@ -2711,6 +2773,10 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
         if (launcher._isCancelled) {
             activeMinecraftProcess = null;
             return null;
+        }
+        if (!proc) {
+            activeMinecraftProcess = null;
+            throw new Error(lastMclcError || 'Minecraft proces se nepodařilo nastartovat (MCLC selhalo při inicializaci).');
         }
         activeMinecraftProcess = proc;
         if (onProgress) {
@@ -2816,16 +2882,24 @@ async function getOrFetchAssetIndex(baseDir, targetVersion = '26.2') {
 
     if (fs.existsSync(indexFile)) {
         try {
-            return JSON.parse(fs.readFileSync(indexFile, 'utf8'));
-        } catch (e) {}
+            const parsed = JSON.parse(fs.readFileSync(indexFile, 'utf8'));
+            if (parsed && parsed.objects) return parsed;
+        } catch (e) {
+            try { fs.unlinkSync(indexFile); } catch (_) {}
+        }
     }
 
     if (fs.existsSync(indexesDir)) {
         try {
             const files = fs.readdirSync(indexesDir).filter(f => f.endsWith('.json'));
-            if (files.length > 0) {
-                const fPath = path.join(indexesDir, files[0]);
-                return JSON.parse(fs.readFileSync(fPath, 'utf8'));
+            for (const f of files) {
+                const fPath = path.join(indexesDir, f);
+                try {
+                    const parsed = JSON.parse(fs.readFileSync(fPath, 'utf8'));
+                    if (parsed && parsed.objects) return parsed;
+                } catch (e) {
+                    try { fs.unlinkSync(fPath); } catch (_) {}
+                }
             }
         } catch (e) {}
     }

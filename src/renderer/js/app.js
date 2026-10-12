@@ -42,17 +42,83 @@ document.addEventListener('DOMContentLoaded', async () => {
     let maxRenderedProgress = 0;
     let activePreLaunchModUpdate = null;
 
-    // Stevens' Perceptual Speed Curve (Power law with gamma ~ 0.42):
-    // Sub-linear response gives high initial velocity (5% -> 28%, 10% -> 38%, 50% -> 75%),
-    // making launch and download progress feel instantly fast and responsive.
+    /**
+     * Tailored Psychological Cubic Bézier Curve (P1: [0.28, 0.44], P2: [0.20, 0.96])
+     * Vysoce uspokojivý, plynulý psychologický náběh stahování bez skákání:
+     * - Živá a okamžitá odezva při startu bez falešného skákání.
+     * - Žádné mrtvé zóny a zasekávání na 50 % – neustálý plynulý tah vpřed.
+     * - Uspokojivý finální dojezd do 100 %.
+     */
+    function evalCubicBezier(x, x1 = 0.28, y1 = 0.44, x2 = 0.20, y2 = 0.96) {
+        if (x <= 0) return 0;
+        if (x >= 1) return 1;
+
+        // Řešení X(t) = x pro t v [0, 1] pomocí Newton-Raphson metody
+        let t = x;
+        for (let i = 0; i < 8; i++) {
+            const u = 1 - t;
+            const currentX = 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t;
+            const dx = currentX - x;
+            if (Math.abs(dx) < 1e-4) break;
+            const dxdt = 3 * u * u * x1 + 6 * u * t * (x2 - x1) + 3 * t * t * (1 - x2);
+            if (Math.abs(dxdt) < 1e-5) break;
+            t -= dx / dxdt;
+            t = Math.max(0, Math.min(1, t));
+        }
+
+        const u = 1 - t;
+        return 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t;
+    }
+
     function calculatePerceptualProgress(realPercent) {
         const val = Number(realPercent);
         if (isNaN(val) || val <= 0) return 0;
         if (val >= 100) return 100;
         const x = Math.max(0, Math.min(1, val / 100));
-        const perceived = Math.pow(x, 0.42);
+        const perceived = evalCubicBezier(x, 0.28, 0.44, 0.20, 0.96);
         const result = Math.round(perceived * 100);
         return Math.min(99, Math.max(1, result));
+    }
+
+    /**
+     * Převede suché technické hlášky (např. Downloading library asm-9.6.jar...)
+     * na přátelské, atmosférické herní mikrostavy:
+     * „Připravujeme herní svět...“ ➔ „Leštíme modpack...“ ➔ „Rozpalujeme kamna...“ ➔ „Spouštíme Minecraft!“
+     */
+    function getHumanFriendlyStatus(rawText, percent = 0) {
+        const lower = String(rawText || '').toLowerCase();
+
+        // Okamžité přerušení nebo ukončení
+        if (lower.includes('ruším') || lower.includes('zrušeno')) return 'Ruším stahování...';
+        if (lower.includes('ukončuji') || lower.includes('ukončeno')) return 'Ukončuji Minecraft...';
+        if (lower.includes('spouštím minecraft') || lower.includes('hra spuštěna') || percent >= 98) return 'Spouštíme Minecraft!';
+
+        // Rozpoznání podle obsahu nebo fáze procent
+        if (lower.includes('java') || lower.includes('runtime') || lower.includes('jádro') || lower.includes('client.jar')) {
+            return 'Připravujeme herní svět...';
+        }
+        if (lower.includes('mod') || lower.includes('optimiz') || lower.includes('knihovn') || lower.includes('librar') || lower.includes('classes')) {
+            return 'Leštíme modpack...';
+        }
+        if (lower.includes('textur') || lower.includes('asset') || lower.includes('zvuk') || lower.includes('audio') || lower.includes('resource') || lower.includes('delta')) {
+            return 'Rozpalujeme kamna...';
+        }
+        if (lower.includes('nativ') || lower.includes('natives')) {
+            return 'Rozpalujeme kamna...';
+        }
+
+        // Fáze podle procent (pokud v textu nebyla nalezena konkrétní klíčová slova)
+        if (percent < 18) {
+            return 'Připravujeme herní svět...';
+        }
+        if (percent < 58) {
+            return 'Leštíme modpack...';
+        }
+        if (percent < 98) {
+            return 'Rozpalujeme kamna...';
+        }
+
+        return 'Spouštíme Minecraft!';
     }
 
 
@@ -2772,9 +2838,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (globalDownloadChip) globalDownloadChip.style.display = 'inline-flex';
                 if (progressBar) progressBar.style.width = '10%';
                 if (progressPercent) progressPercent.textContent = '10%';
-                if (progressText) progressText.textContent = 'Kontroluji aktualizace módů...';
+                const friendlyModCheck = getHumanFriendlyStatus('Kontroluji aktualizace módů...', 10);
+                if (progressText) {
+                    progressText.textContent = friendlyModCheck;
+                    progressText.title = 'Kontroluji aktualizace módů...';
+                }
                 if (globalDownloadBar) globalDownloadBar.style.width = '10%';
-                if (globalDownloadText) globalDownloadText.textContent = 'Kontroluji aktualizace módů (10%)';
+                if (globalDownloadText) globalDownloadText.textContent = `${friendlyModCheck} (10%)`;
                 if (sideConsoleStatus) sideConsoleStatus.textContent = 'Kontroluji aktualizace módů...';
 
                 appendLog('[AKTUALIZACE MÓDŮ] Kontroluji aktualizace nainstalovaných módů na Modrinthu...');
@@ -2798,6 +2868,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const basePct = Math.round(10 + ((i / totalUpdates) * 48));
                         const nextPct = Math.round(10 + (((i + 1) / totalUpdates) * 48));
                         const statusMsg = `Stahuji aktualizaci: ${u.title} (v${u.newVersion}) [${i + 1}/${totalUpdates}]`;
+                        const friendlyModDl = getHumanFriendlyStatus(statusMsg, basePct);
 
                         activePreLaunchModUpdate = {
                             id: u.id,
@@ -2810,9 +2881,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                         if (progressBar) progressBar.style.width = `${basePct}%`;
                         if (progressPercent) progressPercent.textContent = `${basePct}%`;
-                        if (progressText) progressText.textContent = statusMsg;
+                        if (progressText) {
+                            progressText.textContent = friendlyModDl;
+                            progressText.title = statusMsg;
+                        }
                         if (globalDownloadBar) globalDownloadBar.style.width = `${basePct}%`;
-                        if (globalDownloadText) globalDownloadText.textContent = `${statusMsg} (${basePct}%)`;
+                        if (globalDownloadText) globalDownloadText.textContent = `${friendlyModDl} (${basePct}%)`;
                         if (sideConsoleStatus) sideConsoleStatus.textContent = statusMsg;
 
                         appendLog(`[AKTUALIZACE MÓDŮ] Stahuji ${u.title} (v${u.newVersion})...`);
@@ -2855,18 +2929,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         const initStatusText = isAlreadyInstalled ? 'Načítání hry...' : 'Stahuji verzi a herní data...';
         maxRenderedProgress = calculatePerceptualProgress(8);
         lastProgressData = { percent: 8, text: initStatusText };
+        const friendlyInit = getHumanFriendlyStatus(initStatusText, 8);
 
         if (progressContainer) {
             progressContainer.style.display = 'flex';
             if (progressBar) progressBar.style.width = `${maxRenderedProgress}%`;
             if (progressPercent) progressPercent.textContent = `${maxRenderedProgress}%`;
-            if (progressText) progressText.textContent = initStatusText;
+            if (progressText) {
+                progressText.textContent = friendlyInit;
+                progressText.title = initStatusText;
+            }
         }
 
         if (globalDownloadChip) {
             globalDownloadChip.style.display = 'inline-flex';
             if (globalDownloadBar) globalDownloadBar.style.width = `${maxRenderedProgress}%`;
-            if (globalDownloadText) globalDownloadText.textContent = `${initStatusText} (${maxRenderedProgress}%)`;
+            if (globalDownloadText) globalDownloadText.textContent = `${friendlyInit} (${maxRenderedProgress}%)`;
         }
 
         appendLog(isAlreadyInstalled
@@ -4644,11 +4722,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     let startDragPointerX = 0;
     let startDragPointerY = 0;
 
-    // Head tracking physics (cursor and button hover)
+    // Head tracking & curiosity tilt physics (cursor and button hover)
     let targetHeroHeadLookX = 0;
     let targetHeroHeadLookY = 0;
     let currentHeroHeadLookX = 0;
     let currentHeroHeadLookY = 0;
+    let targetHeroCuriosityTilt = 0;
+    let currentHeroCuriosityTilt = 0;
     let isHeroHoverTrackingActive = false;
 
     // Greeting wave physics: waves automatically 2s after startup or on click / tray restore
@@ -4728,24 +4808,66 @@ document.addEventListener('DOMContentLoaded', async () => {
             const normX = Math.max(-1, Math.min(1, dx / (winW * 0.45)));
             const normY = Math.max(-1, Math.min(1, dy / (winH * 0.45)));
 
-            // Pokud je myš nad interaktivním prvkem (tlačítko, karta profilu), pohled se mírně zintenzivní
-            const isInteractive = !!e.target?.closest?.('button, .mc-btn, .profile-row-card, .sidebar-nav-item, .dash-action-chip, .stage-nick-pill, .control-field');
-            const focusMultiplier = isInteractive ? 1.15 : 1.0;
+            // 1. Zvláštní chování pro tlačítka "Hrát" (Steve se zvědavě nakloní a upře pohled na tlačítko)
+            const playBtn = e.target?.closest?.('.btn-launch-profile, #sidebarPlayBtn, #btnQuickPlayMychal, .btn-install-v');
+            if (playBtn) {
+                const btnRect = playBtn.getBoundingClientRect();
+                const btnCenterX = btnRect.left + btnRect.width / 2;
+                const btnCenterY = btnRect.top + btnRect.height / 2;
+                const btnDx = btnCenterX - headCenterX;
+                const btnDy = btnCenterY - headCenterY;
 
-            // POUZE hlava reaguje: přirozený horizontální rozsah ±0.32 rad (~18°), vertikální rozsah ±0.18 rad (~10°)
-            targetHeroHeadLookY = normX * 0.32 * focusMultiplier;
-            targetHeroHeadLookX = normY * 0.18 * focusMultiplier;
+                const normBtnX = Math.max(-1, Math.min(1, btnDx / (winW * 0.45)));
+                const normBtnY = Math.max(-1, Math.min(1, btnDy / (winH * 0.45)));
+
+                targetHeroHeadLookY = normBtnX * 0.44;
+                targetHeroHeadLookX = normBtnY * 0.26;
+
+                // Zvědavý náklon hlavy (curious tilt na ose Z ~13°):
+                targetHeroCuriosityTilt = (btnCenterX >= headCenterX ? 0.22 : -0.22);
+            } else {
+                targetHeroCuriosityTilt = 0;
+                // Běžné sledování kurzoru
+                const isInteractive = !!e.target?.closest?.('button, .mc-btn, .profile-row-card, .sidebar-nav-item, .dash-action-chip, .stage-nick-pill, .control-field');
+                const focusMultiplier = isInteractive ? 1.15 : 1.0;
+
+                targetHeroHeadLookY = normX * 0.32 * focusMultiplier;
+                targetHeroHeadLookX = normY * 0.18 * focusMultiplier;
+            }
+        }, { passive: true });
+
+        // Okamžitá reakce na najetí myši na tlačítko Hrát i bez pohybu myši
+        document.addEventListener('pointerover', (e) => {
+            const playBtn = e.target?.closest?.('.btn-launch-profile, #sidebarPlayBtn, #btnQuickPlayMychal, .btn-install-v');
+            if (playBtn) {
+                const canvas = document.getElementById('heroSkinCanvas3D');
+                if (canvas) {
+                    const rect = canvas.getBoundingClientRect();
+                    const headCenterX = rect.left + rect.width / 2;
+                    const btnRect = playBtn.getBoundingClientRect();
+                    const btnCenterX = btnRect.left + btnRect.width / 2;
+                    targetHeroCuriosityTilt = (btnCenterX >= headCenterX ? 0.22 : -0.22);
+                }
+            }
+        }, { passive: true });
+
+        document.addEventListener('pointerout', (e) => {
+            if (e.target?.closest?.('.btn-launch-profile, #sidebarPlayBtn, #btnQuickPlayMychal, .btn-install-v')) {
+                targetHeroCuriosityTilt = 0;
+            }
         }, { passive: true });
 
         // Návrat do klidového pohledu při opuštění okna
         document.addEventListener('pointerleave', () => {
             targetHeroHeadLookX = 0;
             targetHeroHeadLookY = 0;
+            targetHeroCuriosityTilt = 0;
         });
 
         window.addEventListener('blur', () => {
             targetHeroHeadLookX = 0;
             targetHeroHeadLookY = 0;
+            targetHeroCuriosityTilt = 0;
         });
 
         // Bleskurychlé mávnutí při obnovení z lišty nebo focusu okna
@@ -4979,6 +5101,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     // 6. HLAVA PLYNULE SLEDUJE KURZOR S FYZIOLOGICKÝM LIMITEM (MAX ±90° OD STŘEDU TĚLA)
                     currentHeroHeadLookX += (targetHeroHeadLookX - currentHeroHeadLookX) * 0.045;
                     currentHeroHeadLookY += (targetHeroHeadLookY - currentHeroHeadLookY) * 0.045;
+                    currentHeroCuriosityTilt += (targetHeroCuriosityTilt - currentHeroCuriosityTilt) * 0.065;
 
                     if (player && player.skin && player.skin.head) {
                         // Úhel pohledu kurzoru vůči natočení těla v rozsahu [-Math.PI, Math.PI]
@@ -5008,7 +5131,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                         player.skin.head.rotation.y = targetHeadYaw;
                         player.skin.head.rotation.x = targetHeadPitch + (punchWeight * 0.08);
-                        player.skin.head.rotation.z = -targetHeadYaw * 0.05 - (waveWeight * 0.08);
+                        player.skin.head.rotation.z = -targetHeadYaw * 0.05 - (waveWeight * 0.08) + currentHeroCuriosityTilt;
                     }
                 }
             }
@@ -6326,21 +6449,25 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         maxRenderedProgress = Math.max(maxRenderedProgress, curvedPercent);
         const percent = maxRenderedProgress;
-        const statusText = data.text || 'Načítání hry...';
+        const rawStatusText = data.text || 'Načítání hry...';
+        const friendlyStatus = getHumanFriendlyStatus(rawStatusText, percent);
 
         if (progressContainer) {
             progressContainer.style.display = 'flex';
             if (progressBar) progressBar.style.width = `${percent}%`;
             if (progressPercent) progressPercent.textContent = `${percent}%`;
-            if (progressText) progressText.textContent = statusText;
+            if (progressText) {
+                progressText.textContent = friendlyStatus;
+                progressText.title = rawStatusText;
+            }
         }
 
         if (globalDownloadChip) {
             globalDownloadChip.style.display = 'inline-flex';
             if (globalDownloadBar) globalDownloadBar.style.width = `${percent}%`;
             if (globalDownloadText) {
-                const shortStatus = statusText.length > 25 ? statusText.substring(0, 25) + '...' : statusText;
-                globalDownloadText.textContent = `${shortStatus} (${percent}%)`;
+                globalDownloadText.textContent = `${friendlyStatus} (${percent}%)`;
+                globalDownloadText.title = rawStatusText;
             }
         }
 
@@ -6358,7 +6485,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             vBox.style.display = 'flex';
             if (vBar) vBar.style.width = `${percent}%`;
             if (vPct) vPct.textContent = `${percent}%`;
-            if (vTxt) vTxt.textContent = data.text || 'Načítání...';
+            if (vTxt) {
+                vTxt.textContent = friendlyStatus;
+                vTxt.title = rawStatusText;
+            }
         }
         if (vBadge) {
             vBadge.className = 'v-status-badge downloading';
