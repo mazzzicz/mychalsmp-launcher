@@ -985,11 +985,6 @@ body.is-maximized {
     will-change: transform;
 }
 
-.stage-skin-wrapper.has-flyout {
-    transform: none !important;
-    will-change: auto !important;
-}
-
 .hero-3d-canvas {
     width: 220px;
     height: 280px;
@@ -1008,16 +1003,6 @@ body.is-maximized {
 
 .hero-3d-canvas:active {
     cursor: grabbing;
-}
-
-/* 3D Elytra Flyout Cinematic Overlay - flies out with hardware-accelerated transform & pointer-events: none */
-.hero-3d-canvas.hero-elytra-flyout {
-    position: fixed !important;
-    z-index: 99999 !important;
-    pointer-events: none !important;
-    cursor: default !important;
-    filter: drop-shadow(0 24px 50px rgba(0, 0, 0, 0.75)) !important;
-    will-change: transform, opacity !important;
 }
 
 /* Levitating Pedestal & Ground Shadow under 3D Character */
