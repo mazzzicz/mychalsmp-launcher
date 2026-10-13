@@ -2034,6 +2034,71 @@ async function ensureFabricProfile(centralRootDir, targetVersion, onLog = consol
 }
 
 /**
+ * ⚡ Zajišťuje přítomnost a aktuálnost módu Self Nametag (F5) v profilu.
+ * Kontroluje se a vynucuje při každém spuštění hry i při načtení profilu pro verze 1.21.11 až 26.3!
+ */
+function ensureSelfNametagModInstalled(targetDir, onLog = console.log) {
+    const bundledModPath = path.join(__dirname, '../../assets/mods/selfnametag-1.0.0.jar');
+    if (!fs.existsSync(bundledModPath)) {
+        return false;
+    }
+
+    const checkDirs = new Set();
+    if (targetDir) checkDirs.add(targetDir);
+    checkDirs.add(BASE_DIR);
+
+    // Také automatická kontrola všech profilů ve složce profiles
+    const profilesDir = path.join(BASE_DIR, 'profiles');
+    if (fs.existsSync(profilesDir)) {
+        try {
+            const subEntries = fs.readdirSync(profilesDir);
+            for (const sub of subEntries) {
+                const pPath = path.join(profilesDir, sub);
+                if (fs.statSync(pPath).isDirectory()) {
+                    checkDirs.add(pPath);
+                }
+            }
+        } catch (_) {}
+    }
+
+    let installedCount = 0;
+    for (const d of checkDirs) {
+        try {
+            const mDir = path.join(d, 'mods');
+            if (!fs.existsSync(mDir)) {
+                fs.mkdirSync(mDir, { recursive: true });
+            }
+            const targetJar = path.join(mDir, 'selfnametag-1.0.0.jar');
+            let shouldCopy = !fs.existsSync(targetJar);
+            if (!shouldCopy) {
+                try {
+                    const bStat = fs.statSync(bundledModPath);
+                    const tStat = fs.statSync(targetJar);
+                    if (bStat.size !== tStat.size || tStat.size < 1000) {
+                        shouldCopy = true;
+                    }
+                } catch (_) { shouldCopy = true; }
+            }
+
+            if (shouldCopy) {
+                fs.copyFileSync(bundledModPath, targetJar);
+                installedCount++;
+                if (typeof onLog === 'function') {
+                    onLog(`[DOPLŇKY] ✔ Nainstalován / aktualizován Self Nametag (F5) do: ${path.relative(BASE_DIR, targetJar) || targetJar}`);
+                }
+            }
+        } catch (err) {
+            console.warn(`[LAUNCHER] Nepodařilo se nainstalovat selfnametag do ${d}:`, err.message);
+        }
+    }
+
+    if (installedCount === 0 && typeof onLog === 'function') {
+        onLog('[DOPLŇKY] ✔ Ověřeno: Self Nametag (F5) je přítomen v profilu.');
+    }
+    return true;
+}
+
+/**
  * ⚡ Pre-flight kontrola závislostí módů pro Fabric profily.
  * Pokud mód v mods/ vyžaduje chybějící doplněk (např. particle_core vyžaduje fzzy_config),
  * launcher jej automaticky stáhne z Modrinthu ještě před spuštěním hry!
@@ -2048,30 +2113,8 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
         try { fs.mkdirSync(modsDir, { recursive: true }); } catch (_) {}
     }
 
-    // 2. KONTROLA SELF NAMETAG (F5 Nickname & Scoreboard Mod):
-    // Automaticky zajistí přítomnost módu pro každý spouštěný Fabric profil (1.21.11 až 26.3)
-    const bundledModPath = path.join(__dirname, '../../assets/mods/selfnametag-1.0.0.jar');
-    const targetModPath = path.join(modsDir, 'selfnametag-1.0.0.jar');
-    if (fs.existsSync(bundledModPath)) {
-        let shouldCopy = !fs.existsSync(targetModPath);
-        if (!shouldCopy) {
-            try {
-                const bStat = fs.statSync(bundledModPath);
-                const tStat = fs.statSync(targetModPath);
-                if (bStat.size !== tStat.size) shouldCopy = true;
-            } catch (_) { shouldCopy = true; }
-        }
-        if (shouldCopy) {
-            try {
-                fs.copyFileSync(bundledModPath, targetModPath);
-                if (typeof onLog === 'function') {
-                    onLog('[DOPLŇKY] ✔ Nainstalován / aktualizován mód Self Nametag (F5) pro profil.');
-                }
-            } catch (err) {
-                console.warn('[LAUNCHER] Nepodařilo se zkopírovat bundled selfnametag:', err.message);
-            }
-        }
-    }
+    // Vynucená kontrola a instalace módu Self Nametag při každém spuštění
+    ensureSelfNametagModInstalled(gameInstanceDir, onLog);
 
     let AdmZip = null;
     try { AdmZip = require('adm-zip'); } catch (_) { return; }
@@ -3194,5 +3237,6 @@ module.exports = {
     getJavaMajorVersion,
     getRequiredJavaVersion,
     ensureProfileModsDependencies,
-    isJarFileValid
+    isJarFileValid,
+    ensureSelfNametagModInstalled
 };

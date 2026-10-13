@@ -47,7 +47,8 @@ const {
     checkAudioDlcStatus,
     downloadAudioDlc,
     cancelAudioDlcDownload,
-    setupOfflineCustomSkinAndCape
+    setupOfflineCustomSkinAndCape,
+    ensureSelfNametagModInstalled
 } = require('./launcher');
 const { searchModrinth, downloadModOrPack, checkProfileModUpdates } = require('./modrinth');
 const {
@@ -391,6 +392,16 @@ if (!gotTheLock) {
         setupTray();
         createSplashWindow();
         createWindow();
+
+        // Automatická kontrola a instalace módu Self Nametag (F5) do všech profilů při startu launcheru
+        try {
+            ensureSelfNametagModInstalled(BASE_DIR);
+            const cfg = loadConfig();
+            for (const p of (cfg.profiles || [])) {
+                if (p.gameDir) ensureSelfNametagModInstalled(p.gameDir);
+                ensureSelfNametagModInstalled(path.join(BASE_DIR, 'profiles', p.id));
+            }
+        } catch (_) {}
 
         // Initialize Discord Rich Presence
         try {
@@ -776,15 +787,9 @@ ipcMain.handle('get-profile-mods', async (event, profileId) => {
     const modsDir = path.join(gameDir, 'mods');
 
     // Automaticky zajistíme přítomnost selfnametag-1.0.0.jar
-    const bundledSelfNametag = path.join(__dirname, '../../assets/mods/selfnametag-1.0.0.jar');
-    const targetSelfNametag = path.join(modsDir, 'selfnametag-1.0.0.jar');
-    if (fs.existsSync(bundledSelfNametag)) {
-        if (!fs.existsSync(modsDir)) {
-            try { fs.mkdirSync(modsDir, { recursive: true }); } catch (_) {}
-        }
-        if (!fs.existsSync(targetSelfNametag)) {
-            try { fs.copyFileSync(bundledSelfNametag, targetSelfNametag); } catch (_) {}
-        }
+    ensureSelfNametagModInstalled(gameDir);
+    if (profileId) {
+        ensureSelfNametagModInstalled(path.join(BASE_DIR, 'profiles', profileId));
     }
 
     if (!fs.existsSync(modsDir)) {
@@ -1736,11 +1741,15 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
         baseDir: profile.gameDir || config.baseDir
     };
 
-    // Automatická synchronizace servers.dat (MYCHAL SMP + připnuté) a nastavení guiScale:2
+    // Automatická synchronizace servers.dat (MYCHAL SMP + připnuté), guiScale:2 a ověření Self Nametag módu
     try {
         const targetDir = launchConfig.baseDir || BASE_DIR;
         ensureOptionsGuiScale(targetDir, 2);
         syncServersDat(targetDir, config.servers || []);
+        ensureSelfNametagModInstalled(targetDir);
+        if (activeId) {
+            ensureSelfNametagModInstalled(path.join(BASE_DIR, 'profiles', activeId));
+        }
     } catch (_) { }
 
     // Kontrola nepovolených módů (Warden Probe) při připojení na MYCHAL SMP
