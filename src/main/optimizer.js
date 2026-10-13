@@ -305,14 +305,26 @@ function checkInstalledOptimizationMods(gameDir, version = '26.2') {
 async function installOptimizationPack(gameDir, version = '26.2', onProgress) {
     const installed = checkInstalledOptimizationMods(gameDir, version);
 
-    // Vždy zajistíme přítomnost našeho F5 nametag módu
+    // Vždy zajistíme přítomnost a aktuálnost našeho F5 nametag módu
     const bundledSelfNametag = path.join(__dirname, '../../assets/mods/selfnametag-1.0.0.jar');
     const targetSelfNametag = path.join(gameDir, 'mods', 'selfnametag-1.0.0.jar');
-    if (!installed.hasSelfNametag && fs.existsSync(bundledSelfNametag)) {
+    if (fs.existsSync(bundledSelfNametag)) {
         try {
             const mDir = path.join(gameDir, 'mods');
             if (!fs.existsSync(mDir)) fs.mkdirSync(mDir, { recursive: true });
-            fs.copyFileSync(bundledSelfNametag, targetSelfNametag);
+            let copyNeeded = !fs.existsSync(targetSelfNametag);
+            if (!copyNeeded) {
+                try {
+                    const bBuf = fs.readFileSync(bundledSelfNametag);
+                    const tBuf = fs.readFileSync(targetSelfNametag);
+                    if (bBuf.length !== tBuf.length || !bBuf.equals(tBuf)) {
+                        copyNeeded = true;
+                    }
+                } catch (_) { copyNeeded = true; }
+            }
+            if (copyNeeded) {
+                fs.copyFileSync(bundledSelfNametag, targetSelfNametag);
+            }
         } catch (_) {}
     }
 

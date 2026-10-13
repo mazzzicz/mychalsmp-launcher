@@ -6,6 +6,7 @@ directories:
   buildResources: build
 files:
   - "src/**/*"
+  - "assets/**/*"
   - "node_modules/**/*"
   - "package.json"
 

@@ -2037,9 +2037,40 @@ async function ensureFabricProfile(centralRootDir, targetVersion, onLog = consol
  * ⚡ Zajišťuje přítomnost a aktuálnost módu Self Nametag (F5) v profilu.
  * Kontroluje se a vynucuje při každém spuštění hry i při načtení profilu pro verze 1.21.11 až 26.3!
  */
-function ensureSelfNametagModInstalled(targetDir, onLog = console.log) {
-    const bundledModPath = path.join(__dirname, '../../assets/mods/selfnametag-1.0.0.jar');
-    if (!fs.existsSync(bundledModPath)) {
+function getBundledSelfNametagPath() {
+    const candidates = [
+        path.join(__dirname, '../../assets/mods/selfnametag-1.0.0.jar'),
+        path.join(process.resourcesPath || '', 'assets/mods/selfnametag-1.0.0.jar'),
+        path.join(process.resourcesPath || '', 'app.asar.unpacked/assets/mods/selfnametag-1.0.0.jar'),
+        path.join(__dirname, '../../../assets/mods/selfnametag-1.0.0.jar'),
+        path.join(BASE_DIR, 'mods/selfnametag-1.0.0.jar')
+    ];
+    for (const c of candidates) {
+        if (c && fs.existsSync(c)) {
+            try {
+                if (fs.statSync(c).size > 1000) return c;
+            } catch (_) {}
+        }
+    }
+    return null;
+}
+
+function ensureSelfNametagModInstalled(targetDir, onLog = console.log, forceOverwrite = false) {
+    const bundledModPath = getBundledSelfNametagPath();
+    if (!bundledModPath) {
+        if (typeof onLog === 'function') {
+            onLog('[DOPLŇKY] ⚠ Nebyl nalezen výchozí balíček selfnametag-1.0.0.jar v launcheru.');
+        }
+        return false;
+    }
+
+    let modBuffer = null;
+    let bundledSha256 = '';
+    try {
+        modBuffer = fs.readFileSync(bundledModPath);
+        bundledSha256 = crypto.createHash('sha256').update(modBuffer).digest('hex');
+    } catch (e) {
+        console.warn('[LAUNCHER] Nelze načíst selfnametag jar:', e.message);
         return false;
     }
 
@@ -2093,23 +2124,36 @@ function ensureSelfNametagModInstalled(targetDir, onLog = console.log) {
             if (!fs.existsSync(mDir)) {
                 fs.mkdirSync(mDir, { recursive: true });
             }
+
+            // Automaticky smazat staré, poškozené nebo alternativně pojmenované verze selfnametag modu
+            try {
+                const entries = fs.readdirSync(mDir);
+                for (const item of entries) {
+                    if (item !== 'selfnametag-1.0.0.jar' && /^self-?nametag.*\.jar$/i.test(item)) {
+                        try { fs.unlinkSync(path.join(mDir, item)); } catch (_) {}
+                    }
+                }
+            } catch (_) {}
+
             const targetJar = path.join(mDir, 'selfnametag-1.0.0.jar');
-            let shouldCopy = !fs.existsSync(targetJar);
+            let shouldCopy = forceOverwrite || !fs.existsSync(targetJar);
             if (!shouldCopy) {
                 try {
-                    const bStat = fs.statSync(bundledModPath);
-                    const tStat = fs.statSync(targetJar);
-                    if (bStat.size !== tStat.size || tStat.size < 1000) {
+                    const tBuf = fs.readFileSync(targetJar);
+                    const tSha = crypto.createHash('sha256').update(tBuf).digest('hex');
+                    if (tSha !== bundledSha256) {
                         shouldCopy = true;
                     }
-                } catch (_) { shouldCopy = true; }
+                } catch (_) {
+                    shouldCopy = true;
+                }
             }
 
             if (shouldCopy) {
-                fs.copyFileSync(bundledModPath, targetJar);
+                fs.writeFileSync(targetJar, modBuffer);
                 installedCount++;
                 if (typeof onLog === 'function') {
-                    onLog(`[DOPLŇKY] ✔ Nainstalován / aktualizován Self Nametag (F5) do: ${path.relative(BASE_DIR, targetJar) || targetJar}`);
+                    onLog(`[DOPLŇKY] ✔ Aktualizován Self Nametag mod (F5 / SMPClient gradient) do: ${path.relative(BASE_DIR, targetJar) || targetJar}`);
                 }
             }
         } catch (err) {
@@ -2118,7 +2162,7 @@ function ensureSelfNametagModInstalled(targetDir, onLog = console.log) {
     }
 
     if (installedCount === 0 && typeof onLog === 'function') {
-        onLog('[DOPLŇKY] ✔ Ověřeno: Self Nametag (F5) je přítomen v profilu.');
+        onLog('[DOPLŇKY] ✔ Ověřeno: Self Nametag (F5) je aktuální se sestavením launcheru.');
     }
     return true;
 }
