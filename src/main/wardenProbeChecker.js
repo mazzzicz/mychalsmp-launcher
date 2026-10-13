@@ -27,7 +27,10 @@ const WHITELIST_KEYWORDS = [
     'indium',
     'continuity',
     'lambdynamiclights',
-    'resourcify'
+    'resourcify',
+    'selfnametag',
+    'self-nametag',
+    'self_nametag'
 ];
 
 const PROHIBITED_MOD_RULES = [

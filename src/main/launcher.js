@@ -2070,6 +2070,28 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
         }
     }
 
+    // 2. KONTROLA SELF NAMETAG (F5 Nickname & Scoreboard Mod):
+    // Automaticky zajistí přítomnost módu pro každý spouštěný Fabric profil
+    const hasSelfNametag = files.some(f => {
+        const l = f.toLowerCase();
+        return l.startsWith('selfnametag') || l.startsWith('self-nametag') || l.includes('selfnametag');
+    });
+
+    if (!hasSelfNametag) {
+        const bundledModPath = path.join(__dirname, '../../assets/mods/selfnametag-1.0.0.jar');
+        const targetModPath = path.join(modsDir, 'selfnametag-1.0.0.jar');
+        if (fs.existsSync(bundledModPath)) {
+            try {
+                fs.copyFileSync(bundledModPath, targetModPath);
+                if (typeof onLog === 'function') {
+                    onLog('[DOPLŇKY] ✔ Automaticky nainstalován mód Self Nametag (F5) do profilu.');
+                }
+            } catch (err) {
+                console.warn('[LAUNCHER] Nepodařilo se zkopírovat bundled selfnametag:', err.message);
+            }
+        }
+    }
+
     try { files = fs.readdirSync(modsDir); } catch (_) { return; }
     const jarFiles = files.filter(f => f.toLowerCase().endsWith('.jar'));
     if (jarFiles.length === 0) return;

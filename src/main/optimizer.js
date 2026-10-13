@@ -282,6 +282,11 @@ function checkInstalledOptimizationMods(gameDir, version = '26.2') {
             const l = f.toLowerCase();
             return l.startsWith('iris-') || l.startsWith('iris_') || l === 'iris.jar';
         });
+
+        result.hasSelfNametag = jarFiles.some(f => {
+            const l = f.toLowerCase();
+            return l.startsWith('selfnametag') || l.startsWith('self-nametag') || l.includes('selfnametag');
+        });
     }
 
     if (fs.existsSync(shaderDir)) {
@@ -299,6 +304,17 @@ function checkInstalledOptimizationMods(gameDir, version = '26.2') {
  */
 async function installOptimizationPack(gameDir, version = '26.2', onProgress) {
     const installed = checkInstalledOptimizationMods(gameDir, version);
+
+    // Vždy zajistíme přítomnost našeho F5 nametag módu
+    const bundledSelfNametag = path.join(__dirname, '../../assets/mods/selfnametag-1.0.0.jar');
+    const targetSelfNametag = path.join(gameDir, 'mods', 'selfnametag-1.0.0.jar');
+    if (!installed.hasSelfNametag && fs.existsSync(bundledSelfNametag)) {
+        try {
+            const mDir = path.join(gameDir, 'mods');
+            if (!fs.existsSync(mDir)) fs.mkdirSync(mDir, { recursive: true });
+            fs.copyFileSync(bundledSelfNametag, targetSelfNametag);
+        } catch (_) {}
+    }
 
     const items = [
         { id: 'fabric-api', title: 'Fabric API', projectType: 'mod', needed: !installed.hasFabricApi },
