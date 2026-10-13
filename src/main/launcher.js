@@ -2061,6 +2061,31 @@ function ensureSelfNametagModInstalled(targetDir, onLog = console.log) {
         } catch (_) {}
     }
 
+    // Také automatická kontrola všech instancí ve složce instances (včetně imported-*)
+    const instancesDir = path.join(BASE_DIR, 'instances');
+    if (fs.existsSync(instancesDir)) {
+        try {
+            const subEntries = fs.readdirSync(instancesDir);
+            for (const sub of subEntries) {
+                const iPath = path.join(instancesDir, sub);
+                if (fs.statSync(iPath).isDirectory()) {
+                    checkDirs.add(iPath);
+                }
+            }
+        } catch (_) {}
+    }
+
+    // Kontrola všech profilů z launcher-config.json (včetně p.gameDir)
+    try {
+        const cfgPath = path.join(BASE_DIR, 'launcher-config.json');
+        if (fs.existsSync(cfgPath)) {
+            const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+            for (const p of (cfg.profiles || [])) {
+                if (p.gameDir) checkDirs.add(p.gameDir);
+            }
+        }
+    } catch (_) {}
+
     let installedCount = 0;
     for (const d of checkDirs) {
         try {
@@ -2294,6 +2319,9 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
     if (!fs.existsSync(gameInstanceDir)) {
         fs.mkdirSync(gameInstanceDir, { recursive: true });
     }
+
+    // ⚡ Vynucená kontrola a instalace módu Self Nametag (F5) před každým spuštěním pro tento profil/instanci
+    ensureSelfNametagModInstalled(gameInstanceDir, onLog);
 
     // ⚡ Bleskové převzetí existujících assetů a knihoven ze systému (.minecraft)
     linkOrShareExistingMinecraftData(BASE_DIR, onLog);

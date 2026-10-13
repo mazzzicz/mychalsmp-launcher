@@ -207,6 +207,16 @@ async function importInstanceProfile(data, baseDir) {
         }
     }
 
+    // Automaticky přidat náš Self Nametag mod do importované instance
+    try {
+        const bundledNametag = path.join(__dirname, '../../assets/mods/selfnametag-1.0.0.jar');
+        if (fs.existsSync(bundledNametag)) {
+            const destMods = path.join(instanceDir, 'mods');
+            if (!fs.existsSync(destMods)) fs.mkdirSync(destMods, { recursive: true });
+            fs.copyFileSync(bundledNametag, path.join(destMods, 'selfnametag-1.0.0.jar'));
+        }
+    } catch (_) {}
+
     // 4. Copy resourcepacks & shaderpacks
     const rpSrc = path.join(srcDir, 'resourcepacks');
     if (fs.existsSync(rpSrc)) {
