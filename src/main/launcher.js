@@ -2044,7 +2044,34 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
     const ldr = (config && config.loader) ? String(config.loader).toLowerCase() : '';
     if (!ldr.includes('fabric')) return;
     const modsDir = path.join(gameInstanceDir, 'mods');
-    if (!fs.existsSync(modsDir)) return;
+    if (!fs.existsSync(modsDir)) {
+        try { fs.mkdirSync(modsDir, { recursive: true }); } catch (_) {}
+    }
+
+    // 2. KONTROLA SELF NAMETAG (F5 Nickname & Scoreboard Mod):
+    // Automaticky zajistí přítomnost módu pro každý spouštěný Fabric profil (1.21.11 až 26.3)
+    const bundledModPath = path.join(__dirname, '../../assets/mods/selfnametag-1.0.0.jar');
+    const targetModPath = path.join(modsDir, 'selfnametag-1.0.0.jar');
+    if (fs.existsSync(bundledModPath)) {
+        let shouldCopy = !fs.existsSync(targetModPath);
+        if (!shouldCopy) {
+            try {
+                const bStat = fs.statSync(bundledModPath);
+                const tStat = fs.statSync(targetModPath);
+                if (bStat.size !== tStat.size) shouldCopy = true;
+            } catch (_) { shouldCopy = true; }
+        }
+        if (shouldCopy) {
+            try {
+                fs.copyFileSync(bundledModPath, targetModPath);
+                if (typeof onLog === 'function') {
+                    onLog('[DOPLŇKY] ✔ Nainstalován / aktualizován mód Self Nametag (F5) pro profil.');
+                }
+            } catch (err) {
+                console.warn('[LAUNCHER] Nepodařilo se zkopírovat bundled selfnametag:', err.message);
+            }
+        }
+    }
 
     let AdmZip = null;
     try { AdmZip = require('adm-zip'); } catch (_) { return; }
@@ -2066,28 +2093,6 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
                 } catch (_) {}
             } else {
                 try { fs.unlinkSync(orig); } catch (_) {}
-            }
-        }
-    }
-
-    // 2. KONTROLA SELF NAMETAG (F5 Nickname & Scoreboard Mod):
-    // Automaticky zajistí přítomnost módu pro každý spouštěný Fabric profil
-    const hasSelfNametag = files.some(f => {
-        const l = f.toLowerCase();
-        return l.startsWith('selfnametag') || l.startsWith('self-nametag') || l.includes('selfnametag');
-    });
-
-    if (!hasSelfNametag) {
-        const bundledModPath = path.join(__dirname, '../../assets/mods/selfnametag-1.0.0.jar');
-        const targetModPath = path.join(modsDir, 'selfnametag-1.0.0.jar');
-        if (fs.existsSync(bundledModPath)) {
-            try {
-                fs.copyFileSync(bundledModPath, targetModPath);
-                if (typeof onLog === 'function') {
-                    onLog('[DOPLŇKY] ✔ Automaticky nainstalován mód Self Nametag (F5) do profilu.');
-                }
-            } catch (err) {
-                console.warn('[LAUNCHER] Nepodařilo se zkopírovat bundled selfnametag:', err.message);
             }
         }
     }

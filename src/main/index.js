@@ -775,6 +775,18 @@ ipcMain.handle('get-profile-mods', async (event, profileId) => {
     const gameDir = profile?.gameDir || BASE_DIR;
     const modsDir = path.join(gameDir, 'mods');
 
+    // Automaticky zajistíme přítomnost selfnametag-1.0.0.jar
+    const bundledSelfNametag = path.join(__dirname, '../../assets/mods/selfnametag-1.0.0.jar');
+    const targetSelfNametag = path.join(modsDir, 'selfnametag-1.0.0.jar');
+    if (fs.existsSync(bundledSelfNametag)) {
+        if (!fs.existsSync(modsDir)) {
+            try { fs.mkdirSync(modsDir, { recursive: true }); } catch (_) {}
+        }
+        if (!fs.existsSync(targetSelfNametag)) {
+            try { fs.copyFileSync(bundledSelfNametag, targetSelfNametag); } catch (_) {}
+        }
+    }
+
     if (!fs.existsSync(modsDir)) {
         return { success: true, mods: [], modsDir, profileName: profile?.name || profileId };
     }
