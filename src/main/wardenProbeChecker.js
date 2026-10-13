@@ -87,41 +87,133 @@ const PROHIBITED_MOD_RULES = [
 
     // 7. Full Hack Clients & Addons
     {
-        pattern: /(meteor|trouserstreak|trouser-streak|blackout|bananaplus|banana-plus|glazed|orion|wurst|liquidbounce|rusherhack|futureclient|future-client|bleachhack|thunderhack|mathax|vape|riseclient|rise-client|augustus|boze|inertia|coffee|kami|maru|ogar|cerberus|higgins|phobos|earthhack|cosmos|konas|driplite|drip-lite|prestige|slinky|entropy|whiteout|ravenbplus|raven-xd)/i,
+        pattern: /(meteor|trouserstreak|trouser-streak|blackout|bananaplus|banana-plus|glazed|orion|wurst|liquidbounce|rusherhack|futureclient|future-client|bleachhack|thunderhack|mathax|vape|riseclient|rise-client|augustus|boze|inertia|coffee|kami|maru|ogar|cerberus|higgins|phobos|earthhack|cosmos|konas|driplite|drip-lite|prestige|slinky|entropy|whiteout|ravenbplus|raven-xd|aristois|sigma|impact)/i,
         name: 'Nepovolený klient / Cheat',
         category: 'HACK_CLIENT',
         categoryLabel: 'Nepovolený mód',
         reason: 'Tento mód není povolený'
+    },
+
+    // 8. Minimap, World Map & Radar Mods
+    {
+        pattern: /(xaero|xaerominimap|xaeros_minimap|xaero-minimap|xaeroworldmap|xaeros_world_map|xaero-world-map|journeymap|journey-map|journey_map|voxelmap|voxel-map|voxel_map|mapwriter|reiminimap|reis_minimap|zansminimap|zans_minimap|minimap|mini-map|mini_map|worldmap|world-map|world_map|ftbchunks|ftb-chunks|radarmap|entityradar)/i,
+        name: 'Minimapa / World Map',
+        category: 'MINIMAP',
+        categoryLabel: 'Nepovolený mód',
+        reason: 'Minimapy a radary nejsou povoleny'
     }
 ];
 
+let AdmZip = null;
+try { AdmZip = require('adm-zip'); } catch (_) { }
+
 /**
- * Checks a filename or mod id against prohibited rules.
+ * Inspects internal descriptors of a jar file (fabric.mod.json, quilt.mod.json, mods.toml)
  */
-function evaluateModFile(filename) {
+function inspectJarDescriptor(jarPath) {
+    if (!AdmZip || !fs.existsSync(jarPath)) return null;
+    try {
+        const zip = new AdmZip(jarPath);
+        // 1. Fabric mod descriptor
+        const fabEntry = zip.getEntry('fabric.mod.json');
+        if (fabEntry) {
+            try {
+                const fab = JSON.parse(fabEntry.getData().toString('utf8'));
+                return {
+                    id: fab.id || '',
+                    name: fab.name || ''
+                };
+            } catch (_) { }
+        }
+        // 2. Quilt descriptor
+        const quiltEntry = zip.getEntry('quilt.mod.json');
+        if (quiltEntry) {
+            try {
+                const q = JSON.parse(quiltEntry.getData().toString('utf8'));
+                const qMeta = q.quilt_loader?.metadata;
+                return {
+                    id: q.quilt_loader?.id || '',
+                    name: qMeta?.name || ''
+                };
+            } catch (_) { }
+        }
+        // 3. Forge / NeoForge mods.toml
+        const tomlEntry = zip.getEntry('META-INF/neoforge.mods.toml') || zip.getEntry('META-INF/mods.toml');
+        if (tomlEntry) {
+            try {
+                const txt = tomlEntry.getData().toString('utf8');
+                const mName = txt.match(/displayName\s*=\s*["']([^"']+)["']/);
+                const mId = txt.match(/modId\s*=\s*["']([^"']+)["']/);
+                return {
+                    id: mId ? mId[1] : '',
+                    name: mName ? mName[1] : ''
+                };
+            } catch (_) { }
+        }
+    } catch (_) { }
+    return null;
+}
+
+/**
+ * Evaluates a mod file against whitelist and prohibited rules.
+ * Checks filename, Modrinth metadata and internal jar descriptors.
+ */
+function evaluateMod(filename, fullPath = null, metaObj = null) {
     const lower = filename.toLowerCase();
 
-    // 1. Explicit Whitelist check (e.g. Replay Mod)
+    // 1. Explicit Whitelist check
     for (const wl of WHITELIST_KEYWORDS) {
         if (lower.includes(wl)) {
             return null; // Whitelisted!
         }
     }
 
+    const testStrings = [lower];
+
+    if (metaObj) {
+        if (metaObj.id) testStrings.push(String(metaObj.id).toLowerCase());
+        if (metaObj.slug) testStrings.push(String(metaObj.slug).toLowerCase());
+        if (metaObj.title) testStrings.push(String(metaObj.title).toLowerCase());
+    }
+
+    let descriptor = null;
+    if (fullPath && fs.existsSync(fullPath)) {
+        descriptor = inspectJarDescriptor(fullPath);
+        if (descriptor) {
+            if (descriptor.id) testStrings.push(descriptor.id.toLowerCase());
+            if (descriptor.name) testStrings.push(descriptor.name.toLowerCase());
+        }
+    }
+
+    // Check whitelist against all detected identifiers
+    for (const str of testStrings) {
+        for (const wl of WHITELIST_KEYWORDS) {
+            if (str === wl || str.includes(wl)) {
+                return null;
+            }
+        }
+    }
+
     // 2. Prohibited rule check
     for (const rule of PROHIBITED_MOD_RULES) {
-        if (rule.pattern.test(lower)) {
-            return {
-                filename,
-                modName: rule.name,
-                category: rule.category,
-                categoryLabel: rule.categoryLabel,
-                reason: rule.reason
-            };
+        for (const str of testStrings) {
+            if (rule.pattern.test(str)) {
+                return {
+                    filename,
+                    modName: descriptor?.name || metaObj?.title || rule.name,
+                    category: rule.category,
+                    categoryLabel: rule.categoryLabel,
+                    reason: rule.reason
+                };
+            }
         }
     }
 
     return null;
+}
+
+function evaluateModFile(filename) {
+    return evaluateMod(filename);
 }
 
 /**
@@ -137,13 +229,23 @@ function scanProfileForBlacklistedMods(profileDir) {
         return { clean: true, blockedCount: 0, illegalMods: [] };
     }
 
+    let metaMap = {};
+    const metaPath = path.join(modsDir, '.mod_meta.json');
+    if (fs.existsSync(metaPath)) {
+        try {
+            metaMap = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+        } catch (_) { }
+    }
+
     const illegalMods = [];
     try {
         const files = fs.readdirSync(modsDir);
         for (const file of files) {
             // Only inspect active jar files (ignore .disabled)
             if (file.toLowerCase().endsWith('.jar')) {
-                const match = evaluateModFile(file);
+                const fullPath = path.join(modsDir, file);
+                const meta = metaMap[file] || null;
+                const match = evaluateMod(file, fullPath, meta);
                 if (match) {
                     illegalMods.push(match);
                 }
@@ -196,6 +298,8 @@ module.exports = {
     scanProfileForBlacklistedMods,
     disableIllegalMod,
     disableAllIllegalMods,
+    evaluateMod,
     evaluateModFile,
     WHITELIST_KEYWORDS
 };
+

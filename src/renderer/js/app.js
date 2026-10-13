@@ -1735,8 +1735,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             const targetProfileId = resolveLaunchProfileId();
             selectActiveProfile(targetProfileId);
 
-            if (currentIllegalMods.length > 0) {
-                showToast('Quick Play zablokován: Nalezeny nepovolené módy.', 'error');
+            const scan = await window.api.checkWardenProbe(targetProfileId);
+            if (scan && !scan.clean) {
+                currentIllegalMods = scan.illegalMods || [];
+                showToast('Quick Play zablokován: V profilu jsou nepovolené módy pro MYCHAL SMP.', 'error');
                 openWardenModal();
                 return;
             }
@@ -2749,6 +2751,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         const targetPid = profileId || currentConfig.activeProfileId || 'minecraft-26.2';
         const targetProf = (currentConfig.profiles || []).find(x => x.id === targetPid);
 
+        // ── Kontrola nepovolených módů (Warden Probe) při připojení na MYCHAL SMP ──
+        const isMychalServer = serverIp && (
+            serverIp.toLowerCase().includes('mychalsmp.xyz') ||
+            serverIp.toLowerCase().includes('mychalsmp') ||
+            serverIp === '130.61.89.37'
+        );
+
+        if (isMychalServer) {
+            try {
+                const wardenScan = await window.api.checkWardenProbe(targetPid);
+                if (wardenScan && !wardenScan.clean) {
+                    currentIllegalMods = wardenScan.illegalMods || [];
+                    const banner = document.getElementById('wardenBlockedAlert');
+                    const countText = document.getElementById('wardenBlockedCountText');
+                    if (banner) banner.style.display = 'flex';
+                    if (countText) countText.textContent = `${wardenScan.blockedCount} nepovolených módů pro MYCHAL SMP`;
+                    showToast(`Připojení k MYCHAL SMP zablokováno: V profilu je ${wardenScan.blockedCount} nepovolených módů.`, 'error');
+                    appendLog(`[BEZPEČNOST] Připojení k MYCHAL SMP zablokováno systémem Warden. Nalezeny nepovolené modifikace (${wardenScan.blockedCount}).`);
+                    openWardenModal();
+                    return;
+                }
+            } catch (wErr) {
+                console.warn('[WARDEN] Kontrola selhala:', wErr);
+            }
+        }
+
         if (isRunning) {
             const currentRunningPid = runningProfileId || currentConfig.activeProfileId;
             if (targetPid === currentRunningPid) {
@@ -2926,15 +2954,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             : `[LAUNCHER] Zahajuji stahování a instalaci verze ${targetProf?.version || ''}...`);
         if (sideConsoleStatus) sideConsoleStatus.textContent = isAlreadyInstalled ? 'Připravuji herní data a knihovny...' : 'Stahuji verzi a herní data...';
 
-        let actualServerIp = serverIp;
-        if (actualServerIp && (actualServerIp.includes('mychalsmp.xyz') || actualServerIp.includes('mychalsmp'))) {
-            if (currentIllegalMods && currentIllegalMods.length > 0) {
-                // If launch wasn't explicitly triggered from quick play, don't block the user, simply launch without connecting to SMP
-                actualServerIp = null;
-                showToast('Spuštěno bez připojení k serveru (nepovolené módy).', 'info');
-                appendLog('[BEZPEČNOST] Quick Play na MYCHAL SMP přeskočen z důvodu nepovolených módů v profilu. Hra spuštěna bez automatického připojení k serveru.');
-            }
-        }
+        const actualServerIp = serverIp;
 
         try {
             const res = await window.api.launchGame(targetPid, actualServerIp);
@@ -3008,7 +3028,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             } else if (res && res.blockedByWarden) {
                 appendLog(`[BEZPEČNOST] ${res.error}`);
-                showToast('Quick Play zablokován: Nalezeny nepovolené módy.', 'error');
+                showToast(res.error || 'Spuštění zablokováno: V profilu jsou nepovolené módy.', 'error');
+                if (res.illegalMods) currentIllegalMods = res.illegalMods;
                 openWardenModal();
                 resetPlayState();
                 return;
@@ -4596,6 +4617,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                         await loadProfileMods(targetProfileId);
                         renderModCards(lastLoadedCatalogMods);
                         await checkWardenProbe();
+                        if (currentIllegalMods && currentIllegalMods.length > 0) {
+                            showToast('Tento mód je stažen, ale je zakázán na serveru MYCHAL SMP.', 'warning');
+                        }
                     } else {
                         if (avatarBox) {
                             const ov = avatarBox.querySelector('.apple-progress-overlay');

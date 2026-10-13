@@ -1731,7 +1731,14 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
         syncServersDat(targetDir, config.servers || []);
     } catch (_) { }
 
-    if (serverIp && (serverIp.includes('mychalsmp.xyz') || serverIp.includes('mychalsmp'))) {
+    // Kontrola nepovolených módů (Warden Probe) při připojení na MYCHAL SMP
+    const isMychalServer = serverIp && (
+        serverIp.toLowerCase().includes('mychalsmp.xyz') ||
+        serverIp.toLowerCase().includes('mychalsmp') ||
+        serverIp === '130.61.89.37'
+    );
+
+    if (isMychalServer) {
         const probeScan = scanProfileForBlacklistedMods(launchConfig.baseDir);
         if (!probeScan.clean) {
             isLaunchingProcess = false;
@@ -1739,7 +1746,7 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
                 success: false,
                 blockedByWarden: true,
                 illegalMods: probeScan.illegalMods,
-                error: `Přístup na MYCHAL SMP byl zablokován z bezpečnostních důvodů. Nalezeno nepovolených módů: ${probeScan.blockedCount}.`
+                error: `Přístup na MYCHAL SMP byl zablokován bezpečnostním systémem Warden. V profilu byly nalezeny nepovolené módy (${probeScan.blockedCount}). Pro hraní na síti MYCHAL SMP je nutné tyto módy deaktivovat.`
             };
         }
     }
