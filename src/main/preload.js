@@ -156,5 +156,8 @@ contextBridge.exposeInMainWorld('api', {
     onWindowRestoredFromTray: (callback) => {
         ipcRenderer.on('window-restored-from-tray', () => callback());
     },
+    onWindowHiddenToTray: (callback) => {
+        ipcRenderer.on('window-hidden-to-tray', () => callback());
+    },
     preloadLaunchEnvironment: (profileId) => ipcRenderer.invoke('preload-launch-environment', profileId)
 });

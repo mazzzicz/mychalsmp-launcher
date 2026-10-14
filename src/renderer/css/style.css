@@ -7953,5 +7953,14 @@ input[type="range"].slider.is-dragging::-webkit-slider-thumb {
     font-weight: 800;
 }
 
+/* ── Úsporný režim při skrytí do Tray lišty (0% zátěž GPU & CPU) ── */
+body.app-in-tray-paused,
+body.app-in-tray-paused * {
+    animation-play-state: paused !important;
+    transition: none !important;
+}
 
-
+body.app-in-tray-paused #heroSkinCanvas3D,
+body.app-in-tray-paused #skinCanvas3D {
+    visibility: hidden !important;
+}

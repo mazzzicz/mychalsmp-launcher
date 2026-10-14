@@ -116,6 +116,7 @@ function restoreAndFocusMainWindow() {
         mainWindow.show();
         mainWindow.focus();
         try {
+            mainWindow.webContents.setBackgroundThrottling(false);
             mainWindow.webContents.send('window-restored-from-tray');
         } catch (_) { }
     }
@@ -273,6 +274,42 @@ function createWindow() {
     mainWindow.on('unmaximize', () => {
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('window-maximize-change', false);
+        }
+    });
+
+    mainWindow.on('hide', () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            try {
+                mainWindow.webContents.setBackgroundThrottling(true);
+                mainWindow.webContents.send('window-hidden-to-tray');
+            } catch (_) { }
+        }
+    });
+
+    mainWindow.on('show', () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            try {
+                mainWindow.webContents.setBackgroundThrottling(false);
+                mainWindow.webContents.send('window-restored-from-tray');
+            } catch (_) { }
+        }
+    });
+
+    mainWindow.on('minimize', () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            try {
+                mainWindow.webContents.setBackgroundThrottling(true);
+                mainWindow.webContents.send('window-hidden-to-tray');
+            } catch (_) { }
+        }
+    });
+
+    mainWindow.on('restore', () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            try {
+                mainWindow.webContents.setBackgroundThrottling(false);
+                mainWindow.webContents.send('window-restored-from-tray');
+            } catch (_) { }
         }
     });
 

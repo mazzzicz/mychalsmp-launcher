@@ -41,6 +41,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     let lastProgressData = null;
     let maxRenderedProgress = 0;
     let activePreLaunchModUpdate = null;
+    let skinViewer = null;
+    let heroSkinViewer = null;
 
     /**
      * Ideální psychologická Cubic Bézier křivka pro všechny progress bary:
@@ -214,21 +216,95 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) {
-            const curTab = document.querySelector('.nav-btn.active')?.dataset?.tab || 'play';
-            if (heroSkinViewer) {
-                heroSkinViewer.renderPaused = (curTab !== 'play');
+    // ── Úsporný režim při skrytí do Tray lišty (Zero-Overhead Background Mode) ──
+    let isLauncherSuspendedInTray = false;
+
+    function pauseLauncherBackgroundActivity() {
+        if (isLauncherSuspendedInTray) return;
+        isLauncherSuspendedInTray = true;
+
+        // 1. Okamžitě zmrazit 3D WebGL renderování v skinview3d a uvolnit rAF smyčky
+        if (heroSkinViewer) {
+            heroSkinViewer.renderPaused = true;
+        }
+        if (skinViewer) {
+            skinViewer.renderPaused = true;
+        }
+
+        // 2. Vynulovat interakce a sledování kurzoru hero modelu
+        if (typeof cancelHeroReturn === 'function') cancelHeroReturn();
+        isDraggingHero = false;
+        heroDragVelocityX = 0;
+        heroDragVelocityY = 0;
+        targetHeroHeadLookX = 0;
+        targetHeroHeadLookY = 0;
+
+        // 3. Pozastavit periodický 15s interval zjišťování stavu sítě (ping)
+        stopNetworkStatusPolling();
+
+        // 4. Zmrazit veškeré CSS keyframe animace a GPU kompozitor v celém DOMu
+        document.body.classList.add('app-in-tray-paused');
+
+        console.log('[VÝKON] Launcher v Tray liště – 3D renderování, JS intervaly a animace pozastaveny (0% zátěž CPU/GPU).');
+    }
+
+    function resumeLauncherBackgroundActivity() {
+        if (!isLauncherSuspendedInTray) return;
+        isLauncherSuspendedInTray = false;
+
+        // 1. Odmrazit CSS animace
+        document.body.classList.remove('app-in-tray-paused');
+
+        // 2. Obnovit 3D renderování pouze pro aktivní záložku
+        const curTab = document.querySelector('.nav-btn.active')?.dataset?.tab || 'play';
+        if (heroSkinViewer) {
+            heroSkinViewer.renderPaused = (curTab !== 'play');
+            if (curTab === 'play') {
+                heroSkinViewer.setSize(220, 280);
                 heroSkinViewer.draw();
+                if (typeof scheduleHeroReturn === 'function') scheduleHeroReturn();
+                if (typeof triggerHeroWave === 'function') triggerHeroWave(true);
             }
+        }
+        if (skinViewer) {
+            skinViewer.renderPaused = (curTab !== 'character');
+            if (curTab === 'character') {
+                skinViewer.setSize(200, 235);
+                skinViewer.draw();
+            }
+        }
+
+        // 3. Okamžitě zkontrolovat stav sítě a obnovit 15s interval
+        updateNetworkStatus();
+        startNetworkStatusPolling();
+
+        console.log('[VÝKON] Launcher obnoven z lišty – běh 3D modelu a rozhraní obnoven.');
+    }
+
+    // Posluchače událostí z Traye a viditelnosti okna
+    if (window.api && window.api.onWindowHiddenToTray) {
+        window.api.onWindowHiddenToTray(() => {
+            pauseLauncherBackgroundActivity();
+        });
+    }
+
+    if (window.api && window.api.onWindowRestoredFromTray) {
+        window.api.onWindowRestoredFromTray(() => {
+            resumeLauncherBackgroundActivity();
+        });
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            pauseLauncherBackgroundActivity();
+        } else {
+            resumeLauncherBackgroundActivity();
         }
     });
 
     window.addEventListener('focus', () => {
-        const curTab = document.querySelector('.nav-btn.active')?.dataset?.tab || 'play';
-        if (heroSkinViewer) {
-            heroSkinViewer.renderPaused = (curTab !== 'play');
-            heroSkinViewer.draw();
+        if (isLauncherSuspendedInTray) {
+            resumeLauncherBackgroundActivity();
         }
     });
 
@@ -466,8 +542,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (serverPingVal) serverPingVal.textContent = `-- ms`;
     }
 
+    let networkStatusInterval = null;
+    function startNetworkStatusPolling() {
+        if (networkStatusInterval) clearInterval(networkStatusInterval);
+        networkStatusInterval = setInterval(updateNetworkStatus, 15000);
+    }
+    function stopNetworkStatusPolling() {
+        if (networkStatusInterval) {
+            clearInterval(networkStatusInterval);
+            networkStatusInterval = null;
+        }
+    }
+
     updateNetworkStatus();
-    setInterval(updateNetworkStatus, 15000);
+    startNetworkStatusPolling();
 
     // ── Configuration Loader ────────────────────────────────────────────────
     async function loadConfiguration() {
@@ -4832,8 +4920,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ── 3D Skin Viewer (skinview3d) Integration ────────────────────────────
-    let skinViewer = null;
-    let heroSkinViewer = null;
     let activeMojangCapeUrl = null;
     let defaultServerCapeDataUrl = null;
     let isBackEquipmentElytra = false;
@@ -5061,22 +5147,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             targetHeroCuriosityTilt = 0;
         });
 
-        // Bleskurychlé mávnutí při obnovení z lišty nebo focusu okna
-        if (window.api && window.api.onWindowRestoredFromTray) {
-            window.api.onWindowRestoredFromTray(() => {
-                triggerHeroWave(true);
-            });
-        }
-
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') {
-                triggerHeroWave(true);
-            }
-        });
-
-        window.addEventListener('focus', () => {
-            triggerHeroWave(true);
-        });
+        // Pozn.: Obnovení z lišty a mávnutí je řízeno přes resumeLauncherBackgroundActivity()
 
         // Úder / Minecraft punch swing při kliknutí na jakékoliv tlačítko v launcheru
         document.addEventListener('pointerdown', (e) => {
@@ -5401,18 +5472,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                             // Rychlé nervózní klepání nohou (nepokoj v koleni / podupávání špičkou)
                             const legShakeAngle = (heroLegShakeWeight > 0.001) ? Math.sin((now / 1000) * 40) * 0.11 * heroLegShakeWeight : 0;
 
-                            // Sedící pozice nohou (ohnuté 90° dopředu = -1.57 rad)
-                            const sitLegAngle = -1.57;
+                            // Sedící pozice nohou (ohnuté dopředu = -1.52 rad pro přirozený mírný spád k zemi)
+                            const sitLegAngle = -1.52;
                             const sitLeftLegX = sitLegAngle + Math.sin(t * 1.1) * 0.035;
                             const sitRightLegX = sitLegAngle - Math.sin(t * 1.1) * 0.035;
 
+                            // Přirozené rozkročení nohou v sedu (ramenní šířka, eliminuje prolínání nohou do sebe)
+                            const sitLegSpreadZ = 0.20; // Vytočení nohou do stran (+Z pro levou, -Z pro pravou)
+                            const sitLegRollY = 0.08;   // Mírné přirozené vytočení špiček/kolen zevně
+
                             player.skin.leftLeg.rotation.x = baseLeftLegX * (1 - heroSitWeight) + sitLeftLegX * heroSitWeight;
-                            player.skin.leftLeg.rotation.y = -0.12 * heroSitWeight;
-                            player.skin.leftLeg.rotation.z = -0.05 * heroSitWeight;
+                            player.skin.leftLeg.rotation.y = sitLegRollY * heroSitWeight;
+                            player.skin.leftLeg.rotation.z = sitLegSpreadZ * heroSitWeight;
 
                             player.skin.rightLeg.rotation.x = (baseRightLegX + legShakeAngle) * (1 - heroSitWeight) + sitRightLegX * heroSitWeight;
-                            player.skin.rightLeg.rotation.y = (0.12 * heroSitWeight) + (0.04 * heroLegShakeWeight * (1 - heroSitWeight));
-                            player.skin.rightLeg.rotation.z = (0.05 * heroSitWeight) + (0.02 * heroLegShakeWeight * (1 - heroSitWeight));
+                            player.skin.rightLeg.rotation.y = (-sitLegRollY * heroSitWeight) + (0.04 * heroLegShakeWeight * (1 - heroSitWeight));
+                            player.skin.rightLeg.rotation.z = (-sitLegSpreadZ * heroSitWeight) + (0.02 * heroLegShakeWeight * (1 - heroSitWeight));
                         }
 
                         // Výška těla: snížení do sedu na podlahu + drobné poskakování při klepání nohou
@@ -6967,8 +7042,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             renderProfilesList();
             refreshVersionStatuses();
-            if (heroSkinViewer) heroSkinViewer.renderPaused = true;
-            if (skinViewer) skinViewer.renderPaused = true;
+            pauseLauncherBackgroundActivity();
         });
     }
 
@@ -6976,9 +7050,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.api.onGameStopped(() => {
             appendLog('[VÝKON] Hra ukončena – okno launcheru obnoveno ze systémové lišty.');
             resetPlayState();
-            const curTab = document.querySelector('.nav-btn.active')?.dataset?.tab || 'play';
-            if (heroSkinViewer) heroSkinViewer.renderPaused = (curTab !== 'play');
-            if (skinViewer) skinViewer.renderPaused = (curTab !== 'character');
+            resumeLauncherBackgroundActivity();
         });
     }
 
