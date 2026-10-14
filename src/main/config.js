@@ -107,6 +107,8 @@ const DEFAULT_CONFIG = {
     enableNativeWayland: false,
     enableDiscordRpc: true,
     autoUpdateMods: true,
+    screenshotToClipboard: true,
+    borderlessFullscreen: false,
     customSkinPath: null,
     customSkinVariant: 'classic',
     customCapePath: null

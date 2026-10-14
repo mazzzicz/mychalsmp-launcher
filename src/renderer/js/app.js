@@ -594,6 +594,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             const checkAutoUpdateMods = document.getElementById('checkAutoUpdateMods');
             if (checkAutoUpdateMods) checkAutoUpdateMods.checked = currentConfig.autoUpdateMods !== false;
 
+            const checkScreenshotClipboard = document.getElementById('checkScreenshotClipboard');
+            if (checkScreenshotClipboard) checkScreenshotClipboard.checked = currentConfig.screenshotToClipboard !== false;
+
+            const checkBorderlessFullscreen = document.getElementById('checkBorderlessFullscreen');
+            if (checkBorderlessFullscreen) checkBorderlessFullscreen.checked = currentConfig.borderlessFullscreen === true;
+
             const jvmArgsInput = document.getElementById('jvmArgsInput');
             if (jvmArgsInput) jvmArgsInput.value = (currentConfig.customJvmArgs || '-XX:+UseZGC -XX:+UnlockExperimentalVMOptions -XX:+AlwaysPreTouch -XX:+DisableExplicitGC').replace(/-XX:\+ZGenerational\s*/g, '').trim();
 
@@ -1772,11 +1778,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else {
                 if (chip) chip.style.display = 'none';
                 if (!silent) {
-                    showToast('Launcher je aktuální (verze v' + (update.currentVersion || '1.0.4') + ')', 'info');
+                    showToast('Launcher je aktuální (verze v' + (update?.currentVersion || '1.4.7') + ')', 'info');
                 }
             }
+            return update;
         } catch (e) {
             console.error('[AUTO-UPDATE] Kontrola aktualizací selhala:', e);
+            throw e;
         }
     }
 
@@ -1899,16 +1907,105 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const btnManualCheckUpdate = document.getElementById('btnManualCheckUpdate');
     if (btnManualCheckUpdate) {
+        let isCheckingUpdates = false;
         btnManualCheckUpdate.addEventListener('click', async () => {
-            btnManualCheckUpdate.disabled = true;
-            const orig = btnManualCheckUpdate.innerHTML;
-            btnManualCheckUpdate.innerHTML = '<span><svg class="ui-icon-svg ui-icon-svg--xs ui-icon-spin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="12"></circle></svg> Kontroluji...</span>';
-            try {
-                await checkLauncherUpdates(false);
-            } finally {
-                btnManualCheckUpdate.disabled = false;
-                btnManualCheckUpdate.innerHTML = orig;
+            if (isCheckingUpdates) return;
+            if (btnManualCheckUpdate.classList.contains('is-available') && pendingUpdateData) {
+                openUpdateModal(pendingUpdateData);
+                return;
             }
+
+            isCheckingUpdates = true;
+            const updateCard = btnManualCheckUpdate.closest('.update-checker-card');
+            const origHTML = `
+                <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+                <span>Zkontrolovat</span>
+            `;
+
+            // Spustit vizuální kontrolu s horním specular odleskem na kartě
+            if (updateCard) updateCard.classList.add('card-is-checking');
+            btnManualCheckUpdate.classList.remove('is-success', 'is-error', 'is-available');
+            btnManualCheckUpdate.classList.add('is-checking');
+            btnManualCheckUpdate.innerHTML = `
+                <svg class="ui-icon-svg ui-icon-svg--xs icon-spin-smooth" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                    <path d="M3 3v5h5"></path>
+                    <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
+                    <path d="M16 21h5v-5"></path>
+                </svg>
+                <span>Hledám...</span>
+            `;
+
+            try {
+                // Minimální perception práh (850ms) pro plynulý, prémiový pocit
+                const [update] = await Promise.all([
+                    checkLauncherUpdates(true),
+                    new Promise((resolve) => setTimeout(resolve, 850))
+                ]);
+
+                if (updateCard) updateCard.classList.remove('card-is-checking');
+                btnManualCheckUpdate.classList.remove('is-checking');
+
+                if (update && update.hasUpdate) {
+                    btnManualCheckUpdate.classList.add('is-available');
+                    btnManualCheckUpdate.innerHTML = `
+                        <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        <span>Aktualizovat</span>
+                    `;
+                    setTimeout(() => {
+                        if (pendingUpdateData) openUpdateModal(pendingUpdateData);
+                    }, 500);
+                } else {
+                    btnManualCheckUpdate.classList.add('is-success');
+                    btnManualCheckUpdate.innerHTML = `
+                        <svg class="ui-icon-svg ui-icon-svg--xs checkmark-spring" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                        <span>Aktuální</span>
+                    `;
+                    const versionStatus = document.getElementById('launcherVersionStatus');
+                    if (versionStatus && update && update.currentVersion) {
+                        versionStatus.innerHTML = `Nainstalovaná verze: <strong>v${update.currentVersion}</strong> • <span class="update-status-fresh">Aktuální ✓</span>`;
+                    }
+                    showToast('Launcher je plně aktuální (v' + (update?.currentVersion || '1.4.7') + ')', 'info');
+
+                    setTimeout(() => {
+                        btnManualCheckUpdate.classList.remove('is-success');
+                        btnManualCheckUpdate.innerHTML = origHTML;
+                        isCheckingUpdates = false;
+                    }, 2200);
+                    return;
+                }
+            } catch (err) {
+                if (updateCard) updateCard.classList.remove('card-is-checking');
+                btnManualCheckUpdate.classList.remove('is-checking');
+                btnManualCheckUpdate.classList.add('is-error');
+                btnManualCheckUpdate.innerHTML = `
+                    <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                    <span>Chyba sítě</span>
+                `;
+                showToast('Nepodařilo se zkontrolovat aktualizace.', 'error');
+                setTimeout(() => {
+                    btnManualCheckUpdate.classList.remove('is-error');
+                    btnManualCheckUpdate.innerHTML = origHTML;
+                    isCheckingUpdates = false;
+                }, 2200);
+                return;
+            }
+
+            isCheckingUpdates = false;
         });
     }
 
@@ -6305,6 +6402,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const checkNativeWayland = document.getElementById('checkNativeWayland');
         const checkDiscordRpc = document.getElementById('checkDiscordRpc');
         const checkAutoUpdateMods = document.getElementById('checkAutoUpdateMods');
+        const checkScreenshotClipboard = document.getElementById('checkScreenshotClipboard');
+        const checkBorderlessFullscreen = document.getElementById('checkBorderlessFullscreen');
         const jvmArgsInput = document.getElementById('jvmArgsInput');
         const customEnvVarsInput = document.getElementById('customEnvVarsInput');
 
@@ -6321,6 +6420,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             enableNativeWayland: checkNativeWayland ? checkNativeWayland.checked : false,
             enableDiscordRpc: checkDiscordRpc ? checkDiscordRpc.checked : true,
             autoUpdateMods: checkAutoUpdateMods ? checkAutoUpdateMods.checked : true,
+            screenshotToClipboard: checkScreenshotClipboard ? checkScreenshotClipboard.checked : true,
+            borderlessFullscreen: checkBorderlessFullscreen ? checkBorderlessFullscreen.checked : false,
             customJvmArgs: jvmArgsInput ? jvmArgsInput.value.trim() : null,
             customEnvVars: customEnvVarsInput ? customEnvVarsInput.value.trim() : ''
         };
@@ -6435,6 +6536,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const checkAutoUpdateModsEl = document.getElementById('checkAutoUpdateMods');
     if (checkAutoUpdateModsEl) checkAutoUpdateModsEl.addEventListener('change', () => autoSaveSettings(true));
+
+    const checkScreenshotClipboardEl = document.getElementById('checkScreenshotClipboard');
+    if (checkScreenshotClipboardEl) checkScreenshotClipboardEl.addEventListener('change', () => autoSaveSettings(true));
+
+    const checkBorderlessFullscreenEl = document.getElementById('checkBorderlessFullscreen');
+    if (checkBorderlessFullscreenEl) checkBorderlessFullscreenEl.addEventListener('change', () => autoSaveSettings(true));
 
 
     document.querySelectorAll('input[name="res"]').forEach(radio => {

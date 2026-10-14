@@ -1167,7 +1167,67 @@
                         <div class="slider-marks" id="ramSliderMarks"></div>
                     </div>
 
-                    <!-- Sekce 2 & 3: Dvousloupcové uspořádání pro Rozlišení + GPU a Java Runtime -->
+                    <!-- Sekce 2: Systémové nástroje (Údržba disku a Aktualizace aplikace) -->
+                    <div class="settings-tools-row">
+                        <div class="cache-cleaner-card">
+                            <div class="tool-card-header">
+                                <span class="ui-icon-wrap">
+                                    <svg class="ui-icon-svg ui-icon-svg--md ui-icon-svg--blue" viewBox="0 0 24 24">
+                                        <line x1="22" y1="12" x2="2" y2="12"></line>
+                                        <path
+                                            d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z">
+                                        </path>
+                                        <line x1="6" y1="16" x2="6.01" y2="16"></line>
+                                        <line x1="10" y1="16" x2="10.01" y2="16"></line>
+                                    </svg>
+                                </span>
+                                <div>
+                                    <strong class="tool-card-title">Údržba disku</strong>
+                                    <p class="tool-card-desc">Promaže staré logy a crash reporty.</p>
+                                </div>
+                            </div>
+                            <div class="tool-card-actions">
+                                <span id="cacheCleanerSummary" class="tool-status-text">Připraveno.</span>
+                                <div class="btn-group-sm">
+                                    <button type="button" class="mc-btn mc-btn-secondary btn-sm"
+                                        id="btnScanCache">Analyzovat</button>
+                                    <button type="button" class="mc-btn mc-btn-green btn-sm"
+                                        id="btnCleanCache">Vyčistit</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="update-checker-card">
+                            <div class="tool-card-header">
+                                <span class="ui-icon-wrap">
+                                    <svg class="ui-icon-svg ui-icon-svg--md ui-icon-svg--blue" viewBox="0 0 24 24">
+                                        <path d="M21 2v6h-6"></path>
+                                        <path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path>
+                                        <path d="M3 22v-6h6"></path>
+                                        <path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path>
+                                    </svg>
+                                </span>
+                                <div>
+                                    <strong class="tool-card-title">Aktualizace aplikace</strong>
+                                    <p class="tool-card-desc" id="launcherVersionStatus">Verze: <strong>v1.0.4</strong>
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="tool-card-actions">
+                                <button type="button" class="mc-btn mc-btn-secondary btn-sm" id="btnManualCheckUpdate">
+                                    <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
+                                        <polyline points="23 4 23 10 17 10"></polyline>
+                                        <polyline points="1 20 1 14 7 14"></polyline>
+                                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15">
+                                        </path>
+                                    </svg>
+                                    <span>Zkontrolovat</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sekce 3 & 4: Dvousloupcové uspořádání pro Rozlišení + GPU a Java Runtime -->
                     <div class="settings-two-col">
                         <div class="settings-col-group">
                             <div class="form-group">
@@ -1271,6 +1331,21 @@
                                     <span class="perf-toggle-desc">Vypne V-Sync ovladače pro nejnižší input lag.</span>
                                 </div>
                             </label>
+                            <label class="perf-toggle-card">
+                                <input type="checkbox" id="checkScreenshotClipboard" checked>
+                                <div class="perf-toggle-info">
+                                    <span class="perf-toggle-title">Screenshot do schránky (Ctrl+V)</span>
+                                    <span class="perf-toggle-desc">Po stisku F2 rovnou zkopíruje vyfocený snímek do schránky pro vložení na Discord.</span>
+                                </div>
+                            </label>
+
+                            <label class="perf-toggle-card">
+                                <input type="checkbox" id="checkBorderlessFullscreen">
+                                <div class="perf-toggle-info">
+                                    <span class="perf-toggle-title">Bezokrajové okno (Borderless Fullscreen)</span>
+                                    <span class="perf-toggle-desc">Hra na celou obrazovku bez problikávání a minimalizace při Alt+Tab na druhý monitor.</span>
+                                </div>
+                            </label>
                         </div>
                     </div>
 
@@ -1330,66 +1405,6 @@
                             </div>
                         </div>
                     </details>
-
-                    <!-- Sekce 6: Systémové nástroje (Údržba disku a Aktualizace) -->
-                    <div class="settings-tools-row">
-                        <div class="cache-cleaner-card">
-                            <div class="tool-card-header">
-                                <span class="ui-icon-wrap">
-                                    <svg class="ui-icon-svg ui-icon-svg--md ui-icon-svg--blue" viewBox="0 0 24 24">
-                                        <line x1="22" y1="12" x2="2" y2="12"></line>
-                                        <path
-                                            d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z">
-                                        </path>
-                                        <line x1="6" y1="16" x2="6.01" y2="16"></line>
-                                        <line x1="10" y1="16" x2="10.01" y2="16"></line>
-                                    </svg>
-                                </span>
-                                <div>
-                                    <strong class="tool-card-title">Údržba disku</strong>
-                                    <p class="tool-card-desc">Promaže staré logy a crash reporty.</p>
-                                </div>
-                            </div>
-                            <div class="tool-card-actions">
-                                <span id="cacheCleanerSummary" class="tool-status-text">Připraveno.</span>
-                                <div class="btn-group-sm">
-                                    <button type="button" class="mc-btn mc-btn-secondary btn-sm"
-                                        id="btnScanCache">Analyzovat</button>
-                                    <button type="button" class="mc-btn mc-btn-green btn-sm"
-                                        id="btnCleanCache">Vyčistit</button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="update-checker-card">
-                            <div class="tool-card-header">
-                                <span class="ui-icon-wrap">
-                                    <svg class="ui-icon-svg ui-icon-svg--md ui-icon-svg--blue" viewBox="0 0 24 24">
-                                        <path d="M21 2v6h-6"></path>
-                                        <path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path>
-                                        <path d="M3 22v-6h6"></path>
-                                        <path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path>
-                                    </svg>
-                                </span>
-                                <div>
-                                    <strong class="tool-card-title">Aktualizace aplikace</strong>
-                                    <p class="tool-card-desc" id="launcherVersionStatus">Verze: <strong>v1.0.4</strong>
-                                    </p>
-                                </div>
-                            </div>
-                            <div class="tool-card-actions">
-                                <button type="button" class="mc-btn mc-btn-secondary btn-sm" id="btnManualCheckUpdate">
-                                    <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
-                                        <polyline points="23 4 23 10 17 10"></polyline>
-                                        <polyline points="1 20 1 14 7 14"></polyline>
-                                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15">
-                                        </path>
-                                    </svg>
-                                    <span>Zkontrolovat</span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
 
                     <!-- Danger Zone: Reset launcher data -->
                     <div class="danger-zone-card">

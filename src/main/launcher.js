@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const { execSync, execFileSync } = require('child_process');
 const { Readable } = require('stream');
 const { pipeline } = require('stream/promises');
-const { BASE_DIR } = require('./config');
+const { BASE_DIR, loadConfig } = require('./config');
 
 let activeMinecraftProcess = null;
 let activeLauncherClient = null;
@@ -2156,6 +2156,28 @@ function ensureSelfNametagModInstalled(targetDir, onLog = console.log, forceOver
                     onLog(`[DOPLŇKY] ✔ Aktualizován Self Nametag mod (F5 / SMPClient gradient) do: ${path.relative(BASE_DIR, targetJar) || targetJar}`);
                 }
             }
+
+            // Synchronizace konfigurace doplňku (Screenshot do schránky, Borderless Fullscreen)
+            try {
+                const cfgDir = path.join(d, 'config');
+                if (!fs.existsSync(cfgDir)) fs.mkdirSync(cfgDir, { recursive: true });
+                const cfgPath = path.join(cfgDir, 'selfnametag.json');
+                const launcherCfg = loadConfig();
+                let currentModCfg = { screenshotToClipboard: true, borderlessFullscreen: false };
+                if (fs.existsSync(cfgPath)) {
+                    try {
+                        const raw = fs.readFileSync(cfgPath, 'utf-8');
+                        currentModCfg = { ...currentModCfg, ...JSON.parse(raw) };
+                    } catch (_) {}
+                }
+                if (launcherCfg.screenshotToClipboard !== undefined) {
+                    currentModCfg.screenshotToClipboard = launcherCfg.screenshotToClipboard !== false;
+                }
+                if (launcherCfg.borderlessFullscreen !== undefined) {
+                    currentModCfg.borderlessFullscreen = launcherCfg.borderlessFullscreen === true;
+                }
+                fs.writeFileSync(cfgPath, JSON.stringify(currentModCfg, null, 2), 'utf-8');
+            } catch (_) {}
         } catch (err) {
             console.warn(`[LAUNCHER] Nepodařilo se nainstalovat selfnametag do ${d}:`, err.message);
         }

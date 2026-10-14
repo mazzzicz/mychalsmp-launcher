@@ -472,6 +472,32 @@ ipcMain.handle('save-config', (event, newConfig) => {
                 isPlaying: false
             });
         }
+
+        if (saved && (saved.screenshotToClipboard !== undefined || saved.borderlessFullscreen !== undefined)) {
+            try {
+                const cfgData = {
+                    screenshotToClipboard: saved.screenshotToClipboard !== false,
+                    borderlessFullscreen: saved.borderlessFullscreen === true
+                };
+                const cfgJson = JSON.stringify(cfgData, null, 2);
+                const baseCfgDir = path.join(BASE_DIR, 'config');
+                if (!fs.existsSync(baseCfgDir)) fs.mkdirSync(baseCfgDir, { recursive: true });
+                fs.writeFileSync(path.join(baseCfgDir, 'selfnametag.json'), cfgJson, 'utf-8');
+
+                for (const parent of [path.join(BASE_DIR, 'profiles'), path.join(BASE_DIR, 'instances')]) {
+                    if (fs.existsSync(parent)) {
+                        for (const sub of fs.readdirSync(parent)) {
+                            const subDir = path.join(parent, sub);
+                            if (fs.statSync(subDir).isDirectory()) {
+                                const scDir = path.join(subDir, 'config');
+                                if (!fs.existsSync(scDir)) fs.mkdirSync(scDir, { recursive: true });
+                                fs.writeFileSync(path.join(scDir, 'selfnametag.json'), cfgJson, 'utf-8');
+                            }
+                        }
+                    }
+                }
+            } catch (_) {}
+        }
     } catch (e) { }
     return saved;
 });
