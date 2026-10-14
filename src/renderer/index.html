@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css?v=1.0.8">
+    <link rel="stylesheet" href="css/style.css?v=1.0.9">
 </head>
 
 <body>
@@ -301,12 +301,8 @@
                                     <div class="profile-card-keyart-bg"
                                         style="background-image: url('assets/keyarts/card-26.3.png');"></div>
                                     <div class="profile-card-keyart-overlay"></div>
-                                    <div class="profile-icon-box frost-icon">
-                                        <svg class="ui-icon-svg ui-icon-svg--gold" viewBox="0 0 24 24">
-                                            <polygon
-                                                points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2">
-                                            </polygon>
-                                        </svg>
+                                    <div class="profile-icon-box">
+                                        <img src="assets/icons/newest.png" class="profile-3d-float-icon" alt="Minecraft 26.3" draggable="false" />
                                     </div>
                                     <div class="profile-details">
                                         <div class="profile-title-line">
@@ -343,13 +339,8 @@
                                     <div class="profile-card-keyart-bg"
                                         style="background-image: url('assets/keyarts/card-26.2.png');"></div>
                                     <div class="profile-card-keyart-overlay"></div>
-                                    <div class="profile-icon-box sword-icon">
-                                        <svg class="ui-icon-svg ui-icon-svg--blue" viewBox="0 0 24 24">
-                                            <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"></polyline>
-                                            <line x1="13" y1="19" x2="19" y2="13"></line>
-                                            <line x1="16" y1="16" x2="20" y2="20"></line>
-                                            <line x1="19" y1="21" x2="21" y2="19"></line>
-                                        </svg>
+                                    <div class="profile-icon-box">
+                                        <img src="assets/icons/mostplayed.png" class="profile-3d-float-icon" alt="Minecraft 26.2" draggable="false" />
                                     </div>
                                     <div class="profile-details">
                                         <div class="profile-title-line">
@@ -395,14 +386,8 @@
                                     <div class="profile-card-keyart-bg"
                                         style="background-image: url('assets/keyarts/card-26.1.png');"></div>
                                     <div class="profile-card-keyart-overlay"></div>
-                                    <div class="profile-icon-box chest-icon">
-                                        <svg class="ui-icon-svg" viewBox="0 0 24 24">
-                                            <path
-                                                d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
-                                            </path>
-                                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                                            <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                                        </svg>
+                                    <div class="profile-icon-box">
+                                        <img src="assets/icons/old.png" class="profile-3d-float-icon" alt="Minecraft 26.1.2" draggable="false" />
                                     </div>
                                     <div class="profile-details">
                                         <div class="profile-title-line">
@@ -449,10 +434,8 @@
                                     <div class="profile-card-keyart-bg"
                                         style="background-image: url('assets/keyarts/card-1.21.11.png');"></div>
                                     <div class="profile-card-keyart-overlay"></div>
-                                    <div class="profile-icon-box shield-icon">
-                                        <svg class="ui-icon-svg ui-icon-svg--blue" viewBox="0 0 24 24">
-                                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-                                        </svg>
+                                    <div class="profile-icon-box">
+                                        <img src="assets/icons/old.png" class="profile-3d-float-icon" alt="Minecraft 1.21.11" draggable="false" />
                                     </div>
                                     <div class="profile-details">
                                         <div class="profile-title-line">
@@ -1931,29 +1914,14 @@
                 <div class="form-group">
                     <label>Ikona profilu</label>
                     <div class="icon-picker-grid" id="newProfileIconPicker">
-                        <button type="button" class="icon-picker-item active" data-icon="sword" title="Meč">
-                            <svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--blue" viewBox="0 0 24 24">
-                                <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"></polyline>
-                                <line x1="13" y1="19" x2="19" y2="13"></line>
-                                <line x1="16" y1="16" x2="20" y2="20"></line>
-                                <line x1="19" y1="21" x2="21" y2="19"></line>
-                            </svg>
+                        <button type="button" class="icon-picker-item active" data-icon="sword" title="Nejhranější (Iron Golem)">
+                            <img src="assets/icons/mostplayed.png" class="profile-3d-picker-icon" alt="Golem" draggable="false">
                         </button>
-                        <button type="button" class="icon-picker-item" data-icon="latest" title="Hvězda">
-                            <svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--gold" viewBox="0 0 24 24">
-                                <polygon
-                                    points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2">
-                                </polygon>
-                            </svg>
+                        <button type="button" class="icon-picker-item" data-icon="latest" title="Nejnovější (Tráva)">
+                            <img src="assets/icons/newest.png" class="profile-3d-picker-icon" alt="Tráva" draggable="false">
                         </button>
-                        <button type="button" class="icon-picker-item" data-icon="chest" title="Balíček">
-                            <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
-                                <path
-                                    d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
-                                </path>
-                                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                                <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                            </svg>
+                        <button type="button" class="icon-picker-item" data-icon="old" title="Starší verze (Hlína)">
+                            <img src="assets/icons/old.png" class="profile-3d-picker-icon" alt="Hlína" draggable="false">
                         </button>
                         <button type="button" class="icon-picker-item" data-icon="upgrade" title="Upgrade">
                             <svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--blue" viewBox="0 0 24 24">
@@ -2901,7 +2869,7 @@
     <div class="toast-container" id="toastContainer"></div>
 
     <script src="js/lib/skinview3d.bundle.js"></script>
-    <script src="js/app.js?v=1.1.0"></script>
+    <script src="js/app.js?v=1.1.1"></script>
 </body>
 
 </html>

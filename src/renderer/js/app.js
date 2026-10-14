@@ -210,7 +210,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     document.body.classList.add('is-maximized');
                     if (btnMax) btnMax.title = 'Obnovit velikost';
                 }
-            }).catch(() => {});
+            }).catch(() => { });
         }
     }
 
@@ -466,7 +466,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         availableKeyartsMap = { ...BUNDLED_KEYARTS, ...fetched };
                     }
                 }
-            } catch (_) {}
+            } catch (_) { }
 
             // Automatické pročištění starého defaultního canvas pláště z konfigurace
             if (currentConfig && currentConfig.customCapePath && (
@@ -655,7 +655,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         refreshVersionStatuses();
                     }
                 }
-            } catch (_) {}
+            } catch (_) { }
         } catch (e) {
             console.error('Chyba při načítání konfigurace:', e);
         }
@@ -2335,7 +2335,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!keyartUrl) {
             if (oldLayer) {
                 oldLayer.className = `stage-keyart-layer ${slideDirection === 'right' ? 'stage-keyart-leaving-left' : 'stage-keyart-leaving-right'}`;
-                setTimeout(() => { try { oldLayer.remove(); } catch (_) {} }, 720);
+                setTimeout(() => { try { oldLayer.remove(); } catch (_) { } }, 720);
             }
             return;
         }
@@ -2352,7 +2352,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const leaveClass = slideDirection === 'right' ? 'stage-keyart-leaving-left' : 'stage-keyart-leaving-right';
             oldLayer.className = `stage-keyart-layer ${leaveClass}`;
             setTimeout(() => {
-                try { oldLayer.remove(); } catch (_) {}
+                try { oldLayer.remove(); } catch (_) { }
             }, 720);
         }
 
@@ -2410,27 +2410,35 @@ document.addEventListener('DOMContentLoaded', async () => {
             const isActive = p.id === activeId;
             const pKeyart = resolveCardKeyartUrl(p.version);
             const keyartBgStyle = pKeyart ? `background-image: url('${escapeHtml(pKeyart)}');` : '';
-            const getIconSvg = (icon) => {
-                switch (icon) {
-                    case 'sword':
-                        return '<svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--blue" viewBox="0 0 24 24"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"></polyline><line x1="13" y1="19" x2="19" y2="13"></line><line x1="16" y1="16" x2="20" y2="20"></line><line x1="19" y1="21" x2="21" y2="19"></line></svg>';
-                    case 'latest':
-                        return '<svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--gold ui-icon-pulse" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
-                    case 'chest':
-                        return '<svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>';
-                    case 'upgrade':
-                        return '<svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--blue" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="16 12 12 8 8 12"></polyline><line x1="12" y1="16" x2="12" y2="8"></line></svg>';
-                    case 'import':
-                        return '<svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--green" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>';
-                    case 'shield':
-                        return '<svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--blue" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>';
-                    case 'rocket':
-                        return '<svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--blue" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"></path><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"></path><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"></path><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"></path><circle cx="15" cy="9" r="1"></circle></svg>';
-                    default:
-                        return '<svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--blue" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="4"></rect><line x1="6" y1="12" x2="10" y2="12"></line><line x1="8" y1="10" x2="8" y2="14"></line><line x1="15" y1="11" x2="15.01" y2="11"></line><line x1="18" y1="13" x2="18.01" y2="13"></line></svg>';
+            const resolveProfile3DIcon = (profile) => {
+                if (!profile) return 'assets/icons/newest.png';
+                const icon = (profile.icon || '').toLowerCase();
+                const ver = (profile.version || '').toLowerCase();
+                const id = (profile.id || '').toLowerCase();
+
+                // 1. Nejhranější / oficiální doporučená verze 26.2 (mostplayed.png -> Iron Golem hlava)
+                if (icon === 'sword' || icon === 'mostplayed' || icon === 'golem' || id === 'minecraft-26.2' || id === 'mychalsmp-26.2' || id === 'mychalsmp' || ver.startsWith('26.2')) {
+                    return 'assets/icons/mostplayed.png';
                 }
+
+                // 2. Nejnovější verze (newest.png -> Tráva)
+                if (icon === 'latest' || icon === 'newest' || icon === 'frost' || ver.startsWith('26.3') || id.includes('26.3')) {
+                    return 'assets/icons/newest.png';
+                }
+
+                // 3. Starší verze (old.png -> Hlína)
+                if (icon === 'old' || icon === 'chest' || icon === 'shield' || icon === 'import' || icon === 'upgrade' || ver.startsWith('26.1') || ver.startsWith('1.') || id.includes('26.1') || id.includes('1.21')) {
+                    return 'assets/icons/old.png';
+                }
+
+                // 4. Pokud má profil nahraný čas, vyhodnotit jako mostplayed
+                if (profile.playtimeSeconds && profile.playtimeSeconds > 3600) {
+                    return 'assets/icons/mostplayed.png';
+                }
+
+                return 'assets/icons/old.png';
             };
-            const iconSymbol = getIconSvg(p.icon);
+            const iconUrl = resolveProfile3DIcon(p);
 
             const playtimeStr = (p.playtimeSeconds && p.playtimeSeconds >= 60)
                 ? `Odehráno: ${formatPlaytime(p.playtimeSeconds)}`
@@ -2477,7 +2485,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             return `
                 <div class="profile-row-card ${isActive ? 'active-profile' : ''}" data-profile-id="${escapeHtml(p.id)}">
                     ${pKeyart ? `<div class="profile-card-keyart-bg" style="${keyartBgStyle}"></div><div class="profile-card-keyart-overlay"></div>` : ''}
-                    <div class="profile-icon-box">${iconSymbol}</div>
+                    <div class="profile-icon-box">
+                        <img src="${escapeHtml(iconUrl)}" class="profile-3d-float-icon" alt="${escapeHtml(p.name || '')}" draggable="false" />
+                    </div>
                     <div class="profile-details">
                         <div class="profile-title-line">
                             <span class="p-name">${escapeHtml(p.name)}</span>
@@ -2527,7 +2537,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (confirm('Chceš ukončit běžící Minecraft proces?')) {
                         try {
                             await window.api.killGame();
-                        } catch (err) {}
+                        } catch (err) { }
                         resetPlayState();
                     }
                     return;
@@ -2673,7 +2683,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (targetPid === lastHoverPreloadedPid) return;
             lastHoverPreloadedPid = targetPid;
             if (window.api && window.api.preloadLaunchEnvironment) {
-                window.api.preloadLaunchEnvironment(targetPid).catch(() => {});
+                window.api.preloadLaunchEnvironment(targetPid).catch(() => { });
             }
         }, 160);
     }
@@ -2892,9 +2902,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 await Promise.race([
                     autoSaveSettings(true),
                     new Promise(r => setTimeout(r, 600))
-                ]).catch(() => {});
+                ]).catch(() => { });
             }
-        } catch (_) {}
+        } catch (_) { }
 
         isLaunching = true;
         launchingProfileId = targetPid;
@@ -2918,7 +2928,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 targetProf.optimizedChosen = targetProf.loader === 'fabric' ? 'optimized' : 'vanilla';
                 try {
                     window.api.saveConfig({ profiles: currentConfig.profiles });
-                } catch (_) {}
+                } catch (_) { }
             } else {
                 isLaunching = false;
                 setHeroLaunchCelebration(false);
@@ -3906,10 +3916,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="mod-row-left">
                     <div class="mod-avatar-wrapper">
                         ${p.iconDataUrl
-                            ? `<img src="${p.iconDataUrl}" class="mod-avatar-thumb" alt="" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';">
+                    ? `<img src="${p.iconDataUrl}" class="mod-avatar-thumb" alt="" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';">
                                <div class="mod-avatar-fallback" style="display:none;">${escapeHtml(initial)}</div>`
-                            : `<div class="mod-avatar-fallback">${escapeHtml(initial)}</div>`
-                        }
+                    : `<div class="mod-avatar-fallback">${escapeHtml(initial)}</div>`
+                }
                     </div>
                     <div class="mod-row-info">
                         <div class="mod-row-title-line">
@@ -4883,7 +4893,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let heroSleepCycleStart = Date.now();
     let isForcedSleepTest = false; // Dev/test toggle via window.testHeroSleep()
 
-    window.testHeroSleep = function(enable = true) {
+    window.testHeroSleep = function (enable = true) {
         isForcedSleepTest = !!enable;
         if (enable) {
             lastHeroUserActivityTime = 0; // Ihned vstoupit do idle režimu
@@ -6619,7 +6629,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     content += '=== MINECRAFT LATEST.LOG ===\n' + diskLog;
                 }
             }
-        } catch (_) {}
+        } catch (_) { }
         if (!content.trim()) {
             content = consoleOutput?.textContent || 'Žádné zaznamenané logy.';
         }
@@ -7468,8 +7478,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const row = document.createElement('div');
                 row.className = `inspector-binding-row ${action.isConflict ? 'is-conflict' : ''}`;
 
-                const tagText = action.isDebug 
-                    ? `F3 Debug zkratka • ${action.id}` 
+                const tagText = action.isDebug
+                    ? `F3 Debug zkratka • ${action.id}`
                     : `${action.modName || action.category} • ${action.id}`;
 
                 row.innerHTML = `
@@ -7783,8 +7793,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!action) return;
 
         recorderActionTitle.textContent = `Přiřazení klávesy: ${action.label}`;
-        recorderActionSubtitle.textContent = action.modName 
-            ? `Mód: ${action.modName}` 
+        recorderActionSubtitle.textContent = action.modName
+            ? `Mód: ${action.modName}`
             : `Minecraft akce (${action.id})`;
         recorderKeyPreview.textContent = '[ Stiskni klávesu nebo tlačítko myši ]';
         modalKeybindRecorder.style.display = 'flex';
@@ -8395,35 +8405,35 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (!scan) return;
                 currentScannedData = scan;
 
-            if (importPathLabel) importPathLabel.textContent = scan.originalDir;
-            if (importProfileNameInput) importProfileNameInput.value = scan.name;
-            if (importVersionSelect) {
-                if (['26.2', '26.3', '26.1.2', '1.21.11'].includes(scan.detectedVersion)) {
-                    importVersionSelect.value = scan.detectedVersion;
-                } else {
-                    importVersionSelect.value = '26.2';
+                if (importPathLabel) importPathLabel.textContent = scan.originalDir;
+                if (importProfileNameInput) importProfileNameInput.value = scan.name;
+                if (importVersionSelect) {
+                    if (['26.2', '26.3', '26.1.2', '1.21.11'].includes(scan.detectedVersion)) {
+                        importVersionSelect.value = scan.detectedVersion;
+                    } else {
+                        importVersionSelect.value = '26.2';
+                    }
                 }
-            }
-            if (importLoaderSelect) {
-                importLoaderSelect.value = scan.detectedLoader || 'fabric';
-            }
+                if (importLoaderSelect) {
+                    importLoaderSelect.value = scan.detectedLoader || 'fabric';
+                }
 
-            if (scannedStatsPills) {
-                scannedStatsPills.innerHTML = `
+                if (scannedStatsPills) {
+                    scannedStatsPills.innerHTML = `
                     <span class="stat-pill stat-good"><svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg> Nalezeno módů: ${scan.modCount}</span>
                     <span class="stat-pill"><svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.5 17.5 2 12 2Z"/></svg> Texture packů: ${scan.rpCount}</span>
                     <span class="stat-pill ${scan.hasConfig ? 'stat-good' : ''}"><svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Nastavení módů: ${scan.hasConfig ? 'Ano' : 'Ne'}</span>
                     <span class="stat-pill ${scan.hasOptions ? 'stat-good' : ''}"><svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg> Herní options.txt: ${scan.hasOptions ? 'Ano' : 'Ne'}</span>
                 `;
-            }
+                }
 
-            if (scannedInstancePreview) scannedInstancePreview.style.display = 'block';
-            if (btnConfirmImport) btnConfirmImport.disabled = false;
-        } catch (err) {
-            btnSelectImportFolder.disabled = false;
-            showToast('Chyba dialogu výběru složky: ' + err.message, 'error');
-        }
-    });
+                if (scannedInstancePreview) scannedInstancePreview.style.display = 'block';
+                if (btnConfirmImport) btnConfirmImport.disabled = false;
+            } catch (err) {
+                btnSelectImportFolder.disabled = false;
+                showToast('Chyba dialogu výběru složky: ' + err.message, 'error');
+            }
+        });
     }
 
     if (btnConfirmImport) {
