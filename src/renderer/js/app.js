@@ -2406,38 +2406,49 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const sortedProfiles = getSortedProfiles();
 
+        // Zajistíme striktní unikátnost: v launcheru může být přesně JEDNA "nejhranější" verze (Iron Golem)
+        // a přesně JEDNA "nejnovější" verze (Tráva). Všechny ostatní verze jsou klasické/starší (Hlína).
+        let singleMostPlayedId = null;
+        const playedProfiles = sortedProfiles.filter(p => (typeof p.playtimeSeconds === 'number' && p.playtimeSeconds > 0));
+        if (playedProfiles.length > 0) {
+            const topPlayed = [...playedProfiles].sort((a, b) => (b.playtimeSeconds || 0) - (a.playtimeSeconds || 0))[0];
+            singleMostPlayedId = topPlayed ? topPlayed.id : null;
+        } else {
+            const mychalProf = sortedProfiles.find(p => p.id === 'mychalsmp-26.2' || p.id === 'mychalsmp' || (p.name && p.name.toUpperCase().includes('MYCHALSMP')));
+            singleMostPlayedId = mychalProf ? mychalProf.id : (activeId || (sortedProfiles[0] ? sortedProfiles[0].id : null));
+        }
+
+        let singleNewestId = null;
+        const newestProf = sortedProfiles.find(p => {
+            const ver = (p.version || '');
+            const icon = (p.icon || '').toLowerCase();
+            return icon === 'latest' || icon === 'newest' || ver.startsWith('26.3') || (p.id && p.id.includes('26.3'));
+        });
+        if (newestProf && newestProf.id !== singleMostPlayedId) {
+            singleNewestId = newestProf.id;
+        }
+
+        const resolveProfile3DIcon = (profile) => {
+            if (!profile) return 'assets/icons/old.png';
+
+            // 1. Unikátní nejhranější profil (Iron Golem hlava)
+            if (profile.id === singleMostPlayedId) {
+                return 'assets/icons/mostplayed.png';
+            }
+
+            // 2. Unikátní nejnovější verze (Tráva)
+            if (profile.id === singleNewestId) {
+                return 'assets/icons/newest.png';
+            }
+
+            // 3. Všechny ostatní verze (Hlína)
+            return 'assets/icons/old.png';
+        };
+
         list.innerHTML = sortedProfiles.map(p => {
             const isActive = p.id === activeId;
             const pKeyart = resolveCardKeyartUrl(p.version);
             const keyartBgStyle = pKeyart ? `background-image: url('${escapeHtml(pKeyart)}');` : '';
-            const resolveProfile3DIcon = (profile) => {
-                if (!profile) return 'assets/icons/newest.png';
-                const icon = (profile.icon || '').toLowerCase();
-                const ver = (profile.version || '').toLowerCase();
-                const id = (profile.id || '').toLowerCase();
-
-                // 1. Nejhranější / oficiální doporučená verze 26.2 (mostplayed.png -> Iron Golem hlava)
-                if (icon === 'sword' || icon === 'mostplayed' || icon === 'golem' || id === 'minecraft-26.2' || id === 'mychalsmp-26.2' || id === 'mychalsmp' || ver.startsWith('26.2')) {
-                    return 'assets/icons/mostplayed.png';
-                }
-
-                // 2. Nejnovější verze (newest.png -> Tráva)
-                if (icon === 'latest' || icon === 'newest' || icon === 'frost' || ver.startsWith('26.3') || id.includes('26.3')) {
-                    return 'assets/icons/newest.png';
-                }
-
-                // 3. Starší verze (old.png -> Hlína)
-                if (icon === 'old' || icon === 'chest' || icon === 'shield' || icon === 'import' || icon === 'upgrade' || ver.startsWith('26.1') || ver.startsWith('1.') || id.includes('26.1') || id.includes('1.21')) {
-                    return 'assets/icons/old.png';
-                }
-
-                // 4. Pokud má profil nahraný čas, vyhodnotit jako mostplayed
-                if (profile.playtimeSeconds && profile.playtimeSeconds > 3600) {
-                    return 'assets/icons/mostplayed.png';
-                }
-
-                return 'assets/icons/old.png';
-            };
             const iconUrl = resolveProfile3DIcon(p);
 
             const playtimeStr = (p.playtimeSeconds && p.playtimeSeconds >= 60)
