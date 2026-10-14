@@ -1,4 +1,4 @@
-# <p align="center"><img src="src/renderer/assets/logo.png" alt="MYCHAL SMP Launcher Logo" width="96"><br>MYCHAL SMP Launcher</p>
+# <p align="center"><img src="src/renderer/assets/logo.png" alt="SMPClient Logo" width="96"><br>SMPClient</p>
 
 <p align="center">
   <strong>Oficiální prémiový multiplatformní Minecraft launcher vytvořený na míru pro komunitu a síť MYCHAL SMP.</strong>
