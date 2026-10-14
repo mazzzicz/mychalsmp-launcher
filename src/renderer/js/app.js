@@ -346,6 +346,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (heroSkinViewer) {
             heroSkinViewer.renderPaused = (tabId !== 'play');
             if (tabId === 'play') {
+                const cvEl = document.querySelector('.content-viewport');
+                if (cvEl && cvEl.scrollTop > 0) cvEl.scrollTop = 0;
                 heroSkinViewer.setSize(220, 280);
                 scheduleHeroReturn();
             } else {
@@ -419,7 +421,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (listEl) {
                 const activeCard = listEl.querySelector('.active-profile') || listEl.firstElementChild;
                 if (activeCard) {
-                    activeCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    if (activeCard === listEl.firstElementChild) {
+                        listEl.scrollTo({ top: 0, behavior: 'smooth' });
+                    } else {
+                        activeCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
                 }
             }
         });

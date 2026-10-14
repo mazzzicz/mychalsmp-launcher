@@ -1282,7 +1282,7 @@ body.is-maximized {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 12px;
+    margin-bottom: 4px;
 }
 
 .section-heading {
@@ -1319,9 +1319,14 @@ body.is-maximized {
     overflow-x: hidden;
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none; /* IE and Edge */
-    padding-right: 2px;
-    padding-bottom: 6px;
+    padding-top: 8px;
+    padding-bottom: 12px;
+    padding-left: 4px;
+    padding-right: 4px;
     scroll-behavior: smooth;
+    scroll-padding-top: 8px;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0px, black 6px, black calc(100% - 10px), transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0px, black 6px, black calc(100% - 10px), transparent 100%);
 }
 
 .profile-cards-list::-webkit-scrollbar {
