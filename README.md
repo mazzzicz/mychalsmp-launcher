@@ -1,7 +1,7 @@
 # <p align="center"><img src="src/renderer/assets/logo.png" alt="SMPClient Logo" width="96"><br>SMPClient</p>
 
 <p align="center">
-  <strong>Oficiální prémiový multiplatformní Minecraft launcher vytvořený na míru pro komunitu a síť MYCHAL SMP.</strong>
+  <strong>Oficiální prémiový multiplatformní Minecraft klient vytvořený na míru pro komunitu a síť MYCHAL SMP.</strong>
 </p>
 
 <p align="center">
@@ -13,9 +13,9 @@
 
 ---
 
-## 🌟 O launcheru
+## 🌟 O SMPClientu
 
-**MYCHAL SMP Launcher** je moderní herní klient postavený na Electronu a moderním webovém jádru. Klade důraz na maximální herní výkon, okamžité spuštění, nulový vizuální balast a bezproblémové připojení na oficiální Minecraft server mychalsmp.xyz.
+**SMPClient** je moderní herní klient postavený na Electronu a moderním webovém jádru. Klade důraz na maximální herní výkon, okamžité spuštění, nulový vizuální balast a bezproblémové připojení na oficiální Minecraft server mychalsmp.xyz.
 
 Launcher plně podporuje **Linux** (včetně CachyOS, Arch Linuxu, Ubuntu, Debianu a Fedory bez neohrabaných AppImage formátů) i **Windows 11** (s instalátorem i plně přenosnou Portable verzí).
 
@@ -69,7 +69,7 @@ Launcher plně podporuje **Linux** (včetně CachyOS, Arch Linuxu, Ubuntu, Debia
 
 ## ☕ Podporované verze Minecraftu
 
-Síť MYCHAL SMP a launcher podporují následující verze:
+Síť MYCHAL SMP a SMPClient podporují následující verze:
 
 | Verze | Status | Popis |
 | :--- | :--- | :--- |

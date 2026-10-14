@@ -835,17 +835,38 @@ body.is-maximized {
 }
 
 /* ── TAB: PLAY (DASHBOARD SPLIT) ──────────────────────────────────────── */
+#tab-play.active {
+    display: block;
+    height: 100%;
+    overflow: hidden;
+}
+
+.content-viewport:has(#tab-play.active) {
+    overflow: hidden;
+}
+
 .dashboard-split {
     display: grid;
     grid-template-columns: 1fr 340px;
     gap: 16px;
     padding: 18px 22px;
     height: 100%;
-    overflow-y: auto;
+    max-height: 100%;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.dash-left {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
 }
 
 /* Left Hero Character Stage */
 .hero-character-stage {
+    flex-shrink: 0;
     position: relative;
     background: radial-gradient(circle at 85% 35%, #151b2e 0%, #0c0e17 100%);
     border: 1px solid var(--surface-border);
@@ -1248,10 +1269,16 @@ body.is-maximized {
 
 /* ── Profiles Section ─────────────────────────────────────────────────── */
 .profiles-section {
-    margin-top: 18px;
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .section-title-row {
+    flex-shrink: 0;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -1286,9 +1313,25 @@ body.is-maximized {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+    padding-right: 2px;
+    padding-bottom: 6px;
+    scroll-behavior: smooth;
+}
+
+.profile-cards-list::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
 }
 
 .profile-row-card {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: 14px;
@@ -1396,23 +1439,11 @@ body.is-maximized {
     image-rendering: -webkit-optimize-contrast;
     image-rendering: crisp-edges;
     filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.65)) drop-shadow(0 2px 3px rgba(0, 0, 0, 0.4));
-    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), filter 0.28s ease;
-    animation: profileFloat 4s ease-in-out infinite alternate;
+    transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), filter 0.22s ease;
     user-select: none;
     -webkit-user-drag: none;
     pointer-events: none;
-}
-
-.profile-row-card:nth-child(2) .profile-3d-float-icon {
-    animation-delay: -1.3s;
-}
-
-.profile-row-card:nth-child(3) .profile-3d-float-icon {
-    animation-delay: -2.6s;
-}
-
-.profile-row-card:nth-child(4) .profile-3d-float-icon {
-    animation-delay: -0.7s;
+    transform: translateZ(0);
 }
 
 .profile-row-card:hover .profile-3d-float-icon {
@@ -1422,18 +1453,6 @@ body.is-maximized {
 
 .profile-row-card.active-profile .profile-3d-float-icon {
     filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.7)) drop-shadow(0 0 10px rgba(10, 103, 229, 0.3));
-}
-
-@keyframes profileFloat {
-    0% {
-        transform: translateY(0px) rotate(0deg);
-    }
-    50% {
-        transform: translateY(-2px) rotate(0.5deg);
-    }
-    100% {
-        transform: translateY(-3.5px) rotate(-0.5deg);
-    }
 }
 
 .profile-3d-picker-icon {
@@ -1679,6 +1698,7 @@ body.is-maximized {
 
 .dash-quick-actions,
 .dash-bottom-actions {
+    flex-shrink: 0;
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 10px;
@@ -1729,6 +1749,17 @@ body.is-maximized {
     display: flex;
     flex-direction: column;
     gap: 14px;
+    height: 100%;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.dash-right::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
 }
 
 .server-banner-card {
@@ -2139,6 +2170,7 @@ body.is-maximized {
 
 /* ── Progress Track ───────────────────────────────────────────────────── */
 .progress-container {
+    flex-shrink: 0;
     display: none;
     flex-direction: column;
     gap: 10px;
@@ -3835,13 +3867,106 @@ input[type="radio"]:checked::after {
 .settings-two-col {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 12px;
+    gap: 10px;
+    margin-top: 2px;
 }
 
 .settings-col-group {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 6px;
+}
+
+.settings-two-col .form-group {
+    margin-bottom: 2px;
+}
+
+.settings-two-col .setting-section-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: 3px;
+}
+
+.settings-two-col .resolution-options {
+    gap: 5px;
+}
+
+.settings-two-col .radio-label {
+    padding: 5px 9px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 6px;
+    gap: 6px;
+    line-height: 1.2;
+}
+
+.settings-two-col .radio-label input[type="radio"] {
+    width: 12px;
+    height: 12px;
+}
+
+.settings-two-col .gpu-detected-card {
+    padding: 6px 10px;
+    margin-top: 3px;
+    border-radius: 7px;
+    gap: 8px;
+    background: var(--surface2);
+}
+
+.settings-two-col .gpu-detected-left {
+    gap: 7px;
+}
+
+.settings-two-col .gpu-detected-card svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
+.settings-two-col .gpu-name-text {
+    font-size: 11px;
+    line-height: 1.25;
+    color: var(--text-primary);
+}
+
+.settings-two-col .gpu-detected-card .badge-status {
+    padding: 2px 6px;
+    font-size: 9.5px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.settings-two-col .input-with-button {
+    gap: 6px;
+}
+
+.settings-two-col .input-text {
+    height: 29px;
+    padding: 3px 9px;
+    font-size: 11.5px;
+    border-radius: 6px;
+}
+
+.settings-two-col #btnDetectJava {
+    height: 29px;
+    padding: 3px 11px;
+    font-size: 11.5px;
+    border-radius: 6px;
+}
+
+.settings-two-col .java-detected-pills {
+    gap: 4px;
+    margin-top: 3px;
+}
+
+.settings-two-col .java-pill {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 5px;
+    line-height: 1.25;
 }
 
 .setting-title-row {
@@ -5321,9 +5446,9 @@ input[type="range"].slider.is-dragging::-webkit-slider-thumb {
 /* ── Settings Tools Row (Cache Cleaner & Updater) ─────────────────── */
 .settings-tools-row {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 12px;
-    margin: 4px 0 6px 0;
+    grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+    gap: 14px;
+    margin: 6px 0 10px 0;
 }
 
 .cache-cleaner-card,
@@ -5331,22 +5456,23 @@ input[type="range"].slider.is-dragging::-webkit-slider-thumb {
     position: relative;
     background: var(--surface2);
     border: 1px solid var(--surface-border);
-    border-radius: var(--radius-control, 8px);
-    padding: 11px 15px;
+    border-radius: 10px;
+    padding: 13px 17px;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    gap: 9px;
-    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+    gap: 11px;
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 4px 14px rgba(0, 0, 0, 0.35);
     transition: all 0.24s cubic-bezier(0.16, 1, 0.3, 1);
     overflow: hidden;
+    min-height: 104px;
 }
 
 .cache-cleaner-card:hover,
 .update-checker-card:hover {
-    border-color: rgba(255, 255, 255, 0.14);
-    transform: translateY(-1px);
-    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 4px 14px rgba(0, 0, 0, 0.25);
+    border-color: rgba(255, 255, 255, 0.16);
+    transform: translateY(-1.5px);
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.12), 0 6px 20px rgba(0, 0, 0, 0.45);
 }
 
 /* Card checking state - subtle specular scanning rim */
@@ -5380,89 +5506,141 @@ input[type="range"].slider.is-dragging::-webkit-slider-thumb {
 .tool-card-header {
     display: flex;
     align-items: center;
-    gap: 9px;
+    gap: 11px;
+}
+
+.tool-card-header .ui-icon-wrap {
+    width: 36px;
+    height: 36px;
+    border-radius: 9px;
+    background: rgba(10, 103, 229, 0.1);
+    border: 1px solid rgba(10, 103, 229, 0.24);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cache-cleaner-card:hover .tool-card-header .ui-icon-wrap,
+.update-checker-card:hover .tool-card-header .ui-icon-wrap {
+    transform: scale(1.06);
+    border-color: rgba(10, 103, 229, 0.45);
+    background: rgba(10, 103, 229, 0.16);
 }
 
 .tool-card-title {
-    color: #f1f5f9;
-    font-size: 12.5px;
+    color: #f8fafc;
+    font-size: 13.5px;
     font-weight: 700;
     display: block;
+    letter-spacing: -0.15px;
 }
 
 .tool-card-desc {
-    font-size: 11px;
+    font-size: 11.5px;
     color: var(--text-muted);
-    margin: 0;
-    line-height: 1.25;
+    margin: 2px 0 0 0;
+    line-height: 1.35;
 }
 
 .tool-card-actions {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
 }
 
 .tool-status-text {
-    font-size: 11px;
+    font-size: 11.5px;
     color: #38bdf8;
-    font-weight: 500;
+    font-weight: 600;
 }
 
 .btn-group-sm {
     display: flex;
-    gap: 6px;
+    gap: 7px;
     align-items: center;
 }
 
-.btn-sm {
-    padding: 5px 12px !important;
-    font-size: 11.5px !important;
-    height: 28px !important;
+.cache-cleaner-card .btn-group-sm .mc-btn {
+    height: 32px !important;
+    padding: 6px 14px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    border-radius: 7px !important;
 }
 
-/* ── Satisfying Update Button Interactive Micro-States ─────────────── */
+/* ── Satisfying Prominent Update Button ─────────────── */
 #btnManualCheckUpdate {
-    min-width: 108px;
+    min-width: 124px;
+    height: 33px !important;
+    padding: 6px 16px !important;
+    font-size: 12.5px !important;
+    font-weight: 700 !important;
+    border-radius: 8px !important;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
+    gap: 7px;
     position: relative;
     user-select: none;
-    transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    background: linear-gradient(180deg, #1877f2 0%, #0a67e5 100%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.25) !important;
+    color: #ffffff !important;
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.32), 0 4px 14px rgba(10, 103, 229, 0.32) !important;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+#btnManualCheckUpdate:hover {
+    background: linear-gradient(180deg, #2b87ff 0%, #0e72ff 100%) !important;
+    border-color: rgba(255, 255, 255, 0.38) !important;
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.45), 0 6px 20px rgba(10, 103, 229, 0.48) !important;
+    transform: translateY(-1px);
+    color: #ffffff !important;
+}
+
+#btnManualCheckUpdate:active {
+    transform: scale(0.975);
+    transition: transform 100ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+#btnManualCheckUpdate svg {
+    width: 14px;
+    height: 14px;
+    stroke-width: 2.2;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
 }
 
 #btnManualCheckUpdate.is-checking {
-    background: rgba(10, 103, 229, 0.15) !important;
-    border-color: rgba(10, 103, 229, 0.5) !important;
+    background: rgba(10, 103, 229, 0.2) !important;
+    border-color: rgba(10, 103, 229, 0.6) !important;
     color: #38bdf8 !important;
     cursor: wait !important;
-    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.12), 0 0 12px rgba(10, 103, 229, 0.22) !important;
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.15), 0 0 14px rgba(10, 103, 229, 0.3) !important;
 }
 
 #btnManualCheckUpdate.is-success {
-    background: rgba(33, 222, 0, 0.13) !important;
-    border-color: rgba(33, 222, 0, 0.42) !important;
+    background: rgba(33, 222, 0, 0.18) !important;
+    border-color: rgba(33, 222, 0, 0.5) !important;
     color: #4ade80 !important;
-    font-weight: 600 !important;
-    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.14), 0 0 14px rgba(33, 222, 0, 0.2) !important;
+    font-weight: 700 !important;
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.2), 0 0 16px rgba(33, 222, 0, 0.28) !important;
 }
 
 #btnManualCheckUpdate.is-available {
-    background: #0a67e5 !important;
-    border-color: #38bdf8 !important;
+    background: linear-gradient(180deg, #2563eb 0%, #0a67e5 100%) !important;
+    border-color: #60a5fa !important;
     color: #ffffff !important;
-    font-weight: 600 !important;
-    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.28), 0 4px 16px rgba(10, 103, 229, 0.4) !important;
+    font-weight: 700 !important;
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.35), 0 4px 18px rgba(10, 103, 229, 0.45) !important;
 }
 
 #btnManualCheckUpdate.is-error {
-    background: rgba(245, 21, 21, 0.14) !important;
-    border-color: rgba(245, 21, 21, 0.45) !important;
+    background: rgba(245, 21, 21, 0.18) !important;
+    border-color: rgba(245, 21, 21, 0.5) !important;
     color: #f87171 !important;
-    font-weight: 600 !important;
+    font-weight: 700 !important;
 }
 
 @keyframes updateSpinAnim {

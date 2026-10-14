@@ -339,9 +339,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (heroStatActiveProfile) {
         heroStatActiveProfile.style.cursor = 'pointer';
         heroStatActiveProfile.addEventListener('click', () => {
-            const el = document.getElementById('profileCardsList');
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            const listEl = document.getElementById('profileCardsList');
+            if (listEl) {
+                const activeCard = listEl.querySelector('.active-profile') || listEl.firstElementChild;
+                if (activeCard) {
+                    activeCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            }
         });
+    }
+
+    const profilesSectionEl = document.querySelector('.profiles-section');
+    const profileCardsListEl = document.getElementById('profileCardsList');
+    if (profilesSectionEl && profileCardsListEl) {
+        profilesSectionEl.addEventListener('wheel', (e) => {
+            if (!profileCardsListEl.contains(e.target)) {
+                profileCardsListEl.scrollTop += e.deltaY;
+            }
+        }, { passive: true });
     }
 
 
@@ -1918,7 +1933,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             isCheckingUpdates = true;
             const updateCard = btnManualCheckUpdate.closest('.update-checker-card');
             const origHTML = `
-                <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
+                <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
                     <polyline points="23 4 23 10 17 10"></polyline>
                     <polyline points="1 20 1 14 7 14"></polyline>
                     <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
@@ -1931,7 +1946,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             btnManualCheckUpdate.classList.remove('is-success', 'is-error', 'is-available');
             btnManualCheckUpdate.classList.add('is-checking');
             btnManualCheckUpdate.innerHTML = `
-                <svg class="ui-icon-svg ui-icon-svg--xs icon-spin-smooth" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <svg class="ui-icon-svg ui-icon-svg--sm icon-spin-smooth" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
                     <path d="M3 3v5h5"></path>
                     <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
@@ -4904,6 +4919,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     let heroSleepCycleStart = Date.now();
     let isForcedSleepTest = false; // Dev/test toggle via window.testHeroSleep()
 
+    // ── Dlouhodobý idle stav (Klepání nohama v 5m, sezení v 10m) ────────────────
+    let heroSitWeight = 0;
+    let heroLegShakeWeight = 0;
+    let isForcedSitTest = false;
+    let isForcedShakeTest = false;
+
     window.testHeroSleep = function (enable = true) {
         isForcedSleepTest = !!enable;
         if (enable) {
@@ -4911,6 +4932,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             heroSleepCycleStart = Date.now();
         }
         console.log(`[Hero] Noční podřimování test mód: ${isForcedSleepTest ? 'AKTIVNÍ' : 'VYPNUTO'}`);
+    };
+
+    window.testHeroIdleTime = function (minutes = 10) {
+        lastHeroUserActivityTime = Date.now() - (minutes * 60 * 1000);
+        isForcedSitTest = false;
+        isForcedShakeTest = false;
+        console.log(`[Hero] Nastaven idle čas: ${minutes} minut. (Aktuální stav: ${minutes >= 10 ? 'SEDÍ' : (minutes >= 5 ? 'KLEPE NOHAMA' : 'STOJÍ')})`);
+    };
+
+    window.testHeroSit = function (enable = true) {
+        isForcedSitTest = !!enable;
+        if (enable) isForcedShakeTest = false;
+        console.log(`[Hero] Testovací režim sedu: ${isForcedSitTest ? 'AKTIVNÍ (sedí)' : 'VYPNUT'}`);
+    };
+
+    window.testHeroShake = function (enable = true) {
+        isForcedShakeTest = !!enable;
+        if (enable) isForcedSitTest = false;
+        console.log(`[Hero] Testovací režim klepání nohama: ${isForcedShakeTest ? 'AKTIVNÍ' : 'VYPNUT'}`);
     };
 
     /**
@@ -4927,6 +4967,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.addEventListener('pointerdown', markHeroActivity, { passive: true });
         window.addEventListener('keydown', markHeroActivity, { passive: true });
         window.addEventListener('wheel', markHeroActivity, { passive: true });
+        window.addEventListener('focus', markHeroActivity, { passive: true });
+        window.addEventListener('resize', markHeroActivity, { passive: true });
 
         window.addEventListener('pointermove', (e) => {
             markHeroActivity();
@@ -4948,7 +4990,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const normX = Math.max(-1, Math.min(1, dx / (winW * 0.45)));
             const normY = Math.max(-1, Math.min(1, dy / (winH * 0.45)));
 
-            // 1. Zvláštní chování pro tlačítka "Hrát" a postavičku (organický zvědavý pohled a náklon hlavy)
+            // 1. Zvláštní chování pro tlačítka "Hrát" a postavičku (organický jemný náklon hlavy)
             const playBtn = e.target?.closest?.('.btn-launch-profile, #sidebarPlayBtn, #btnQuickPlayMychal, .btn-install-v');
             const heroCanvas = e.target?.closest?.('#heroSkinWrapper, #heroSkinCanvas3D, #stageNickPill');
 
@@ -4962,28 +5004,28 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const normBtnX = Math.max(-1, Math.min(1, btnDx / (winW * 0.45)));
                 const normBtnY = Math.max(-1, Math.min(1, btnDy / (winH * 0.45)));
 
-                targetHeroHeadLookY = normBtnX * 0.42;
-                targetHeroHeadLookX = normBtnY * 0.24;
+                targetHeroHeadLookY = normBtnX * 0.35;
+                targetHeroHeadLookX = normBtnY * 0.20;
 
-                // Zvědavý náklon hlavy (curiosity tilt na ose Z):
-                targetHeroCuriosityTilt = (btnCenterX >= headCenterX ? 0.25 : -0.25);
+                // Velmi jemný a přirozený zvědavý náklon hlavy
+                targetHeroCuriosityTilt = (btnCenterX >= headCenterX ? 0.08 : -0.08);
             } else if (heroCanvas) {
-                // Přímé najetí myši na samotnou postavičku – zvědavý pohled zpříma do očí hráče s jemným náklonem
-                targetHeroHeadLookX = -0.06;
-                targetHeroHeadLookY = 0.0;
-                targetHeroCuriosityTilt = 0.18;
+                // Přímé najetí myši na samotnou postavičku – plynulý pohled bez skákání a s jemným, přirozeným náklonem
+                targetHeroHeadLookX = normY * 0.12 - 0.02;
+                targetHeroHeadLookY = normX * 0.16;
+                targetHeroCuriosityTilt = (dx >= 0 ? 0.04 : -0.04);
             } else {
                 targetHeroCuriosityTilt = 0;
                 // Běžné sledování kurzoru
                 const isInteractive = !!e.target?.closest?.('button, .mc-btn, .profile-row-card, .sidebar-nav-item, .dash-action-chip, .stage-nick-pill, .control-field');
-                const focusMultiplier = isInteractive ? 1.15 : 1.0;
+                const focusMultiplier = isInteractive ? 1.08 : 1.0;
 
-                targetHeroHeadLookY = normX * 0.32 * focusMultiplier;
-                targetHeroHeadLookX = normY * 0.18 * focusMultiplier;
+                targetHeroHeadLookY = normX * 0.28 * focusMultiplier;
+                targetHeroHeadLookX = normY * 0.16 * focusMultiplier;
             }
         }, { passive: true });
 
-        // Okamžitá reakce na najetí myši na tlačítko Hrát nebo postavičku i bez pohybu myši
+        // Okamžitá reakce na najetí myši na tlačítko Hrát nebo postavičku i bez pohybu myši (jemné, decentní)
         document.addEventListener('pointerover', (e) => {
             const playBtn = e.target?.closest?.('.btn-launch-profile, #sidebarPlayBtn, #btnQuickPlayMychal, .btn-install-v');
             if (playBtn) {
@@ -4993,10 +5035,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const headCenterX = rect.left + rect.width / 2;
                     const btnRect = playBtn.getBoundingClientRect();
                     const btnCenterX = btnRect.left + btnRect.width / 2;
-                    targetHeroCuriosityTilt = (btnCenterX >= headCenterX ? 0.25 : -0.25);
+                    targetHeroCuriosityTilt = (btnCenterX >= headCenterX ? 0.08 : -0.08);
                 }
             } else if (e.target?.closest?.('#heroSkinWrapper, #heroSkinCanvas3D, #stageNickPill')) {
-                targetHeroCuriosityTilt = 0.18;
+                targetHeroCuriosityTilt = 0.04;
             }
         }, { passive: true });
 
@@ -5074,10 +5116,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const t = this.progress * 3;
                     const now = Date.now();
 
-                    // 1. Organické vlnění pláště ve větru
+                    // 1. Organické vlnění pláště ve větru (s přirozeným splýváním za postavou při sedu)
                     if (player && player.cape) {
-                        player.cape.rotation.x = 0.28 + 0.11 * Math.sin(t) + 0.04 * Math.sin(t * 2.3);
-                        player.cape.rotation.z = 0.04 * Math.sin(t * 0.9);
+                        const baseCapeX = 0.28 + 0.11 * Math.sin(t) + 0.04 * Math.sin(t * 2.3);
+                        const sitCapeX = 0.72 + 0.03 * Math.sin(t * 0.8);
+                        player.cape.rotation.x = baseCapeX * (1 - heroSitWeight) + sitCapeX * heroSitWeight;
+                        player.cape.rotation.z = (0.04 * Math.sin(t * 0.9)) * (1 - heroSitWeight);
                         player.cape.rotation.y = Math.PI + 0.02 * Math.cos(t * 1.1);
                     }
 
@@ -5096,11 +5140,40 @@ document.addEventListener('DOMContentLoaded', async () => {
                         heroSpinAngle = 0;
                     }
 
-                    // ── B. NOČNÍ PODŘIMOVÁNÍ (Podle reálného času po 23:00 / v noci v nečinnosti) ──
+                    // ── B. DLOUHODOBÁ NEČINNOST (5 min klepání nohou, 10 min sed a čekání) ────
+                    const idleElapsed = isForcedSitTest
+                        ? 600000
+                        : (isForcedShakeTest ? 330000 : (now - lastHeroUserActivityTime));
+
+                    const isIdlePhase5Min = idleElapsed >= (5 * 60 * 1000) && idleElapsed < (10 * 60 * 1000);
+                    const isIdlePhase10Min = idleElapsed >= (10 * 60 * 1000);
+
+                    // 1. Plynulý přechod do sedící pózy po 10 minutách nečinnosti
+                    const targetSitWeight = (!isDraggingHero && !isHeroLaunchSpinning && isIdlePhase10Min) ? 1.0 : 0.0;
+                    const sitLerpSpeed = targetSitWeight > heroSitWeight ? Math.min(1.0, dt * 2.2) : Math.min(1.0, dt * 5.5);
+                    heroSitWeight += (targetSitWeight - heroSitWeight) * sitLerpSpeed;
+                    if (Math.abs(heroSitWeight) < 0.001) heroSitWeight = 0;
+
+                    // 2. Periodické klepání nohou (restless foot tapping) od 5. do 10. minuty
+                    let targetShakeWeight = 0.0;
+                    if (!isDraggingHero && !isHeroLaunchSpinning && isIdlePhase5Min && heroSitWeight < 0.05) {
+                        const SHAKE_PERIOD = 11000; // 11s cyklus
+                        const SHAKE_BURST = 4200;  // 4.2s klepání
+                        const shakeCycleTime = (now % SHAKE_PERIOD);
+                        if (shakeCycleTime < SHAKE_BURST) {
+                            const pBurst = shakeCycleTime / SHAKE_BURST;
+                            targetShakeWeight = Math.sin(pBurst * Math.PI); // 0 -> 1 -> 0
+                        }
+                    }
+                    const shakeLerpSpeed = Math.min(1.0, dt * 8.0);
+                    heroLegShakeWeight += (targetShakeWeight - heroLegShakeWeight) * shakeLerpSpeed;
+                    if (Math.abs(heroLegShakeWeight) < 0.001) heroLegShakeWeight = 0;
+
+                    // ── C. NOČNÍ PODŘIMOVÁNÍ (Podle reálného času po 23:00 / v noci v nečinnosti) ──
                     const currentHour = new Date().getHours();
                     // V noci (od 22:00 do 06:00 ráno nebo testovací režim)
                     const isNightTime = (currentHour >= 22 || currentHour < 6) || isForcedSleepTest;
-                    const isUserIdle = (now - lastHeroUserActivityTime > 6500) && !isDraggingHero && !isHeroLaunchSpinning && (heroCelebrationWeight === 0);
+                    const isUserIdle = (now - lastHeroUserActivityTime > 6500) && !isDraggingHero && !isHeroLaunchSpinning && (heroCelebrationWeight === 0) && (heroSitWeight === 0);
                     const targetSleepWeight = (isNightTime && isUserIdle) ? 1.0 : 0.0;
 
                     // Hladký náběh do dřímání a rychlé probuzení při aktivitě uživatele
@@ -5119,31 +5192,25 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                         // 1. FÁZE (0 až 6800 ms): Pomalé, bezvládné klesání hlavy a trupu (těžká víčka)
                         if (cycleTime < 6800) {
-                            const p = cycleTime / 6800; // 0 až 1
+                            const p = cycleTime / 6800;
                             const droop = Math.pow(p, 1.7);
                             const sleepBreathing = Math.sin(p * Math.PI * 4) * 0.022;
 
-                            // Hlava padá dopředu (až o ~0.55 rad = cca 31 stupňů dolů)
                             sleepHeadPitch = (droop * 0.55) + sleepBreathing;
-                            // Lehké zvrácení hlavy na stranu
                             sleepHeadRoll = droop * 0.12;
-                            // Trup se jemně propadá do uvolněného sedu/stoje
                             sleepTorsoPitch = droop * 0.07;
                         }
                         // 2. FÁZE (6800 až 7350 ms): STARTLE & JOLT! (Prudké leknutí a trhnutí hlavy zpět nahoru!)
                         else if (cycleTime < 7350) {
-                            const joltPhase = (cycleTime - 6800) / 550; // 0 až 1
+                            const joltPhase = (cycleTime - 6800) / 550;
                             if (joltPhase < 0.32) {
-                                // Okamžitý prudký záškub hlavy nahoru (vystřelení do záklonu -0.15 rad během ~170 ms)
                                 const snapNorm = joltPhase / 0.32;
                                 sleepHeadPitch = 0.55 + (-0.15 - 0.55) * Math.sin(snapNorm * Math.PI * 0.5);
                                 sleepHeadRoll = 0.12 * (1 - snapNorm);
                                 sleepTorsoPitch = 0.07 * (1 - snapNorm);
                             } else {
-                                // Dojezd z leknutí: hlava se zbrzdí ze záklonu zpět do roviny s lehkým zmateným rozhlédnutím
                                 const settleNorm = (joltPhase - 0.32) / 0.68;
                                 sleepHeadPitch = -0.15 * (1 - Math.sin(settleNorm * Math.PI * 0.5));
-                                // Zmatené rychlé pootočení hlavy doleva a doprava ("Lekl jsem se, co se stalo?!")
                                 sleepHeadYaw = Math.sin(settleNorm * Math.PI * 2) * 0.14;
                                 sleepHeadRoll = 0;
                                 sleepTorsoPitch = 0;
@@ -5165,7 +5232,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                     // 3. Fyzika rotace tažením myší (momentum dojezd + hladké přirozené vracení zpět)
                     if (!isDraggingHero) {
-                        // Setrvačný dojezd s tlumením třením
                         const friction = Math.pow(0.88, dt * 60);
                         if (Math.abs(heroDragVelocityY) > 0.0001) {
                             heroManualRotY += heroDragVelocityY;
@@ -5180,9 +5246,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                             heroDragVelocityX = 0;
                         }
 
-                        // Hladké a plynulé vracení manuální rotace do přirozené čelní pozice:
-                        // Určíme nejbližší násobek 2*PI, aby se postava po jakémkoliv otočení (i 180° a víc)
-                        // vrátila tou nejkratší přirozenou trasou plynulým dojezdem bez okamžitého snapu
                         const twoPi = Math.PI * 2;
                         const targetFrontAngle = Math.round(heroManualRotY / twoPi) * twoPi;
                         const diffY = targetFrontAngle - heroManualRotY;
@@ -5216,7 +5279,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (now >= heroWaveStartTime && now <= heroWaveStartTime + duration) {
                         const elapsed = now - heroWaveStartTime;
                         const p = elapsed / duration;
-                        // Hladký náběh (0 až 0.18), držení mávání (0.18 až 0.82), hladký dojezd dolů (0.82 až 1.0)
                         if (p < 0.18) {
                             waveWeight = 0.5 - 0.5 * Math.cos((p / 0.18) * Math.PI);
                         } else if (p > 0.82) {
@@ -5230,10 +5292,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     let punchWeight = 0;
                     if (heroPunchStartTime > 0 && now <= heroPunchStartTime + HERO_PUNCH_DURATION) {
                         const p = (now - heroPunchStartTime) / HERO_PUNCH_DURATION;
-                        punchWeight = Math.sin(p * Math.PI); // 0 -> 1 -> 0
+                        punchWeight = Math.sin(p * Math.PI);
                     }
 
-                    // 6. Fyzika a rotace paží: Pevná výchozí klidová poloha (žádný zpětnovazební feedback loop)
+                    // 6. Fyzika a rotace končetin (paže i nohy): Plynulý přechod do sedu i klepání
                     if (player && player.skin) {
                         // Čisté základní klidové rotace v Minecraftu (přirozené dýchání podél těla)
                         const baseLeftRotX = Math.sin(t * 0.8) * 0.05;
@@ -5244,14 +5306,20 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const baseRightRotY = 0;
                         const baseRightRotZ = -0.06;
 
-                        // LEVÁ RUKA (ruce nahoře při oslavě, jinak 100% klid podél těla)
+                        // Ruce v sedě přirozeně spočívají na stehnech / klíně
+                        const sitArmX = -0.42;
+                        const sitLeftArmY = 0.16;
+                        const sitLeftArmZ = 0.12;
+                        const sitRightArmY = -0.16;
+                        const sitRightArmZ = -0.12;
+
+                        // LEVÁ RUKA
                         if (player.skin.leftArm) {
                             let targetLeftRotX = baseLeftRotX;
                             let targetLeftRotY = baseLeftRotY;
                             let targetLeftRotZ = baseLeftRotZ;
 
                             if (heroCelebrationWeight > 0.0001) {
-                                // Paže rozevřené do vítězného 'V' směrem ven od hlavy (žádné clipování do vlasů ani lebky)
                                 const celebLeftX = -2.68 + Math.sin(t * 6) * 0.08;
                                 const celebLeftZ = 0.55 + Math.cos(t * 6) * 0.06;
                                 const celebLeftY = 0.0;
@@ -5261,19 +5329,23 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 targetLeftRotZ = baseLeftRotZ + (celebLeftZ - baseLeftRotZ) * heroCelebrationWeight;
                             }
 
-                            // VŽDY aplikujeme spočtené rotace levé ruky
+                            // Aplikace klidného položení ruky na stehno při sezení
+                            targetLeftRotX = targetLeftRotX * (1 - heroSitWeight) + sitArmX * heroSitWeight;
+                            targetLeftRotY = targetLeftRotY * (1 - heroSitWeight) + sitLeftArmY * heroSitWeight;
+                            targetLeftRotZ = targetLeftRotZ * (1 - heroSitWeight) + sitLeftArmZ * heroSitWeight;
+
                             player.skin.leftArm.rotation.x = targetLeftRotX;
                             player.skin.leftArm.rotation.y = targetLeftRotY;
                             player.skin.leftArm.rotation.z = targetLeftRotZ;
                         }
 
-                        // PRAVÁ RUKA (oslava, mávání, úder pěstí – zaručený návrat do baseRightRot)
+                        // PRAVÁ RUKA (oslava, mávání, úder pěstí, sezení)
                         if (player.skin.rightArm) {
                             let targetRotX = baseRightRotX;
                             let targetRotY = baseRightRotY;
                             let targetRotZ = baseRightRotZ;
 
-                            // A. Oslava spuštění (pravá ruka rozevřená do vítězného 'V' směrem ven od hlavy)
+                            // A. Oslava spuštění
                             if (heroCelebrationWeight > 0.0001) {
                                 const celebRightX = -2.68 + Math.sin(t * 6 + 0.4) * 0.08;
                                 const celebRightZ = -0.55 - Math.cos(t * 6) * 0.06;
@@ -5284,7 +5356,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 targetRotZ = baseRightRotZ + (celebRightZ - baseRightRotZ) * heroCelebrationWeight;
                             }
 
-                            // B. Aplikace mávání rukou (pouze pokud zrovna neprobíhá oslava)
+                            // B. Aplikace mávání rukou
                             if (waveWeight > 0.0001 && heroCelebrationWeight < 0.5) {
                                 const elapsed = Math.max(0, now - heroWaveStartTime);
                                 const waveSpeed = isQuickWave ? 14.0 : 9.5;
@@ -5300,7 +5372,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 targetRotZ = targetRotZ + (waveTargetZ - targetRotZ) * waveBlend;
                             }
 
-                            // C. Aplikace úderu (Minecraft attack swing – funguje kdykoliv, i při spouštění!)
+                            // C. Aplikace úderu pěstí
                             if (punchWeight > 0.0001) {
                                 const punchTargetX = -1.35;
                                 const punchTargetY = 0.38;
@@ -5311,77 +5383,128 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 targetRotZ = targetRotZ + (punchTargetZ - targetRotZ) * punchWeight;
                             }
 
-                            // VŽDY aplikujeme spočtené rotace – tím je 100% zaručeno,
-                            // že po skončení úderu, mávání i točení se ruka okamžitě a spolehlivě vrátí na (baseRightRotX, 0, -0.06)!
+                            // Aplikace sedící pózy pro pravou ruku
+                            targetRotX = targetRotX * (1 - heroSitWeight) + sitArmX * heroSitWeight;
+                            targetRotY = targetRotY * (1 - heroSitWeight) + sitRightArmY * heroSitWeight;
+                            targetRotZ = targetRotZ * (1 - heroSitWeight) + sitRightArmZ * heroSitWeight;
+
                             player.skin.rightArm.rotation.x = targetRotX;
                             player.skin.rightArm.rotation.y = targetRotY;
                             player.skin.rightArm.rotation.z = targetRotZ;
                         }
 
-                        // Radostné poskakování těla při oslavě
+                        // NOHY (animace chůze/stání, klepání nohou v 5. minutě a sezení v 10. minutě)
+                        if (player.skin.leftLeg && player.skin.rightLeg) {
+                            const baseLeftLegX = -Math.sin(t * 0.8) * 0.02;
+                            const baseRightLegX = Math.sin(t * 0.8) * 0.02;
+
+                            // Rychlé nervózní klepání nohou (nepokoj v koleni / podupávání špičkou)
+                            const legShakeAngle = (heroLegShakeWeight > 0.001) ? Math.sin((now / 1000) * 40) * 0.11 * heroLegShakeWeight : 0;
+
+                            // Sedící pozice nohou (ohnuté 90° dopředu = -1.57 rad)
+                            const sitLegAngle = -1.57;
+                            const sitLeftLegX = sitLegAngle + Math.sin(t * 1.1) * 0.035;
+                            const sitRightLegX = sitLegAngle - Math.sin(t * 1.1) * 0.035;
+
+                            player.skin.leftLeg.rotation.x = baseLeftLegX * (1 - heroSitWeight) + sitLeftLegX * heroSitWeight;
+                            player.skin.leftLeg.rotation.y = -0.12 * heroSitWeight;
+                            player.skin.leftLeg.rotation.z = -0.05 * heroSitWeight;
+
+                            player.skin.rightLeg.rotation.x = (baseRightLegX + legShakeAngle) * (1 - heroSitWeight) + sitRightLegX * heroSitWeight;
+                            player.skin.rightLeg.rotation.y = (0.12 * heroSitWeight) + (0.04 * heroLegShakeWeight * (1 - heroSitWeight));
+                            player.skin.rightLeg.rotation.z = (0.05 * heroSitWeight) + (0.02 * heroLegShakeWeight * (1 - heroSitWeight));
+                        }
+
+                        // Výška těla: snížení do sedu na podlahu + drobné poskakování při klepání nohou
                         if (heroSkinViewer.playerObject) {
                             const celebBounce = Math.abs(Math.sin(t * 6)) * 0.9 * heroCelebrationWeight;
-                            heroSkinViewer.playerObject.position.y = -1 + celebBounce;
+                            const sitDrop = -6.4 * heroSitWeight;
+                            const legShakeBounce = (heroLegShakeWeight > 0.001 && heroSitWeight < 0.1)
+                                ? Math.abs(Math.sin((now / 1000) * 40)) * 0.16 * heroLegShakeWeight
+                                : 0;
+                            heroSkinViewer.playerObject.position.y = -1 + celebBounce + sitDrop + legShakeBounce;
                         }
                     }
 
-                    // 6. HLAVA PLYNULE SLEDUJE KURZOR S FYZIOLOGICKÝM LIMITEM (MAX ±90° OD STŘEDU TĚLA)
-                    const headLerpRate = 1 - Math.pow(0.005, dt);
+                    // 7. HLAVA PLYNULE A FILMOVĚ SLEDUJE KURZOR (ŽÁDNÝ SKOK, VELMI JEMNÝ NÁKLON)
+                    const headLerpRate = 1 - Math.pow(0.04, dt);
                     currentHeroHeadLookX += (targetHeroHeadLookX - currentHeroHeadLookX) * headLerpRate;
                     currentHeroHeadLookY += (targetHeroHeadLookY - currentHeroHeadLookY) * headLerpRate;
 
-                    // Organický pružinový tlumič (Spring-Damper) pro extra hladký a přirozený náklon curiosity
-                    const curiositySpringK = 36.0;
-                    const curiosityDamping = 10.0;
+                    // Organický pružinový tlumič s nízkou tuhostí pro plynulý, nekřečovitý náklon hlavy
+                    const curiositySpringK = 14.0;
+                    const curiosityDamping = 12.0;
                     const curiosityDiff = targetHeroCuriosityTilt - currentHeroCuriosityTilt;
                     heroCuriosityVelocity += curiosityDiff * curiositySpringK * dt;
                     heroCuriosityVelocity *= Math.max(0, 1 - curiosityDamping * dt);
                     currentHeroCuriosityTilt += heroCuriosityVelocity * dt;
 
+                    // Idle rozhlížení a čekání v sedě
+                    let sitHeadYaw = 0;
+                    let sitHeadPitch = 0;
+                    if (heroSitWeight > 0.001) {
+                        const waitCycle = (now * 0.001) % 18; // 18s cyklus čekání v sedě
+                        if (waitCycle < 3.5) {
+                            sitHeadYaw = 0;
+                            sitHeadPitch = 0.04;
+                        } else if (waitCycle < 7.0) {
+                            const p = (waitCycle - 3.5) / 3.5;
+                            sitHeadYaw = Math.sin(p * Math.PI) * 0.28;
+                            sitHeadPitch = 0.02;
+                        } else if (waitCycle < 10.5) {
+                            sitHeadYaw = 0;
+                            sitHeadPitch = 0.06;
+                        } else if (waitCycle < 14.0) {
+                            const p = (waitCycle - 10.5) / 3.5;
+                            sitHeadYaw = -Math.sin(p * Math.PI) * 0.28;
+                            sitHeadPitch = 0.02;
+                        } else {
+                            sitHeadYaw = 0;
+                            sitHeadPitch = 0.04;
+                        }
+                    }
+
+                    // Při klepání nohou se postava občas podívá dolů na nohu
+                    const legShakeHeadPitch = (heroLegShakeWeight > 0.001 && heroSitWeight < 0.1)
+                        ? 0.07 * heroLegShakeWeight
+                        : 0;
+
                     if (player && player.skin && player.skin.head) {
-                        // Úhel pohledu kurzoru vůči natočení těla v rozsahu [-Math.PI, Math.PI]
                         let diffYaw = (currentHeroHeadLookY - totalBodyYaw) % (Math.PI * 2);
                         if (diffYaw > Math.PI) diffYaw -= Math.PI * 2;
                         if (diffYaw < -Math.PI) diffYaw += Math.PI * 2;
 
-                        // Maximální povolený limit otočení hlavy od středu těla (90° = Math.PI / 2)
-                        const MAX_HEAD_YAW = Math.PI / 2;
+                        const MAX_HEAD_YAW = Math.PI / 2.3;
                         let targetHeadYaw = 0;
 
                         if (Math.abs(diffYaw) <= MAX_HEAD_YAW) {
-                            // Tělo směřuje dopředu (v rámci 180° zorného pole): hlava sleduje kurzor
                             targetHeadYaw = diffYaw;
                         } else {
-                            // Když se tělo otáčí zády k obrazovce, hlava se NESMÍ otočit dozadu ani přes 90°:
-                            // plynule se vrací do směru těla (0°), takže postava kouká přirozeně před sebe
                             targetHeadYaw = Math.sign(diffYaw) * (Math.PI - Math.abs(diffYaw));
                         }
 
-                        // Bezpečnostní pojistka: hlava nikdy nepřekročí 90 stupňů od středu (když je rovně)
                         targetHeadYaw = Math.max(-MAX_HEAD_YAW, Math.min(MAX_HEAD_YAW, targetHeadYaw));
 
-                        // Hladká kompenzace vertikálního náklonu: při pohledu zezadu netlačíme hlavu za záda
                         const frontFactor = Math.max(0, Math.cos(diffYaw));
                         const curiosityIntensity = Math.abs(currentHeroCuriosityTilt);
 
-                        // Když je postava zvědavá, přirozeně mírně předkloní/zaostří hlavu dopředu
-                        const curiousPitch = 0.065 * curiosityIntensity;
+                        const curiousPitch = 0.035 * curiosityIntensity;
                         const targetHeadPitch = -totalBodyPitch * frontFactor + currentHeroHeadLookX * frontFactor + Math.sin(t * 1.4) * 0.012;
 
-                        // Jemné dýchání/pulzování během zvědavého pohledu pro živý organický pocit
-                        const curiosityPulse = Math.sin(t * 2.2) * 0.014 * curiosityIntensity;
+                        const curiosityPulse = Math.sin(t * 2.2) * 0.008 * curiosityIntensity;
 
-                        // Tlumení sledování myši při spánku (spící postava nesleduje kurzor)
-                        const wakeTrackingFactor = Math.max(0, 1 - heroSleepWeight * 0.9);
+                        // Tlumení sledování myši při spánku a v sedě
+                        const wakeTrackingFactor = Math.max(0, (1 - heroSleepWeight * 0.9) * (1 - heroSitWeight * 0.85));
 
-                        player.skin.head.rotation.y = (targetHeadYaw * wakeTrackingFactor) + (sleepHeadYaw * heroSleepWeight);
-                        player.skin.head.rotation.x = (targetHeadPitch * wakeTrackingFactor) + (punchWeight * 0.08) + curiousPitch + (sleepHeadPitch * heroSleepWeight);
-                        player.skin.head.rotation.z = (-targetHeadYaw * 0.05 * wakeTrackingFactor) - (waveWeight * 0.08) + currentHeroCuriosityTilt + curiosityPulse + (sleepHeadRoll * heroSleepWeight);
+                        player.skin.head.rotation.y = (targetHeadYaw * wakeTrackingFactor) + (sleepHeadYaw * heroSleepWeight) + (sitHeadYaw * heroSitWeight);
+                        player.skin.head.rotation.x = (targetHeadPitch * wakeTrackingFactor) + (punchWeight * 0.08) + curiousPitch + (sleepHeadPitch * heroSleepWeight) + (sitHeadPitch * heroSitWeight) + legShakeHeadPitch;
+                        player.skin.head.rotation.z = (-targetHeadYaw * 0.035 * wakeTrackingFactor) - (waveWeight * 0.08) + currentHeroCuriosityTilt + curiosityPulse + (sleepHeadRoll * heroSleepWeight);
 
-                        // Anatomický protipohyb trupu pro přirozenou rovnováhu těla + uvolnění při spánku
-                        if (player.skin.torso) {
-                            player.skin.torso.rotation.z = -currentHeroCuriosityTilt * 0.12;
-                            player.skin.torso.rotation.x = sleepTorsoPitch * heroSleepWeight;
+                        // Anatomický protipohyb trupu
+                        const bodyPart = player.skin.body || player.skin.torso;
+                        if (bodyPart) {
+                            bodyPart.rotation.z = -currentHeroCuriosityTilt * 0.08;
+                            bodyPart.rotation.x = (sleepTorsoPitch * heroSleepWeight) + (0.04 * heroSitWeight);
                         }
                     }
                 }
