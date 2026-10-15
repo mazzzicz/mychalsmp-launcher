@@ -1089,6 +1089,24 @@ async function analyzeCrash(gameDir, exitCode = 1, recentMemoryLogs = [], launch
         };
     }
 
+    // ── Diagnostic Rule 5b: Linux GLFW IME Preedit Callback Failure (nglfwSetPreeditCallback) ─
+    if (
+        /nglfwSetPreeditCallback/i.test(combinedText) ||
+        /glfwSetPreeditCallback/i.test(combinedText) ||
+        (/setupKeyboardCallbacks/i.test(combinedText) && /Checks\.check/i.test(combinedText))
+    ) {
+        return {
+            hasCrash: true,
+            exitCode,
+            reportPath,
+            title: 'Chyba GLFW IME preedit callbacku (Linux / CachyOS / Arch)',
+            severity: 'critical',
+            description: 'Minecraft v novém vstupním subsystému registruje callback pro asijská vstupní pole (IME preedit). Použitá linuxová verze GLFW knihovny tento symbol neobsahuje, což způsobilo pád na Checks.check.',
+            recommendation: 'Problém byl automaticky vyřešen aktualizací klientského balíčku selfnametag-1.0.0.jar.',
+            logExcerpt: logExcerpt || 'Detekována chyba: Checks.check(Functions.SetPreeditCallback) v setupKeyboardCallbacks'
+        };
+    }
+
     // ── Diagnostic Rule 6: Graphics / GLFW / Wayland Error ───────────────────
     if (
         /GLFW error 65542/i.test(combinedText) ||
