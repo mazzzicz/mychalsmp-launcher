@@ -2068,9 +2068,29 @@ async function ensureFabricProfile(centralRootDir, targetVersion, onLog = consol
     const versionsDir = path.join(centralRootDir, 'versions');
     fs.mkdirSync(versionsDir, { recursive: true });
 
+    // ⚡ Bezpečnostní úklid: Odstranění nestabilních/experimentálních verzí Fabric Loaderu (např. 0.20.0-unstable)
+    try {
+        const brokenDirs = fs.readdirSync(versionsDir).filter(d =>
+            d.toLowerCase().includes('0.20.0') || d.toLowerCase().startsWith('fabric-loader-0.20.0')
+        );
+        for (const bDir of brokenDirs) {
+            onLog(`[FABRIC] ⚠ Nalezen nestabilní profil ${bDir}. Odstraňuji pro vynucení stabilního vydání...`);
+            try { fs.rmSync(path.join(versionsDir, bDir), { recursive: true, force: true }); } catch (_) { }
+        }
+    } catch (_) { }
+
+    try {
+        const brokenLib = path.join(centralRootDir, 'libraries', 'net', 'fabricmc', 'fabric-loader', '0.20.0');
+        if (fs.existsSync(brokenLib)) {
+            try { fs.rmSync(brokenLib, { recursive: true, force: true }); } catch (_) { }
+        }
+    } catch (_) { }
+
     try {
         const existing = fs.readdirSync(versionsDir).find(d =>
-            d.toLowerCase().startsWith('fabric-loader-') && d.includes(targetVersion) &&
+            d.toLowerCase().startsWith('fabric-loader-') &&
+            !d.includes('0.20.0') &&
+            d.includes(targetVersion) &&
             fs.existsSync(path.join(versionsDir, d, `${d}.json`))
         );
         if (existing) {
@@ -2078,8 +2098,21 @@ async function ensureFabricProfile(centralRootDir, targetVersion, onLog = consol
             try {
                 const exJson = JSON.parse(fs.readFileSync(exJsonPath, 'utf8'));
                 if (exJson.downloads && exJson.assetIndex && exJson.libraries && exJson.libraries.length > 15) {
-                    onLog(`[FABRIC] Nalezen kompletní Fabric profil: ${existing}`);
-                    return existing;
+                    // Ověřit, že samotný fabric-loader JAR v libraries existuje a má platnou hlavičku
+                    const loaderLib = exJson.libraries.find(l => l.name && l.name.startsWith('net.fabricmc:fabric-loader:'));
+                    let loaderJarValid = true;
+                    if (loaderLib) {
+                        const libParts = loaderLib.name.split(':');
+                        const lVer = libParts[2];
+                        const lPath = path.join(centralRootDir, 'libraries', 'net', 'fabricmc', 'fabric-loader', lVer, `fabric-loader-${lVer}.jar`);
+                        if (!fs.existsSync(lPath) || !isJarFileValid(lPath)) {
+                            loaderJarValid = false;
+                        }
+                    }
+                    if (loaderJarValid) {
+                        onLog(`[FABRIC] Nalezen kompletní Fabric profil: ${existing}`);
+                        return existing;
+                    }
                 }
             } catch (e) { }
         }
@@ -2112,7 +2145,10 @@ async function ensureFabricProfile(centralRootDir, targetVersion, onLog = consol
         if (!Array.isArray(loaders) || loaders.length === 0) {
             throw new Error(`Žádný Fabric loader nenalezen pro verzi ${targetVersion}`);
         }
-        const loaderVersion = loaders[0].loader.version;
+        // ⚡ Zásadní: Výběr nejnovější STABILNÍ verze (stable: true), nikoliv experimentálních snapshotů (např. 0.20.0)!
+        const stableLoader = loaders.find(l => l.loader && l.loader.stable === true);
+        const selectedLoader = stableLoader || loaders[0];
+        const loaderVersion = selectedLoader?.loader?.version || '0.19.5';
         onLog(`[FABRIC] Stahuji profil pro Fabric loader ${loaderVersion}...`);
 
         const profileRes = await fetch(`https://meta.fabricmc.net/v2/versions/loader/${effectiveGameVersion}/${loaderVersion}/profile/json`, {
@@ -2157,6 +2193,30 @@ async function ensureFabricProfile(centralRootDir, targetVersion, onLog = consol
         fs.writeFileSync(path.join(targetDir, `${fabricId}.json`), JSON.stringify(mergedProfile, null, 2), 'utf8');
         fs.writeFileSync(path.join(targetDir, `${targetVersion}.json`), JSON.stringify(mergedProfile, null, 2), 'utf8');
 
+        // ⚡ Pojistka: Přímé ověření a stažení samotného jádra fabric-loader-${loaderVersion}.jar do knihoven
+        try {
+            const flDir = path.join(centralRootDir, 'libraries', 'net', 'fabricmc', 'fabric-loader', loaderVersion);
+            const flJar = path.join(flDir, `fabric-loader-${loaderVersion}.jar`);
+            if (!fs.existsSync(flJar) || !isJarFileValid(flJar)) {
+                onLog(`[FABRIC] Stahuji jádro zavaděče fabric-loader-${loaderVersion}.jar...`);
+                fs.mkdirSync(flDir, { recursive: true });
+                const flRes = await fetch(`https://maven.fabricmc.net/net/fabricmc/fabric-loader/${loaderVersion}/fabric-loader-${loaderVersion}.jar`, {
+                    headers: { 'User-Agent': 'MYCHALSMP-Launcher' },
+                    signal: AbortSignal.timeout(20000)
+                });
+                if (flRes.ok) {
+                    const flBuf = Buffer.from(await flRes.arrayBuffer());
+                    fs.writeFileSync(flJar, flBuf);
+                    if (!isJarFileValid(flJar)) {
+                        try { fs.unlinkSync(flJar); } catch (_) { }
+                        throw new Error('Stažený fabric-loader JAR neprošel validací ZIP');
+                    }
+                }
+            }
+        } catch (flErr) {
+            onLog(`[FABRIC] ⚠ Příprava loader JAR: ${flErr.message}`);
+        }
+
         // Zkopírovat vanilla client.jar do složky fabric profilu (pouze pokud je vanilkový jar 100% platný)
         const vanillaJar = path.join(versionsDir, targetVersion, `${targetVersion}.jar`);
         const fabricJar = path.join(targetDir, `${fabricId}.jar`);
@@ -2181,7 +2241,9 @@ async function ensureFabricProfile(centralRootDir, targetVersion, onLog = consol
     } catch (err) {
         try {
             const localFallback = fs.readdirSync(versionsDir).find(d =>
-                d.toLowerCase().startsWith('fabric-loader-') && d.includes(targetVersion) &&
+                d.toLowerCase().startsWith('fabric-loader-') &&
+                !d.includes('0.20.0') &&
+                d.includes(targetVersion) &&
                 fs.existsSync(path.join(versionsDir, d, `${d}.json`))
             );
             if (localFallback) {
@@ -2736,10 +2798,12 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
             if (Array.isArray(manifestJvm)) {
                 for (const arg of manifestJvm) {
                     if (typeof arg === 'string') {
-                        if (!arg.startsWith('-cp') && !arg.startsWith('${classpath}') &&
-                            !arg.startsWith('-Djava.library.path') && !arg.startsWith('-Dminecraft.launcher')) {
-                            if (!jvmArgs.includes(arg)) {
-                                jvmArgs.push(arg);
+                        const trimmedArg = arg.trim();
+                        if (!trimmedArg.startsWith('-cp') && !trimmedArg.startsWith('${classpath}') &&
+                            !trimmedArg.startsWith('-Djava.library.path') && !trimmedArg.startsWith('-Dminecraft.launcher') &&
+                            !trimmedArg.startsWith('-DFabricMcEmu')) {
+                            if (!jvmArgs.includes(trimmedArg)) {
+                                jvmArgs.push(trimmedArg);
                             }
                         }
                     }

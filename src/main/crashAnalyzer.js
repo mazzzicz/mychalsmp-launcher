@@ -1027,6 +1027,29 @@ async function analyzeCrash(gameDir, exitCode = 1, recentMemoryLogs = [], launch
         };
     }
 
+    // ── Diagnostic Rule: Fabric Loader Initialization Failure / Corrupted sat4j (ContradictionException) ──
+    if (
+        /ContradictionException/i.test(combinedText) ||
+        /net\/fabricmc\/loader\/impl\/lib\/sat4j/i.test(combinedText) ||
+        (/FabricLoader/i.test(combinedText) && /NoClassDefFoundError/i.test(combinedText) && /LoaderLibrary/i.test(combinedText))
+    ) {
+        return {
+            hasCrash: true,
+            exitCode,
+            reportPath,
+            title: 'Nestabilní / poškozený Fabric Loader (0.20.0)',
+            severity: 'critical',
+            description: 'Byl detekován pád při zavádění Fabric Loaderu (chybějící třída sat4j ContradictionException). K této chybě dochází při pokusu o spuštění experimentální nestabilní verze Fabric Loaderu (0.20.0) nebo při poškození staženého zavaděče.',
+            recommendation: 'Klikni na tlačítko níže pro automatické vyčištění nestabilního zavaděče a obnovení oficiální stabilní verze (0.19.5).',
+            logExcerpt: logExcerpt || 'NoClassDefFoundError: net/fabricmc/loader/impl/lib/sat4j/specs/ContradictionException',
+            autoFix: {
+                id: 'RESET_FABRIC_LOADER',
+                label: '🧹 Obnovit stabilní Fabric Loader (0.19.5)',
+                description: 'Odstraní nestabilní profily Fabric Loaderu a zajistí čisté stažení stabilní verze 0.19.5.'
+            }
+        };
+    }
+
     // ── Diagnostic Rule 4: Duplicate Mods ────────────────────────────────────
     const duplicateMatch = combinedText.match(/DuplicateModsException[^\n]*|Found duplicate mods[^\n]*|Found multiple mod files providing the same mod:\s*([^\n\r]+)/i);
     if (duplicateMatch) {
@@ -1388,6 +1411,44 @@ async function executeCrashFix(autoFix, gameDir, config, saveConfigFn, detectJav
                 success: true,
                 relaunch: true,
                 message: `Soubor verze ${targetVer} byl resetován. Při příštím spuštění launcher stáhne čerstvou kopii!`
+            };
+        }
+
+        case 'RESET_FABRIC_LOADER': {
+            const baseDir = config?.baseDir || gameDir;
+            const cleaned = [];
+            try {
+                const versionsDir = path.join(baseDir, 'versions');
+                if (fs.existsSync(versionsDir)) {
+                    for (const d of fs.readdirSync(versionsDir)) {
+                        if (d.toLowerCase().includes('0.20.0') || d.toLowerCase().startsWith('fabric-loader-0.20.0')) {
+                            try {
+                                fs.rmSync(path.join(versionsDir, d), { recursive: true, force: true });
+                                cleaned.push(d);
+                            } catch (_) {}
+                        }
+                    }
+                }
+            } catch (_) {}
+
+            try {
+                const flLibDir = path.join(baseDir, 'libraries', 'net', 'fabricmc', 'fabric-loader');
+                if (fs.existsSync(flLibDir)) {
+                    for (const d of fs.readdirSync(flLibDir)) {
+                        if (d.includes('0.20.0')) {
+                            try {
+                                fs.rmSync(path.join(flLibDir, d), { recursive: true, force: true });
+                                cleaned.push(`lib: ${d}`);
+                            } catch (_) {}
+                        }
+                    }
+                }
+            } catch (_) {}
+
+            return {
+                success: true,
+                relaunch: true,
+                message: `Nestabilní zavaděč Fabric Loader byl úspěšně vyčištěn (${cleaned.join(', ') || 'profily resetovány'}). Při příštím spuštění launcher použije ověřenou stabilní verzi 0.19.5.`
             };
         }
 
