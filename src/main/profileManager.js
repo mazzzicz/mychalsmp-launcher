@@ -233,6 +233,7 @@ async function importInstanceProfile(data, baseDir) {
         name: name || `Importovaný profil (${version})`,
         version: version || '26.2',
         loader: loader || 'fabric',
+        isImported: true,
         optimizedChosen: (loader === 'fabric' || (!loader && true)) ? 'optimized' : 'vanilla',
         desc: `Importováno z ${path.basename(sourceDir)} • ${importedModCount} módů`,
         icon: 'import',

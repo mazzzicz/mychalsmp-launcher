@@ -1118,14 +1118,26 @@ async function downloadAndInstallJava21(onLog = console.log, onProgress = null) 
  * Ensures that a working Java executable matching the required major version is available.
  * If neither system nor configured Java is functional/compatible, automatically downloads it.
  */
+// In-memory cache ověřených cest k Javě pro bleskový start (0 ms bez opakovaného execFileSync)
+const cachedJavaExecutables = new Map();
+
 async function ensureJavaExecutable(config, onLog = console.log, onProgress = null) {
-    const targetVersion = config.version || '26.2';
+    const targetVersion = (config && config.version) || '26.2';
     const requiredMajor = getRequiredJavaVersion(targetVersion);
+    const cacheKey = `${requiredMajor}:${(config && config.javaPath) || 'auto'}`;
+
+    if (cachedJavaExecutables.has(cacheKey)) {
+        const cachedPath = cachedJavaExecutables.get(cacheKey);
+        if (cachedPath && fs.existsSync(cachedPath)) {
+            return cachedPath;
+        }
+    }
 
     // 1. Configured custom path
-    if (config.javaPath) {
+    if (config && config.javaPath) {
         const customMajor = getJavaMajorVersion(config.javaPath);
         if (customMajor >= requiredMajor && testJavaExecutable(config.javaPath, requiredMajor)) {
+            cachedJavaExecutables.set(cacheKey, config.javaPath);
             return config.javaPath;
         }
         if (customMajor > 0 && customMajor < requiredMajor) {
@@ -1138,15 +1150,18 @@ async function ensureJavaExecutable(config, onLog = console.log, onProgress = nu
     const localBin = path.join(BASE_DIR, 'runtime', `java-${requiredMajor}`, 'bin', isWin ? 'javaw.exe' : 'java');
     const localBinAlt = isWin ? path.join(BASE_DIR, 'runtime', `java-${requiredMajor}`, 'bin', 'java.exe') : null;
     if (fs.existsSync(localBin) && testJavaExecutable(localBin, requiredMajor)) {
+        cachedJavaExecutables.set(cacheKey, localBin);
         return localBin;
     }
     if (localBinAlt && fs.existsSync(localBinAlt) && testJavaExecutable(localBinAlt, requiredMajor)) {
+        cachedJavaExecutables.set(cacheKey, localBinAlt);
         return localBinAlt;
     }
 
     // 3. System detected paths meeting required major version
     const detected = detectJavaPath(requiredMajor);
     if (detected && testJavaExecutable(detected, requiredMajor)) {
+        cachedJavaExecutables.set(cacheKey, detected);
         return detected;
     }
 
@@ -1156,6 +1171,7 @@ async function ensureJavaExecutable(config, onLog = console.log, onProgress = nu
     try {
         saveConfig({ javaPath: installed });
     } catch (e) {}
+    if (installed) cachedJavaExecutables.set(cacheKey, installed);
     return installed;
 }
 
@@ -1852,13 +1868,15 @@ async function setupOfflineCustomSkinAndCape(gameDir, config, onLog = console.lo
     }
 }
 
+// In-memory TTL cache pro Mojang version manifest (aby se neblokoval start sítě při každém spuštění)
+const mojangVersionCheckCache = new Map(); // targetVersion -> timestamp
+const MOJANG_CHECK_TTL_MS = 2 * 60 * 60 * 1000; // 2 hodiny TTL cache
+
 /**
  * ⚡ Kontrola a aktualizace verze proti oficiálnímu Mojang manifestu (piston-meta).
- * Pokud Mojang vydá tichý patch na starší verzi (např. 1.8.9, 1.12.2, 1.20.x hotfix),
- * tato funkce bleskově porovná lokální SHA-1 manifestu s oficiálním Mojang version_manifest_v2.json.
- * Při detekci změny stáhne aktualizovaný manifest a označí herní JAR k přestažení.
+ * Využívá bleskovou TTL cache (0 ms pokud soubory existují a byly v posledních 2 hodinách ověřeny).
  */
-async function ensureMojangVersionUpToDate(centralRootDir, targetVersion, onLog = console.log) {
+async function ensureMojangVersionUpToDate(centralRootDir, targetVersion, onLog = console.log, forceCheck = false) {
     if (!targetVersion || targetVersion === 'custom') return null;
 
     const versionsDir = path.join(centralRootDir, 'versions');
@@ -1866,16 +1884,32 @@ async function ensureMojangVersionUpToDate(centralRootDir, targetVersion, onLog 
     const localJsonPath = path.join(localVersionDir, `${targetVersion}.json`);
     const localJarPath = path.join(localVersionDir, `${targetVersion}.jar`);
 
+    // Blesková kontrola existence na disku: Pokud lokální manifest i JAR již na disku existují
+    // a nejedná se o vynucený pre-warm (forceCheck), vrátit lokální manifest okamžitě (0 ms).
+    // Síťová kontrola aktualizací z Mojangu se provádí na pozadí při startu launcheru přes pre-warm.
+    if (!forceCheck && fs.existsSync(localJsonPath) && fs.existsSync(localJarPath)) {
+        mojangVersionCheckCache.set(targetVersion, Date.now());
+        try {
+            return JSON.parse(fs.readFileSync(localJsonPath, 'utf8'));
+        } catch (_) {}
+    }
+
     try {
         const manRes = await fetch('https://piston-meta.mojang.com/mc/game/version_manifest_v2.json', {
             signal: AbortSignal.timeout(3000)
         });
-        if (!manRes.ok) return null;
+        if (!manRes.ok) {
+            mojangVersionCheckCache.set(targetVersion, Date.now());
+            return null;
+        }
 
         const manifest = await manRes.json();
         const vEntry = manifest.versions?.find(v => v.id === targetVersion) ||
                       (targetVersion === '1.21.11' ? manifest.versions?.find(v => v.id === '1.21.1') : null);
-        if (!vEntry || !vEntry.url) return null;
+        if (!vEntry || !vEntry.url) {
+            mojangVersionCheckCache.set(targetVersion, Date.now());
+            return null;
+        }
 
         // Pokud lokální JSON manifest zatím neexistuje, stáhnout čerstvý v originálním formátu
         if (!fs.existsSync(localJsonPath)) {
@@ -1884,6 +1918,7 @@ async function ensureMojangVersionUpToDate(centralRootDir, targetVersion, onLog 
                 const rawText = await vRes.text();
                 fs.mkdirSync(localVersionDir, { recursive: true });
                 fs.writeFileSync(localJsonPath, rawText, 'utf8');
+                mojangVersionCheckCache.set(targetVersion, Date.now());
                 try { return JSON.parse(rawText); } catch (_) {}
             }
             return null;
@@ -1902,6 +1937,7 @@ async function ensureMojangVersionUpToDate(centralRootDir, targetVersion, onLog 
 
         // Pokud je manifest na disku aktuální (odpovídá SHA-1 hash nebo časové razítko revize z manifestu), pokračujeme
         if (isSha1Match || isTimeMatch) {
+            mojangVersionCheckCache.set(targetVersion, Date.now());
             return localObj;
         }
 
@@ -1940,10 +1976,12 @@ async function ensureMojangVersionUpToDate(centralRootDir, targetVersion, onLog 
                 }
             } catch (_) {}
 
+            mojangVersionCheckCache.set(targetVersion, Date.now());
             return freshJson;
         }
     } catch (err) {
         // Při výpadku sítě nebo offline režimu tiše pokračujeme s existujícími soubory
+        mojangVersionCheckCache.set(targetVersion, Date.now());
     }
     return null;
 }
@@ -2151,7 +2189,18 @@ function getBundledSelfNametagPath() {
     return null;
 }
 
+// In-memory cache pro synchronizaci Self Nametag módu (vyhne se opakovanému čtení a počítání SHA-256)
+const selfNametagSyncedDirs = new Map();
+
 function ensureSelfNametagModInstalled(targetDir, onLog = console.log, forceOverwrite = false) {
+    const targetKey = targetDir || BASE_DIR;
+    if (!forceOverwrite && selfNametagSyncedDirs.has(targetKey)) {
+        const lastSync = selfNametagSyncedDirs.get(targetKey) || 0;
+        if (Date.now() - lastSync < 5 * 60 * 1000) {
+            return true;
+        }
+    }
+
     const bundledModPath = getBundledSelfNametagPath();
     if (!bundledModPath) {
         if (typeof onLog === 'function') {
@@ -2282,6 +2331,7 @@ function ensureSelfNametagModInstalled(targetDir, onLog = console.log, forceOver
     if (installedCount === 0 && typeof onLog === 'function') {
         onLog('[DOPLŇKY] ✔ Ověřeno: Self Nametag (F5) je aktuální se sestavením launcheru.');
     }
+    selfNametagSyncedDirs.set(targetKey, Date.now());
     return true;
 }
 
@@ -2292,6 +2342,31 @@ function ensureSelfNametagModInstalled(targetDir, onLog = console.log, forceOver
  * Pokud se stažení nezdaří, jako bezpečný fallback mód dočasně deaktivuje (.disabled),
  * aby nedošlo k pádu Minecraftu na "Incompatible mods found!".
  */
+// In-memory cache otisku složky mods pro okamžité přeskočení rozbalování ZIPů (0 ms pokud se nic nezměnilo)
+const profileModsDependenciesCache = new Map();
+
+function getModsDirectoryFingerprint(modsDir) {
+    if (!fs.existsSync(modsDir)) return '';
+    try {
+        const files = fs.readdirSync(modsDir);
+        files.sort();
+        const parts = [];
+        for (const f of files) {
+            const l = f.toLowerCase();
+            if (l.endsWith('.jar') || l.endsWith('.disabled')) {
+                const fullPath = path.join(modsDir, f);
+                try {
+                    const st = fs.statSync(fullPath);
+                    parts.push(`${f}:${st.size}:${Math.floor(st.mtimeMs)}`);
+                } catch (_) {}
+            }
+        }
+        return parts.join('|');
+    } catch (_) {
+        return '';
+    }
+}
+
 async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
     const ldr = (config && config.loader) ? String(config.loader).toLowerCase() : '';
     if (!ldr.includes('fabric')) return;
@@ -2300,8 +2375,15 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
         try { fs.mkdirSync(modsDir, { recursive: true }); } catch (_) {}
     }
 
-    // Vynucená kontrola a instalace módu Self Nametag při každém spuštění
-    ensureSelfNametagModInstalled(gameInstanceDir, onLog);
+    // Inkrementální kontrola otisku složky mods: pokud se žádný soubor nezměnil od minula,
+    // přeskočíme otevírání desítek JARů přes AdmZip i Modrinth kontrolu (0 ms)
+    const initialFingerprint = getModsDirectoryFingerprint(modsDir);
+    if (initialFingerprint && profileModsDependenciesCache.get(gameInstanceDir) === initialFingerprint) {
+        if (typeof onLog === 'function') {
+            onLog('[ZÁVISLOSTI] ⚡ Závislosti módů ověřeny z cache (beze změn složky mods).');
+        }
+        return;
+    }
 
     let AdmZip = null;
     try { AdmZip = require('adm-zip'); } catch (_) { return; }
@@ -2442,6 +2524,9 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
             }
         } catch (_) {}
     }
+
+    const finalFingerprint = getModsDirectoryFingerprint(modsDir);
+    if (finalFingerprint) profileModsDependenciesCache.set(gameInstanceDir, finalFingerprint);
 }
 
 /**
@@ -2499,16 +2584,15 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
     if (config.customJvmArgs && config.customJvmArgs.trim()) {
         jvmArgs = config.customJvmArgs.trim().split(/\s+/).filter(Boolean);
     } else {
-        // High-performance Java 25 ZGC default
+        // High-performance Java 25 ZGC default (bez -XX:+AlwaysPreTouch pro bleskový start)
         jvmArgs = [
             '-XX:+UseZGC',
             '-XX:+UnlockExperimentalVMOptions',
-            '-XX:+AlwaysPreTouch',
             '-XX:+DisableExplicitGC'
         ];
     }
-    // Pro Java 24/25: odfiltrovat -XX:+ZGenerational (bylo v 24.0 odstraněno a hází warning v konzoli)
-    jvmArgs = jvmArgs.filter(a => a !== '-XX:+ZGenerational');
+    // Pro Java 24/25: odfiltrovat -XX:+ZGenerational a -XX:+AlwaysPreTouch (zbytečně nuluje celou RAM a zdržuje start)
+    jvmArgs = jvmArgs.filter(a => a !== '-XX:+ZGenerational' && a !== '-XX:+AlwaysPreTouch');
     if (!jvmArgs.some(a => a.startsWith('-Dfile.encoding='))) {
         jvmArgs.push('-Dfile.encoding=UTF-8');
     }
@@ -2832,79 +2916,90 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
         delete process.env[key];
     };
 
-    if (process.platform === 'linux') {
-        // Feral GameMode support
-        if (config.enableGameMode) {
-            const gamemodeLibs = [
-                '/usr/lib/libgamemodeauto.so.0',
-                '/usr/lib/x86_64-linux-gnu/libgamemodeauto.so.0',
-                '/usr/lib64/libgamemodeauto.so.0'
-            ];
-            for (const lib of gamemodeLibs) {
-                if (fs.existsSync(lib)) {
-                    const currentPreload = process.env.LD_PRELOAD || '';
-                    setGameEnv('LD_PRELOAD', currentPreload ? `${currentPreload}:${lib}` : lib);
-                    onLog(`[VÝKON] Feral GameMode aktivován (${lib})`);
-                    break;
+// In-memory cache pro detekci hardware platformy a GPU na Linuxu (vyhne se opakovanému čtení sysfs)
+let cachedLinuxGpuInfo = null;
+
+function getLinuxPlatformPerformanceInfo() {
+    if (cachedLinuxGpuInfo) return cachedLinuxGpuInfo;
+    let isLaptop = false;
+    try {
+        if (fs.existsSync('/sys/class/dmi/id/chassis_type')) {
+            const chassis = fs.readFileSync('/sys/class/dmi/id/chassis_type', 'utf8').trim();
+            const laptopTypes = ['8', '9', '10', '11', '14', '30', '31', '32'];
+            const desktopTypes = ['3', '4', '5', '6', '7', '13', '15', '16', '17', '23', '24', '35', '36'];
+            if (laptopTypes.includes(chassis)) {
+                isLaptop = true;
+            } else if (desktopTypes.includes(chassis)) {
+                isLaptop = false;
+            }
+        }
+        if (!isLaptop && fs.existsSync('/sys/class/power_supply')) {
+            const supplies = fs.readdirSync('/sys/class/power_supply');
+            for (const s of supplies) {
+                if (s.startsWith('BAT')) {
+                    const scopePath = path.join('/sys/class/power_supply', s, 'scope');
+                    const typePath = path.join('/sys/class/power_supply', s, 'type');
+                    const scope = fs.existsSync(scopePath) ? fs.readFileSync(scopePath, 'utf8').trim().toLowerCase() : '';
+                    const type = fs.existsSync(typePath) ? fs.readFileSync(typePath, 'utf8').trim().toLowerCase() : '';
+                    if ((type === 'battery' || !type) && scope !== 'device') {
+                        isLaptop = true;
+                        break;
+                    }
                 }
             }
+        }
+    } catch (_) {}
+
+    let gpuDeviceCount = 1;
+    try {
+        const drmDir = '/sys/class/drm';
+        if (fs.existsSync(drmDir)) {
+            const cards = fs.readdirSync(drmDir).filter(f => /^card\d+$/.test(f));
+            const uniqueDevices = new Set();
+            for (const c of cards) {
+                try {
+                    const devPath = fs.realpathSync(path.join(drmDir, c, 'device'));
+                    uniqueDevices.add(devPath);
+                } catch (_) {}
+            }
+            gpuDeviceCount = uniqueDevices.size;
+        }
+    } catch (_) {}
+
+    const isHybridMultiGpu = isLaptop && (gpuDeviceCount >= 2);
+    const hasNvidia = fs.existsSync('/proc/driver/nvidia') || fs.existsSync('/sys/module/nvidia');
+
+    let gamemodeLib = null;
+    const gamemodeLibs = [
+        '/usr/lib/libgamemodeauto.so.0',
+        '/usr/lib/x86_64-linux-gnu/libgamemodeauto.so.0',
+        '/usr/lib64/libgamemodeauto.so.0'
+    ];
+    for (const lib of gamemodeLibs) {
+        if (fs.existsSync(lib)) {
+            gamemodeLib = lib;
+            break;
+        }
+    }
+
+    cachedLinuxGpuInfo = { isLaptop, isHybridMultiGpu, hasNvidia, gamemodeLib };
+    return cachedLinuxGpuInfo;
+}
+
+    if (process.platform === 'linux') {
+        const linuxInfo = getLinuxPlatformPerformanceInfo();
+
+        // Feral GameMode support
+        if (config.enableGameMode && linuxInfo.gamemodeLib) {
+            const currentPreload = process.env.LD_PRELOAD || '';
+            setGameEnv('LD_PRELOAD', currentPreload ? `${currentPreload}:${linuxInfo.gamemodeLib}` : linuxInfo.gamemodeLib);
+            onLog(`[VÝKON] Feral GameMode aktivován (${linuxInfo.gamemodeLib})`);
         }
 
         // Discrete GPU (NVIDIA & AMD Prime Offloading výhradně pro hybridní notebooky s duální iGPU + dGPU)
         // Na stolních PC (jako RTX 4070) nebo laptopech s 1 GPU je monitor/displej zapojen přímo do grafiky a PRIME offload se NIKDY nesmí zapínat!
-        let isLaptop = false;
-        try {
-            if (fs.existsSync('/sys/class/dmi/id/chassis_type')) {
-                const chassis = fs.readFileSync('/sys/class/dmi/id/chassis_type', 'utf8').trim();
-                const laptopTypes = ['8', '9', '10', '11', '14', '30', '31', '32'];
-                const desktopTypes = ['3', '4', '5', '6', '7', '13', '15', '16', '17', '23', '24', '35', '36'];
-                if (laptopTypes.includes(chassis)) {
-                    isLaptop = true;
-                } else if (desktopTypes.includes(chassis)) {
-                    isLaptop = false;
-                }
-            }
-            if (!isLaptop && fs.existsSync('/sys/class/power_supply')) {
-                const supplies = fs.readdirSync('/sys/class/power_supply');
-                for (const s of supplies) {
-                    if (s.startsWith('BAT')) {
-                        const scopePath = path.join('/sys/class/power_supply', s, 'scope');
-                        const typePath = path.join('/sys/class/power_supply', s, 'type');
-                        const scope = fs.existsSync(scopePath) ? fs.readFileSync(scopePath, 'utf8').trim().toLowerCase() : '';
-                        const type = fs.existsSync(typePath) ? fs.readFileSync(typePath, 'utf8').trim().toLowerCase() : '';
-                        // Baterie periferií (bezdrátová myš, klávesnice) mají scope: Device
-                        // Baterie notebooku mají scope: System (nebo chybí) a type: Battery
-                        if ((type === 'battery' || !type) && scope !== 'device') {
-                            isLaptop = true;
-                            break;
-                        }
-                    }
-                }
-            }
-        } catch (_) {}
-
-        // Zjištění zda systém má skutečně více GPU (hybridní iGPU + dGPU)
-        let gpuDeviceCount = 1;
-        try {
-            const drmDir = '/sys/class/drm';
-            if (fs.existsSync(drmDir)) {
-                const cards = fs.readdirSync(drmDir).filter(f => /^card\d+$/.test(f));
-                const uniqueDevices = new Set();
-                for (const c of cards) {
-                    try {
-                        const devPath = fs.realpathSync(path.join(drmDir, c, 'device'));
-                        uniqueDevices.add(devPath);
-                    } catch (_) {}
-                }
-                gpuDeviceCount = uniqueDevices.size;
-            }
-        } catch (_) {}
-
-        const isHybridMultiGpu = isLaptop && (gpuDeviceCount >= 2);
-
-        if (config.enableDiscreteGpu && isHybridMultiGpu) {
-            const hasNvidia = fs.existsSync('/proc/driver/nvidia') || fs.existsSync('/sys/module/nvidia');
-            if (hasNvidia) {
+        if (config.enableDiscreteGpu && linuxInfo.isHybridMultiGpu) {
+            if (linuxInfo.hasNvidia) {
                 setGameEnv('__NV_PRIME_RENDER_OFFLOAD', '1');
                 setGameEnv('__GLX_VENDOR_LIBRARY_NAME', 'nvidia');
                 // Nikdy nenastavovat __VK_LAYER_NV_optimus=NVIDIA_only – rozbíjí Vulkan loader a vede k VK_ERROR_INITIALIZATION_FAILED
@@ -2921,7 +3016,7 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
             unsetGameEnv('__VK_LAYER_NV_optimus');
             unsetGameEnv('DRI_PRIME');
             if (config.enableDiscreteGpu) {
-                onLog(`[VÝKON] Detekován ${isLaptop ? 'notebook s 1 GPU' : 'stolní počítač (Desktop PC)'} – GPU běží nativně bez hybridního PRIME offloadu.`);
+                onLog(`[VÝKON] Detekován ${linuxInfo.isLaptop ? 'notebook s 1 GPU' : 'stolní počítač (Desktop PC)'} – GPU běží nativně bez hybridního PRIME offloadu.`);
             }
         }
 
@@ -3412,6 +3507,30 @@ function cancelAudioDlcDownload() {
     return false;
 }
 
+/**
+ * ⚡ Asynchronní pre-warm spouštěcího prostředí na pozadí při startu launcheru:
+ * - Ověří manifest verze z Mojangu na pozadí, takže při kliknutí na "Hrát" je verze připravena bez prodlevy.
+ * - Zachešuje kompatibilní runtime Javy v paměti (0 ms znovutestování procesů).
+ * - Zachešuje systémovou konfiguraci GPU/GameMode na Linuxu.
+ */
+async function prewarmLaunchEnvironment(centralRootDir, targetVersion = '26.2', config = null) {
+    try {
+        await ensureMojangVersionUpToDate(centralRootDir || BASE_DIR, targetVersion, () => {}, true);
+    } catch (_) {}
+
+    try {
+        if (config) {
+            await ensureJavaExecutable(config, () => {});
+        }
+    } catch (_) {}
+
+    try {
+        if (process.platform === 'linux') {
+            getLinuxPlatformPerformanceInfo();
+        }
+    } catch (_) {}
+}
+
 module.exports = {
     BASE_DIR,
     detectJavaPath,
@@ -3431,5 +3550,7 @@ module.exports = {
     getRequiredJavaVersion,
     ensureProfileModsDependencies,
     isJarFileValid,
-    ensureSelfNametagModInstalled
+    ensureSelfNametagModInstalled,
+    ensureMojangVersionUpToDate,
+    prewarmLaunchEnvironment
 };

@@ -710,7 +710,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (checkBorderlessFullscreen) checkBorderlessFullscreen.checked = currentConfig.borderlessFullscreen === true;
 
             const jvmArgsInput = document.getElementById('jvmArgsInput');
-            if (jvmArgsInput) jvmArgsInput.value = (currentConfig.customJvmArgs || '-XX:+UseZGC -XX:+UnlockExperimentalVMOptions -XX:+AlwaysPreTouch -XX:+DisableExplicitGC').replace(/-XX:\+ZGenerational\s*/g, '').trim();
+            if (jvmArgsInput) jvmArgsInput.value = (currentConfig.customJvmArgs || '-XX:+UseZGC -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC').replace(/-XX:\+ZGenerational\s*/g, '').replace(/-XX:\+AlwaysPreTouch\s*/g, '').trim();
 
             const customEnvVarsInput = document.getElementById('customEnvVarsInput');
             if (customEnvVarsInput) customEnvVarsInput.value = currentConfig.customEnvVars || '';
@@ -4315,18 +4315,65 @@ document.addEventListener('DOMContentLoaded', async () => {
     let isCatalogLoading = false;
     let hasMoreCatalogMods = true;
 
+    function getModCardSkeletonsHtml(count = 6) {
+        let html = '';
+        const titleWidths = [180, 220, 160, 205, 175, 190];
+        const descWidths1 = ['86%', '92%', '78%', '88%', '82%', '90%'];
+        const descWidths2 = ['52%', '68%', '45%', '58%', '62%', '48%'];
+
+        for (let i = 0; i < count; i++) {
+            const delay = (i * 0.12).toFixed(2);
+            const tW = titleWidths[i % titleWidths.length];
+            const dW1 = descWidths1[i % descWidths1.length];
+            const dW2 = descWidths2[i % descWidths2.length];
+
+            html += `
+                <div class="mod-card-row mod-card-skeleton" style="--sk-delay: ${delay}s;" aria-hidden="true">
+                    <div class="skeleton-avatar"></div>
+                    <div class="mod-info-area">
+                        <div class="mod-name-row">
+                            <div class="skeleton-bar skeleton-title" style="width: ${tW}px; height: 16px;"></div>
+                            <div class="skeleton-bar skeleton-author" style="width: 65px; height: 12px;"></div>
+                        </div>
+                        <div class="skeleton-desc-area">
+                            <div class="skeleton-bar skeleton-desc-line" style="width: ${dW1}; height: 12px;"></div>
+                            <div class="skeleton-bar skeleton-desc-line" style="width: ${dW2}; height: 12px;"></div>
+                        </div>
+                        <div class="mod-stats-row">
+                            <div class="skeleton-bar skeleton-stat" style="width: 80px; height: 12px;"></div>
+                            <div class="skeleton-bar skeleton-stat" style="width: 90px; height: 12px;"></div>
+                            <div class="skeleton-bar skeleton-stat" style="width: 70px; height: 12px;"></div>
+                        </div>
+                    </div>
+                    <div class="skeleton-btn"></div>
+                </div>
+            `;
+        }
+        return html;
+    }
+
     async function loadModrinthMods(reset = true) {
         if (!modsCardsList) return;
+        let infiniteSkeletonsEl = null;
+
         if (reset) {
             catalogOffset = 0;
             hasMoreCatalogMods = true;
             lastLoadedCatalogMods = [];
-            const typeLabels = { mod: 'mody', resourcepack: 'resource packy', shader: 'shadery' };
-            const label = typeLabels[currentModFilter.projectType] || 'položky';
-            modsCardsList.innerHTML = `<div class="mods-loading">Načítám ${label} z katalogu Modrinth...</div>`;
+            modsCardsList.innerHTML = getModCardSkeletonsHtml(6);
+        } else {
+            infiniteSkeletonsEl = document.createElement('div');
+            infiniteSkeletonsEl.className = 'catalog-infinite-skeletons';
+            infiniteSkeletonsEl.innerHTML = getModCardSkeletonsHtml(3);
+            modsCardsList.appendChild(infiniteSkeletonsEl);
         }
 
-        if (isCatalogLoading) return;
+        if (isCatalogLoading) {
+            if (infiniteSkeletonsEl && infiniteSkeletonsEl.parentNode) {
+                infiniteSkeletonsEl.remove();
+            }
+            return;
+        }
         isCatalogLoading = true;
 
         try {
@@ -4383,6 +4430,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 modsCardsList.innerHTML = `<div class="mods-loading">Nepodařilo se načíst data z katalogu.</div>`;
             }
         } finally {
+            if (infiniteSkeletonsEl && infiniteSkeletonsEl.parentNode) {
+                infiniteSkeletonsEl.remove();
+            }
             isCatalogLoading = false;
         }
     }
@@ -6795,7 +6845,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         btnPresetZgc.addEventListener('click', () => {
             const jvmInput = document.getElementById('jvmArgsInput');
             if (jvmInput) {
-                jvmInput.value = '-XX:+UseZGC -XX:+UnlockExperimentalVMOptions -XX:+AlwaysPreTouch -XX:+DisableExplicitGC';
+                jvmInput.value = '-XX:+UseZGC -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC';
                 autoSaveSettings(true);
                 showToast('Nastaveny parametry ZGC.', 'info');
             }
@@ -6807,7 +6857,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         btnPresetG1gc.addEventListener('click', () => {
             const jvmInput = document.getElementById('jvmArgsInput');
             if (jvmInput) {
-                jvmInput.value = '-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch';
+                jvmInput.value = '-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC';
                 autoSaveSettings(true);
                 showToast('Nastaveny parametry G1GC.', 'info');
             }
@@ -8843,10 +8893,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!profile) return;
         activeSettingsProfileId = pid;
 
+        const isImported = Boolean(
+            profile.isImported ||
+            (profile.id && profile.id.startsWith('imported-')) ||
+            profile.icon === 'import' ||
+            (profile.desc && profile.desc.includes('Importováno')) ||
+            (profile.gameDir && (profile.gameDir.includes('instances') || profile.gameDir.includes('profiles')) && profile.id.includes('import'))
+        );
+
         const titleEl = document.getElementById('profileSettingsModalTitle');
         const nameInput = document.getElementById('profileSettingsNameInput');
         const loaderSelect = document.getElementById('profileSettingsLoaderSelect');
         const deleteSec = document.getElementById('profileDeleteSection');
+        const loaderCardsContainer = document.getElementById('loaderCardsContainer');
+        const importedLoaderNotice = document.getElementById('profileImportedLoaderNotice');
+        const importedLoaderLabel = document.getElementById('profileImportedLoaderLabel');
+        const quickOptBanner = document.getElementById('profileQuickOptBanner');
+
+        // Banner optimalizace ve výchozím stavu schováme, aby nezpůsoboval žádný UI šum
+        if (quickOptBanner) quickOptBanner.style.display = 'none';
 
         if (titleEl) titleEl.textContent = `Nastavení profilu: ${profile.name}`;
         if (nameInput) nameInput.value = profile.name;
@@ -8854,14 +8919,36 @@ document.addEventListener('DOMContentLoaded', async () => {
         const curLoader = profile.loader || 'fabric';
         if (loaderSelect) loaderSelect.value = curLoader;
 
-        // Synchronizace vizuálních karet loaderů
-        document.querySelectorAll('#loaderCardsContainer .loader-card').forEach(card => {
-            if (card.dataset.loader === curLoader) {
-                card.classList.add('active');
-            } else {
-                card.classList.remove('active');
+        // U importovaných profilů nezobrazujeme přepínač loaderů (Fabric/Vanilla/NeoForge/Forge),
+        // ale pouze čistou uzamčenou informaci o stávajícím zavaděči
+        if (isImported) {
+            if (loaderCardsContainer) loaderCardsContainer.style.display = 'none';
+            if (importedLoaderNotice) {
+                importedLoaderNotice.style.display = 'flex';
+                if (importedLoaderLabel) {
+                    const loaderNames = {
+                        fabric: 'Fabric',
+                        vanilla: 'Vanilla',
+                        neoforge: 'NeoForge',
+                        forge: 'Forge',
+                        quilt: 'Quilt'
+                    };
+                    importedLoaderLabel.textContent = loaderNames[curLoader.toLowerCase()] || curLoader;
+                }
             }
-        });
+        } else {
+            if (loaderCardsContainer) loaderCardsContainer.style.display = 'grid';
+            if (importedLoaderNotice) importedLoaderNotice.style.display = 'none';
+
+            // Synchronizace vizuálních karet loaderů
+            document.querySelectorAll('#loaderCardsContainer .loader-card').forEach(card => {
+                if (card.dataset.loader === curLoader) {
+                    card.classList.add('active');
+                } else {
+                    card.classList.remove('active');
+                }
+            });
+        }
 
         const pRam = profile.ramMax || currentConfig.ramMax || 4;
         if (profileRamSliderController) {
@@ -8876,7 +8963,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         const upgradeBanner = document.getElementById('profileQuickUpgradeBanner');
-        const canUpgrade = profile.version !== '26.3' && profile.version !== '26.4';
+        const canUpgrade = !isImported && profile.version !== '26.3' && profile.version !== '26.4';
         if (upgradeBanner) {
             if (canUpgrade) {
                 upgradeBanner.style.display = 'flex';
@@ -8891,23 +8978,27 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (modalProfileSettings) modalProfileSettings.style.display = 'flex';
 
-        // Check if Sodium and Lithium are already installed in this profile
+        // Kontrola optimalizace: Pokud už profil Sodium/Lithium má (nebo jde o importovaný profil),
+        // banner vůbec nezobrazujeme (žádný text "Optimalizováno" ani zelený pruh v UI).
+        // Zobrazí se výhradně tehdy, pokud profil optimalizovaný NENÍ a lze ho optimalizovat.
         (async () => {
             try {
+                if (isImported) {
+                    if (quickOptBanner) quickOptBanner.style.display = 'none';
+                    return;
+                }
+
                 const optStatus = await window.api.checkOptimizationStatus(pid);
-                const btnApplyOpt = document.getElementById('btnApplyProfileOptimization');
-                const profileQuickOptDesc = document.getElementById('profileQuickOptDesc');
-                if (optStatus && (optStatus.hasSodium || (optStatus.hasSodium && optStatus.hasLithium))) {
-                    if (btnApplyOpt) {
-                        btnApplyOpt.innerHTML = '<span><svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--green" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg> Optimalizováno</span>';
-                        btnApplyOpt.classList.add('btn-opt-done');
-                        btnApplyOpt.classList.remove('mc-btn-green');
-                        btnApplyOpt.title = 'Sodium a Lithium jsou již v profilu nainstalovány.';
-                    }
-                    if (profileQuickOptDesc) {
-                        profileQuickOptDesc.textContent = 'Sodium a Lithium jsou aktivní. Profil je plně optimalizován.';
-                    }
+                const isAlreadyOptimized = Boolean(optStatus && (optStatus.hasSodium || optStatus.hasLithium));
+
+                if (isAlreadyOptimized) {
+                    // Už je to optimalizováno -> schovat banner, žádný UI šum!
+                    if (quickOptBanner) quickOptBanner.style.display = 'none';
                 } else {
+                    // Profil ještě není optimalizován -> nabídnout 1-klik optimalizaci
+                    if (quickOptBanner) quickOptBanner.style.display = 'flex';
+                    const btnApplyOpt = document.getElementById('btnApplyProfileOptimization');
+                    const profileQuickOptDesc = document.getElementById('profileQuickOptDesc');
                     if (btnApplyOpt) {
                         btnApplyOpt.innerHTML = '<span>⚡ Optimalizovat</span>';
                         btnApplyOpt.classList.remove('btn-opt-done');
@@ -8920,6 +9011,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             } catch (e) {
                 console.warn('Nelze ověřit stav optimalizace:', e);
+                if (quickOptBanner) quickOptBanner.style.display = 'none';
             }
         })();
     }
@@ -8940,25 +9032,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btnApplyOpt) {
         btnApplyOpt.addEventListener('click', async () => {
             if (!activeSettingsProfileId) return;
+            const quickOptBanner = document.getElementById('profileQuickOptBanner');
             btnApplyOpt.disabled = true;
             btnApplyOpt.innerHTML = '<span><svg class="ui-icon-svg ui-icon-svg--xs ui-icon-spin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="12"></circle></svg> Optimalizuji...</span>';
             try {
                 const res = await window.api.applyProfileOptimization(activeSettingsProfileId);
                 if (res && res.success) {
-                    showToast('Profil byl optimalizován.', 'success');
+                    showToast('Profil byl úspěšně optimalizován.', 'success');
                     const loaderSelect = document.getElementById('profileSettingsLoaderSelect');
                     if (loaderSelect) loaderSelect.value = 'fabric';
                     document.querySelectorAll('#loaderCardsContainer .loader-card').forEach(c => {
                         if (c.dataset.loader === 'fabric') c.classList.add('active');
                         else c.classList.remove('active');
                     });
-                    btnApplyOpt.innerHTML = '<span><svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--green" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg> Optimalizováno</span>';
-                    btnApplyOpt.classList.add('btn-opt-done');
-                    btnApplyOpt.classList.remove('mc-btn-green');
-                    const profileQuickOptDesc = document.getElementById('profileQuickOptDesc');
-                    if (profileQuickOptDesc) {
-                        profileQuickOptDesc.textContent = 'Sodium a Lithium jsou aktivní. Profil je plně optimalizován.';
-                    }
+                    // Po úspěšné optimalizaci banner okamžitě schováme (žádný zbytečný UI šum "Optimalizováno")
+                    if (quickOptBanner) quickOptBanner.style.display = 'none';
                 } else {
                     showToast(res?.error || 'Optimalizace selhala.', 'error');
                     btnApplyOpt.innerHTML = '<span>⚡ Optimalizovat</span>';
@@ -8976,6 +9064,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function closeProfileSettingsModal() {
         if (modalProfileSettings) modalProfileSettings.style.display = 'none';
+        const quickOptBanner = document.getElementById('profileQuickOptBanner');
+        if (quickOptBanner) quickOptBanner.style.display = 'none';
         activeSettingsProfileId = null;
     }
 
@@ -8994,11 +9084,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btnSaveProfileSettings) {
         btnSaveProfileSettings.addEventListener('click', async () => {
             if (!activeSettingsProfileId) return;
+            const profile = (currentConfig.profiles || []).find(p => p.id === activeSettingsProfileId);
+            const isImported = Boolean(
+                profile && (
+                    profile.isImported ||
+                    (profile.id && profile.id.startsWith('imported-')) ||
+                    profile.icon === 'import' ||
+                    (profile.desc && profile.desc.includes('Importováno')) ||
+                    (profile.gameDir && (profile.gameDir.includes('instances') || profile.gameDir.includes('profiles')) && profile.id.includes('import'))
+                )
+            );
+
             const nameInput = document.getElementById('profileSettingsNameInput');
             const loaderSelect = document.getElementById('profileSettingsLoaderSelect');
             const newName = nameInput ? nameInput.value.trim() : '';
             const newRam = profileRamSliderController ? profileRamSliderController.getTarget() : (profileRamSlider ? parseInt(profileRamSlider.value, 10) : 4);
-            const newLoader = loaderSelect ? loaderSelect.value : 'fabric';
+            // U importovaných profilů se zavaděč nemění ani nepřepisuje
+            const newLoader = isImported ? ((profile && profile.loader) || 'fabric') : (loaderSelect ? loaderSelect.value : 'fabric');
 
             await window.api.updateProfileSettings(activeSettingsProfileId, {
                 name: newName || 'Profil',

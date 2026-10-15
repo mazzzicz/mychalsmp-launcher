@@ -219,8 +219,34 @@ function evaluateModFile(filename) {
     return evaluateMod(filename);
 }
 
+// Inkrementální paměťová cache výsledků skenu složky mods podle otisku mtimeMs a velikosti
+const wardenScanCache = new Map();
+
+function getModsDirFingerprint(modsDir) {
+    if (!fs.existsSync(modsDir)) return '';
+    try {
+        const files = fs.readdirSync(modsDir);
+        files.sort();
+        const parts = [];
+        for (const f of files) {
+            const l = f.toLowerCase();
+            if (l.endsWith('.jar') || l.endsWith('.disabled')) {
+                const fullPath = path.join(modsDir, f);
+                try {
+                    const st = fs.statSync(fullPath);
+                    parts.push(`${f}:${st.size}:${Math.floor(st.mtimeMs)}`);
+                } catch (_) {}
+            }
+        }
+        return parts.join('|');
+    } catch (_) {
+        return '';
+    }
+}
+
 /**
  * Scans a profile directory's mods folder for blacklisted mods.
+ * Využívá bleskovou kontrolu otisku souborů (0 ms pokud nedošlo ke změně).
  */
 function scanProfileForBlacklistedMods(profileDir) {
     if (!profileDir || !fs.existsSync(profileDir)) {
@@ -230,6 +256,12 @@ function scanProfileForBlacklistedMods(profileDir) {
     const modsDir = path.join(profileDir, 'mods');
     if (!fs.existsSync(modsDir)) {
         return { clean: true, blockedCount: 0, illegalMods: [] };
+    }
+
+    const fingerprint = getModsDirFingerprint(modsDir);
+    const cached = wardenScanCache.get(profileDir);
+    if (cached && cached.fingerprint === fingerprint) {
+        return cached.result;
     }
 
     let metaMap = {};
@@ -258,17 +290,21 @@ function scanProfileForBlacklistedMods(profileDir) {
         // Silently ignore
     }
 
-    return {
+    const result = {
         clean: illegalMods.length === 0,
         blockedCount: illegalMods.length,
         illegalMods
     };
+
+    wardenScanCache.set(profileDir, { fingerprint, result });
+    return result;
 }
 
 /**
  * Disables a prohibited mod by renaming it to .jar.disabled
  */
 function disableIllegalMod(profileDir, filename) {
+    wardenScanCache.delete(profileDir);
     const modsDir = path.join(profileDir, 'mods');
     const oldPath = path.join(modsDir, filename);
     const newPath = path.join(modsDir, filename + '.disabled');

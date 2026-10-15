@@ -35,7 +35,7 @@ const os = require('os');
 const { loadConfig, saveConfig, BASE_DIR } = require('./config');
 const { sanitizeAccountForRenderer } = require('./cryptoVault');
 const { pingServer } = require('./serverPing');
-const { createOfflineAuth, loginMicrosoft, refreshMicrosoftSession } = require('./auth');
+const { getOfflineUUID, createOfflineAuth, loginMicrosoft, refreshMicrosoftSession } = require('./auth');
 const {
     launchGame,
     isGameRunning,
@@ -49,7 +49,8 @@ const {
     downloadAudioDlc,
     cancelAudioDlcDownload,
     setupOfflineCustomSkinAndCape,
-    ensureSelfNametagModInstalled
+    ensureSelfNametagModInstalled,
+    prewarmLaunchEnvironment
 } = require('./launcher');
 const { searchModrinth, downloadModOrPack, checkProfileModUpdates } = require('./modrinth');
 const {
@@ -431,15 +432,17 @@ if (!gotTheLock) {
         createSplashWindow();
         createWindow();
 
-        // Automatická kontrola a instalace módu Self Nametag (F5) do všech profilů při startu launcheru
-        try {
-            ensureSelfNametagModInstalled(BASE_DIR);
-            const cfg = loadConfig();
-            for (const p of (cfg.profiles || [])) {
-                if (p.gameDir) ensureSelfNametagModInstalled(p.gameDir);
-                ensureSelfNametagModInstalled(path.join(BASE_DIR, 'profiles', p.id));
-            }
-        } catch (_) {}
+        // Automatická kontrola módu Self Nametag (F5) a asynchronní pre-warm spouštěcího prostředí na pozadí
+        setTimeout(() => {
+            try {
+                ensureSelfNametagModInstalled(BASE_DIR);
+            } catch (_) {}
+            try {
+                const cfg = loadConfig();
+                const targetVer = cfg.version || '26.2';
+                prewarmLaunchEnvironment(BASE_DIR, targetVer, cfg);
+            } catch (_) {}
+        }, 1200);
 
         // Initialize Discord Rich Presence
         try {
@@ -1368,15 +1371,52 @@ async function getValidMicrosoftSession(forceRefresh = false) {
             return { success: true, token: updatedAccount.access_token, account: updatedAccount };
         } else {
             console.warn('[AUTH] Automatické obnovení selhalo:', refreshRes.error);
+            // ⚡ 100% funkční offline fallback: Pokud nejde internet nebo refresh selhal,
+            // ale v konfiguraci máme existující data účtu (token/jméno/uuid), umožníme spuštění v offline fallback režimu
+            if (msAcc.access_token || msAcc.name || msAcc.username) {
+                console.log('[AUTH] Aktivován 100% offline fallback pro Microsoft účet (spuštění offline bez pádu).');
+                const fallbackName = msAcc.name || msAcc.username || config.username || 'Hrac';
+                const fallbackUuid = msAcc.uuid || msAcc.id || getOfflineUUID(fallbackName);
+                const fallbackAccount = {
+                    ...msAcc,
+                    name: fallbackName,
+                    username: fallbackName,
+                    uuid: fallbackUuid,
+                    access_token: msAcc.access_token || ('offline_token_' + fallbackUuid),
+                    client_token: msAcc.client_token || ('offline_client_' + fallbackUuid),
+                    user_properties: msAcc.user_properties || '{}'
+                };
+                return {
+                    success: true,
+                    token: fallbackAccount.access_token,
+                    account: fallbackAccount,
+                    isOfflineFallback: true
+                };
+            }
             return {
                 success: false,
                 sessionExpired: true,
-                error: 'Platnost Microsoft účtu vypršela. Přihlas se prosím znovu ke svému účtu.'
+                error: 'Platnost Microsoft účtu vypršela a nelze se připojit k internetu pro obnovení. Přihlas se prosím znovu ke svému účtu.'
             };
         }
     }
 
     if (!msAcc.access_token) {
+        if (msAcc.name || msAcc.username) {
+            console.log('[AUTH] Přístupový token chybí, ale hráč má profil – použit offline fallback.');
+            const fallbackName = msAcc.name || msAcc.username || config.username || 'Hrac';
+            const fallbackUuid = msAcc.uuid || msAcc.id || getOfflineUUID(fallbackName);
+            const fallbackAccount = {
+                ...msAcc,
+                name: fallbackName,
+                username: fallbackName,
+                uuid: fallbackUuid,
+                access_token: 'offline_token_' + fallbackUuid,
+                client_token: 'offline_client_' + fallbackUuid,
+                user_properties: '{}'
+            };
+            return { success: true, token: fallbackAccount.access_token, account: fallbackAccount, isOfflineFallback: true };
+        }
         return { success: false, error: 'Chybí přístupový token Microsoft účtu.' };
     }
 
@@ -1820,16 +1860,22 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
         baseDir: profile.gameDir || config.baseDir
     };
 
-    // Automatická synchronizace servers.dat (MYCHAL SMP + připnuté), guiScale:2 a ověření Self Nametag módu
-    try {
-        const targetDir = launchConfig.baseDir || BASE_DIR;
-        ensureOptionsGuiScale(targetDir, 2);
-        syncServersDat(targetDir, config.servers || []);
-        ensureSelfNametagModInstalled(targetDir);
-        if (activeId) {
-            ensureSelfNametagModInstalled(path.join(BASE_DIR, 'profiles', activeId));
-        }
-    } catch (_) { }
+    // ⚡ Paralelní příprava herních souborů před startem (options.txt, servers.dat, klávesové zkratky a Self Nametag)
+    const targetDir = launchConfig.baseDir || BASE_DIR;
+    await Promise.all([
+        Promise.resolve().then(() => {
+            try { ensureOptionsGuiScale(targetDir, 2); } catch (_) {}
+        }),
+        Promise.resolve().then(() => {
+            try { syncServersDat(targetDir, config.servers || []); } catch (_) {}
+        }),
+        Promise.resolve().then(() => {
+            try { keybindManager.syncKeybindsToProfile(targetDir); } catch (_) {}
+        }),
+        Promise.resolve().then(() => {
+            try { ensureSelfNametagModInstalled(targetDir); } catch (_) {}
+        })
+    ]);
 
     // Kontrola nepovolených módů (Warden Probe) při připojení na MYCHAL SMP
     const isMychalServer = serverIp && (
@@ -1854,22 +1900,24 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
     const recentGameLogs = [];
     const gameSessionStart = Date.now();
 
-    // Update Discord RPC to In-Game status
-    try {
-        const currentCfg = loadConfig();
-        if (currentCfg.enableDiscordRpc !== false) {
-            const initialServer = serverIp
-                ? (serverIp.toLowerCase().includes('mychalsmp') || serverIp === '130.61.89.37' ? 'mychalsmp.xyz' : serverIp)
-                : 'menu';
-            discordRpc.updateActivity({
-                username: authData?.name || currentCfg.username || 'Hráč',
-                server: initialServer,
-                profileName: profile ? profile.name : 'Minecraft 26.2',
-                isPlaying: true,
-                startTime: gameSessionStart
-            });
-        }
-    } catch (e) { }
+    // ⚡ Asynchronní update Discord RPC na pozadí (neblokuje spuštění a start Javy)
+    setImmediate(() => {
+        try {
+            const currentCfg = loadConfig();
+            if (currentCfg.enableDiscordRpc !== false) {
+                const initialServer = serverIp
+                    ? (serverIp.toLowerCase().includes('mychalsmp') || serverIp === '130.61.89.37' ? 'mychalsmp.xyz' : serverIp)
+                    : 'menu';
+                discordRpc.updateActivity({
+                    username: authData?.name || currentCfg.username || 'Hráč',
+                    server: initialServer,
+                    profileName: profile ? profile.name : 'Minecraft 26.2',
+                    isPlaying: true,
+                    startTime: gameSessionStart
+                });
+            }
+        } catch (_) { }
+    });
 
     try {
         let hasExited = false;
@@ -2171,9 +2219,20 @@ ipcMain.handle('update-profile-settings', async (event, profileId, updates) => {
     const config = loadConfig();
     const profiles = (config.profiles || []).map(p => {
         if (p.id === profileId) {
-            const next = { ...p, ...updates };
-            if (updates.loader) {
-                next.optimizedChosen = updates.loader === 'fabric' ? 'optimized' : 'vanilla';
+            const isImported = Boolean(
+                p.isImported ||
+                (p.id && p.id.startsWith('imported-')) ||
+                p.icon === 'import' ||
+                (p.desc && p.desc.includes('Importováno')) ||
+                (p.gameDir && (p.gameDir.includes('instances') || p.gameDir.includes('profiles')) && p.id.includes('import'))
+            );
+            const safeUpdates = { ...updates };
+            if (isImported) {
+                delete safeUpdates.loader;
+            }
+            const next = { ...p, ...safeUpdates };
+            if (safeUpdates.loader) {
+                next.optimizedChosen = safeUpdates.loader === 'fabric' ? 'optimized' : 'vanilla';
             }
             return next;
         }
@@ -2182,7 +2241,8 @@ ipcMain.handle('update-profile-settings', async (event, profileId, updates) => {
     const extra = {};
     if (config.activeProfileId === profileId) {
         if (updates.version) extra.version = updates.version;
-        if (updates.loader) extra.loader = updates.loader;
+        const targetP = profiles.find(p => p.id === profileId);
+        if (targetP && targetP.loader) extra.loader = targetP.loader;
     }
     saveConfig({ profiles, ...extra });
     return { success: true };

@@ -97,7 +97,7 @@ const DEFAULT_CONFIG = {
     autoConnectServer: false,
     serverIp: 'mychalsmp.xyz',
     serverPort: 25565,
-    customJvmArgs: '-XX:+UseZGC -XX:+UnlockExperimentalVMOptions -XX:+AlwaysPreTouch -XX:+DisableExplicitGC',
+    customJvmArgs: '-XX:+UseZGC -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC',
     enableGameMode: true,
     enableMangoHud: false,
     enableDiscreteGpu: true,
@@ -160,6 +160,9 @@ function loadConfig() {
                 },
                 baseDir: BASE_DIR
             };
+            if (typeof merged.customJvmArgs === 'string') {
+                merged.customJvmArgs = merged.customJvmArgs.replace(/-XX:\+AlwaysPreTouch\s*/g, '').trim();
+            }
             if (!merged.offlineUsername) {
                 merged.offlineUsername = (merged.authType === 'offline' && merged.username) ? merged.username : 'Hrac';
             }
