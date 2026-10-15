@@ -2917,14 +2917,20 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
         }
     } catch (_) { }
 
+    let safeRamMax = Math.max(1, parseInt(config.ramMax, 10) || 4);
+    let safeRamMin = Math.max(1, parseInt(config.ramMin, 10) || 2);
+    if (safeRamMin > safeRamMax) {
+        safeRamMin = safeRamMax;
+    }
+
     const opts = {
         config: config,
         authorization: authData,
         root: BASE_DIR, // Centrální adresář pro sdílení verzí, knihoven a assetů bez znovustahování
         version: versionOpts,
         memory: {
-            max: `${config.ramMax || 4}G`,
-            min: `${config.ramMin || 2}G`
+            max: `${safeRamMax}G`,
+            min: `${safeRamMin}G`
         },
         javaPath: javaExecutable,
         customArgs: jvmArgs,

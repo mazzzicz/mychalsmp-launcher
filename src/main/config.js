@@ -194,6 +194,15 @@ function loadConfig() {
                     }
                 });
             }
+            if (merged.ramMax !== undefined || merged.ramMin !== undefined) {
+                let max = parseInt(merged.ramMax, 10);
+                let min = parseInt(merged.ramMin, 10);
+                if (isNaN(max) || max < 1) max = 4;
+                if (isNaN(min) || min < 1) min = 2;
+                if (min > max) min = max;
+                merged.ramMax = max;
+                merged.ramMin = min;
+            }
             return merged;
         }
     } catch (err) {
@@ -262,6 +271,16 @@ function saveConfig(newConfig) {
                 ? { ...(current.resolution || {}), ...cleanedNewConfig.resolution }
                 : current.resolution
         };
+        if (merged.ramMax !== undefined || merged.ramMin !== undefined) {
+            let max = parseInt(merged.ramMax, 10);
+            let min = parseInt(merged.ramMin, 10);
+            if (isNaN(max) || max < 1) max = 4;
+            if (isNaN(min) || min < 1) min = 2;
+            if (min > max) min = max;
+            merged.ramMax = max;
+            merged.ramMin = min;
+        }
+
         delete merged.baseDir;
 
         // Před zápisem na disk zašifrujeme veškeré autentizační tokeny na hardwarový klíč PC

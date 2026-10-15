@@ -946,43 +946,63 @@ ipcMain.handle('get-profile-mods', async (event, profileId) => {
 });
 
 ipcMain.handle('toggle-profile-mod', async (event, profileId, filename) => {
+    if (!filename || typeof filename !== 'string') {
+        return { success: false, error: 'Neplatný název souboru.' };
+    }
+    const safeFilename = path.basename(filename.trim());
+    if (!safeFilename || safeFilename !== filename || safeFilename.includes('..')) {
+        return { success: false, error: 'Neplatný název souboru.' };
+    }
+
     const config = loadConfig();
     const profile = (config.profiles || []).find(p => p.id === profileId) || config.profiles[0];
     const gameDir = profile?.gameDir || BASE_DIR;
-    const modsDir = path.join(gameDir, 'mods');
+    const modsDir = path.resolve(gameDir, 'mods');
 
-    const srcPath = path.join(modsDir, filename);
-    if (!fs.existsSync(srcPath)) {
+    const srcPath = path.resolve(modsDir, safeFilename);
+    if (!srcPath.startsWith(modsDir + path.sep) || !fs.existsSync(srcPath)) {
         return { success: false, error: 'Soubor módu nebyl nalezen.' };
     }
 
     let targetFilename;
     let enabled;
-    if (filename.toLowerCase().endsWith('.disabled')) {
-        targetFilename = filename.replace(/\.disabled$/i, '');
+    if (safeFilename.toLowerCase().endsWith('.disabled')) {
+        targetFilename = safeFilename.replace(/\.disabled$/i, '');
         enabled = true;
     } else {
-        targetFilename = filename + '.disabled';
+        targetFilename = safeFilename + '.disabled';
         enabled = false;
     }
 
-    const destPath = path.join(modsDir, targetFilename);
+    const destPath = path.resolve(modsDir, targetFilename);
+    if (!destPath.startsWith(modsDir + path.sep)) {
+        return { success: false, error: 'Neplatná cílová cesta módu.' };
+    }
+
     try {
         fs.renameSync(srcPath, destPath);
-        return { success: true, oldFilename: filename, newFilename: targetFilename, enabled };
+        return { success: true, oldFilename: safeFilename, newFilename: targetFilename, enabled };
     } catch (e) {
         return { success: false, error: e.message };
     }
 });
 
 ipcMain.handle('delete-profile-mod', async (event, profileId, filename) => {
+    if (!filename || typeof filename !== 'string') {
+        return { success: false, error: 'Neplatný název souboru.' };
+    }
+    const safeFilename = path.basename(filename.trim());
+    if (!safeFilename || safeFilename !== filename || safeFilename.includes('..')) {
+        return { success: false, error: 'Neplatný název souboru.' };
+    }
+
     const config = loadConfig();
     const profile = (config.profiles || []).find(p => p.id === profileId) || config.profiles[0];
     const gameDir = profile?.gameDir || BASE_DIR;
-    const modsDir = path.join(gameDir, 'mods');
-    const filePath = path.join(modsDir, filename);
+    const modsDir = path.resolve(gameDir, 'mods');
+    const filePath = path.resolve(modsDir, safeFilename);
 
-    if (!fs.existsSync(filePath)) {
+    if (!filePath.startsWith(modsDir + path.sep) || !fs.existsSync(filePath)) {
         return { success: false, error: 'Soubor módu nebyl nalezen.' };
     }
 
@@ -994,10 +1014,10 @@ ipcMain.handle('delete-profile-mod', async (event, profileId, filename) => {
             const metaPath = path.join(modsDir, '.mod_meta.json');
             if (fs.existsSync(metaPath)) {
                 const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
-                const deletedInfo = meta[filename] || meta[filename + '.disabled'] || meta[filename.replace(/\.disabled$/i, '')];
-                delete meta[filename];
-                delete meta[filename + '.disabled'];
-                delete meta[filename.replace(/\.disabled$/i, '')];
+                const deletedInfo = meta[safeFilename] || meta[safeFilename + '.disabled'] || meta[safeFilename.replace(/\.disabled$/i, '')];
+                delete meta[safeFilename];
+                delete meta[safeFilename + '.disabled'];
+                delete meta[safeFilename.replace(/\.disabled$/i, '')];
                 fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf8');
 
                 // Také vyčistíme staré pole config.installedMods, pokud tam byl id nebo slug
@@ -1010,7 +1030,7 @@ ipcMain.handle('delete-profile-mod', async (event, profileId, filename) => {
             }
         } catch (_) { }
 
-        return { success: true, filename };
+        return { success: true, filename: safeFilename };
     } catch (e) {
         return { success: false, error: e.message };
     }
@@ -1219,47 +1239,76 @@ ipcMain.handle('get-profile-packs', async (event, profileId, packType) => {
 });
 
 ipcMain.handle('toggle-profile-pack', async (event, profileId, packType, filename) => {
+    if (!filename || typeof filename !== 'string') {
+        return { success: false, error: 'Neplatný název souboru.' };
+    }
+    const safeFilename = path.basename(filename.trim());
+    if (!safeFilename || safeFilename !== filename || safeFilename.includes('..')) {
+        return { success: false, error: 'Neplatný název balíčku.' };
+    }
+
     const config = loadConfig();
     const profile = (config.profiles || []).find(p => p.id === profileId) || config.profiles[0];
     const gameDir = profile?.gameDir || BASE_DIR;
     const targetFolder = packType === 'shaderpacks' ? 'shaderpacks' : 'resourcepacks';
-    const folderPath = path.join(gameDir, targetFolder);
-    const srcPath = path.join(folderPath, filename);
-    if (!fs.existsSync(srcPath)) return { success: false, error: 'Soubor nenalezen' };
-    const isCurrentlyDisabled = filename.toLowerCase().endsWith('.disabled');
-    const targetFilename = isCurrentlyDisabled ? filename.replace(/\.disabled$/i, '') : filename + '.disabled';
-    const destPath = path.join(folderPath, targetFilename);
+    const folderPath = path.resolve(gameDir, targetFolder);
+    const srcPath = path.resolve(folderPath, safeFilename);
+
+    if (!srcPath.startsWith(folderPath + path.sep) || !fs.existsSync(srcPath)) {
+        return { success: false, error: 'Soubor nenalezen' };
+    }
+
+    const isCurrentlyDisabled = safeFilename.toLowerCase().endsWith('.disabled');
+    const targetFilename = isCurrentlyDisabled ? safeFilename.replace(/\.disabled$/i, '') : safeFilename + '.disabled';
+    const destPath = path.resolve(folderPath, targetFilename);
+
+    if (!destPath.startsWith(folderPath + path.sep)) {
+        return { success: false, error: 'Neplatná cílová cesta balíčku.' };
+    }
+
     try {
         fs.renameSync(srcPath, destPath);
-        return { success: true, oldFilename: filename, newFilename: targetFilename, enabled: isCurrentlyDisabled };
+        return { success: true, oldFilename: safeFilename, newFilename: targetFilename, enabled: isCurrentlyDisabled };
     } catch (e) {
         return { success: false, error: e.message };
     }
 });
 
 ipcMain.handle('delete-profile-pack', async (event, profileId, packType, filename) => {
+    if (!filename || typeof filename !== 'string') {
+        return { success: false, error: 'Neplatný název souboru.' };
+    }
+    const safeFilename = path.basename(filename.trim());
+    if (!safeFilename || safeFilename !== filename || safeFilename.includes('..')) {
+        return { success: false, error: 'Neplatný název balíčku.' };
+    }
+
     const config = loadConfig();
     const profile = (config.profiles || []).find(p => p.id === profileId) || config.profiles[0];
     const gameDir = profile?.gameDir || BASE_DIR;
     const targetFolder = packType === 'shaderpacks' ? 'shaderpacks' : 'resourcepacks';
-    const folderPath = path.join(gameDir, targetFolder);
-    let targetPath = path.join(folderPath, filename);
+    const folderPath = path.resolve(gameDir, targetFolder);
+
+    let targetPath = path.resolve(folderPath, safeFilename);
     if (!fs.existsSync(targetPath)) {
         if (fs.existsSync(targetPath + '.disabled')) {
             targetPath = targetPath + '.disabled';
-        } else if (filename.endsWith('.disabled') && fs.existsSync(targetPath.replace(/\.disabled$/i, ''))) {
+        } else if (safeFilename.endsWith('.disabled') && fs.existsSync(targetPath.replace(/\.disabled$/i, ''))) {
             targetPath = targetPath.replace(/\.disabled$/i, '');
         }
     }
+
+    if (!targetPath.startsWith(folderPath + path.sep) || !fs.existsSync(targetPath)) {
+        return { success: false, error: 'Balíček nebyl nalezen.' };
+    }
+
     try {
-        if (fs.existsSync(targetPath)) {
-            if (fs.statSync(targetPath).isDirectory()) {
-                fs.rmSync(targetPath, { recursive: true, force: true });
-            } else {
-                fs.unlinkSync(targetPath);
-            }
+        if (fs.statSync(targetPath).isDirectory()) {
+            fs.rmSync(targetPath, { recursive: true, force: true });
+        } else {
+            fs.unlinkSync(targetPath);
         }
-        return { success: true, filename };
+        return { success: true, filename: safeFilename };
     } catch (e) {
         return { success: false, error: e.message };
     }
@@ -2234,9 +2283,13 @@ ipcMain.handle('open-profile-folder', async (event, profileId, subfolder) => {
     const config = loadConfig();
     const profile = (config.profiles || []).find(p => p.id === profileId) || config.profiles[0];
     let folder = profile.gameDir || BASE_DIR;
-    if (subfolder) {
-        folder = path.join(folder, subfolder);
-        if (!fs.existsSync(folder)) fs.mkdirSync(folder, { recursive: true });
+    if (subfolder && typeof subfolder === 'string') {
+        const safeSub = path.basename(subfolder.trim());
+        const allowed = ['mods', 'resourcepacks', 'shaderpacks', 'screenshots', 'saves', 'logs', 'config'];
+        if (allowed.includes(safeSub)) {
+            folder = path.join(folder, safeSub);
+            if (!fs.existsSync(folder)) fs.mkdirSync(folder, { recursive: true });
+        }
     }
     shell.openPath(folder);
     return true;
@@ -2276,39 +2329,53 @@ ipcMain.handle('update-profile-settings', async (event, profileId, updates) => {
 });
 
 ipcMain.handle('delete-profile', async (event, profileId) => {
+    if (!profileId || typeof profileId !== 'string') {
+        return { success: false, error: 'Neplatné ID profilu.' };
+    }
+    const safeProfileId = path.basename(profileId.trim());
+    if (!safeProfileId || safeProfileId !== profileId || safeProfileId === '.' || safeProfileId === '..') {
+        return { success: false, error: 'Neplatné ID profilu.' };
+    }
+
     const config = loadConfig();
     const profiles = config.profiles || [];
     if (profiles.length <= 1) {
         return { success: false, error: 'V launcheru musí zůstat alespoň jeden profil.' };
     }
 
-    const profile = profiles.find(p => p.id === profileId);
+    const profile = profiles.find(p => p.id === safeProfileId);
     if (!profile) {
         return { success: false, error: 'Profil nebyl nalezen.' };
     }
 
-    // 1. Smazání složky instance profilu (pokud existuje)
-    if (profile.gameDir && fs.existsSync(profile.gameDir) && profile.gameDir !== BASE_DIR) {
-        try {
-            fs.rmSync(profile.gameDir, { recursive: true, force: true });
-        } catch (e) { }
+    // 1. Smazání složky instance profilu (pokud existuje a je bezpečně uvnitř BASE_DIR)
+    const resolvedBase = path.resolve(BASE_DIR);
+    if (profile.gameDir && typeof profile.gameDir === 'string') {
+        const resolvedGameDir = path.resolve(profile.gameDir);
+        if (resolvedGameDir !== resolvedBase && resolvedGameDir.startsWith(resolvedBase + path.sep) && fs.existsSync(resolvedGameDir)) {
+            try {
+                fs.rmSync(resolvedGameDir, { recursive: true, force: true });
+            } catch (e) { }
+        }
     }
 
-    const profileSubDir = path.join(BASE_DIR, 'profiles', profileId);
-    if (fs.existsSync(profileSubDir)) {
+    const profilesDir = path.resolve(BASE_DIR, 'profiles');
+    const profileSubDir = path.resolve(profilesDir, safeProfileId);
+    if (profileSubDir.startsWith(profilesDir + path.sep) && fs.existsSync(profileSubDir)) {
         try {
             fs.rmSync(profileSubDir, { recursive: true, force: true });
         } catch (e) { }
     }
 
-    const instanceSubDir = path.join(BASE_DIR, 'instances', profileId);
-    if (fs.existsSync(instanceSubDir)) {
+    const instancesDir = path.resolve(BASE_DIR, 'instances');
+    const instanceSubDir = path.resolve(instancesDir, safeProfileId);
+    if (instanceSubDir.startsWith(instancesDir + path.sep) && fs.existsSync(instanceSubDir)) {
         try {
             fs.rmSync(instanceSubDir, { recursive: true, force: true });
         } catch (e) { }
     }
 
-    const updated = profiles.filter(p => p.id !== profileId);
+    const updated = profiles.filter(p => p.id !== safeProfileId);
 
     // 2. Odinstalace nepoužívané Minecraft verze z disku (pokud ji už žádný jiný profil nepoužívá)
     if (profile.version) {
@@ -3245,8 +3312,14 @@ ipcMain.handle('copy-screenshot-to-clipboard', async (event, fullPath) => {
 
 ipcMain.handle('delete-screenshot', async (event, fullPath) => {
     try {
-        if (fs.existsSync(fullPath)) {
-            fs.unlinkSync(fullPath);
+        if (!fullPath || typeof fullPath !== 'string') return { success: false, error: 'Neplatná cesta' };
+        const resolvedPath = path.resolve(fullPath);
+        const resolvedBase = path.resolve(BASE_DIR);
+        if (!resolvedPath.startsWith(resolvedBase + path.sep) || !resolvedPath.toLowerCase().endsWith('.png')) {
+            return { success: false, error: 'Mazání povoleno pouze pro snímky obrazovky launcheru.' };
+        }
+        if (fs.existsSync(resolvedPath)) {
+            fs.unlinkSync(resolvedPath);
         }
         return { success: true };
     } catch (e) {

@@ -163,14 +163,6 @@ function inspectJarDescriptor(jarPath) {
  */
 function evaluateMod(filename, fullPath = null, metaObj = null) {
     const lower = filename.toLowerCase();
-
-    // 1. Explicit Whitelist check
-    for (const wl of WHITELIST_KEYWORDS) {
-        if (lower.includes(wl)) {
-            return null; // Whitelisted!
-        }
-    }
-
     const testStrings = [lower];
 
     if (metaObj) {
@@ -188,16 +180,7 @@ function evaluateMod(filename, fullPath = null, metaObj = null) {
         }
     }
 
-    // Check whitelist against all detected identifiers
-    for (const str of testStrings) {
-        for (const wl of WHITELIST_KEYWORDS) {
-            if (str === wl || str.includes(wl)) {
-                return null;
-            }
-        }
-    }
-
-    // 2. Prohibited rule check
+    // 1. Prohibited rule check (Must ALWAYS run first to prevent whitelist bypass/spoofing)
     for (const rule of PROHIBITED_MOD_RULES) {
         for (const str of testStrings) {
             if (rule.pattern.test(str)) {
@@ -208,6 +191,15 @@ function evaluateMod(filename, fullPath = null, metaObj = null) {
                     categoryLabel: rule.categoryLabel,
                     reason: rule.reason
                 };
+            }
+        }
+    }
+
+    // 2. Explicit Whitelist check
+    for (const str of testStrings) {
+        for (const wl of WHITELIST_KEYWORDS) {
+            if (str === wl || str.includes(wl)) {
+                return null; // Safe / Whitelisted
             }
         }
     }

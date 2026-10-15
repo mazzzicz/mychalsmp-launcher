@@ -16,6 +16,7 @@ const { isJarFileValid } = require('./launcher');
  * Searches for the newest crash report in gameDir/crash-reports
  */
 function findLatestCrashReport(gameDir) {
+    if (!gameDir || typeof gameDir !== 'string') return null;
     try {
         const crashDir = path.join(gameDir, 'crash-reports');
         if (!fs.existsSync(crashDir)) return null;
@@ -51,6 +52,7 @@ function findLatestCrashReport(gameDir) {
  * Reads the tail of latest.log
  */
 function readLatestLogTail(gameDir, maxLines = 300) {
+    if (!gameDir || typeof gameDir !== 'string') return '';
     try {
         const logPath = path.join(gameDir, 'logs', 'latest.log');
         if (!fs.existsSync(logPath)) return '';
@@ -273,6 +275,9 @@ function disableModInModsDir(modsDir, modIdentifier, modName) {
  * 3. Fallback: Disabling the problematic mod if dependency cannot be downloaded!
  */
 async function autoResolveMissingDependencies(gameDir, combinedText, launchConfig = {}) {
+    if (!gameDir || typeof gameDir !== 'string') {
+        return null;
+    }
     const modsDir = path.join(gameDir, 'mods');
     if (!fs.existsSync(modsDir)) {
         return null;
@@ -437,6 +442,9 @@ async function autoResolveMissingDependencies(gameDir, combinedText, launchConfi
  * Never disables mods that are merely missing a dependency!
  */
 function autoResolveIncompatibleMods(gameDir, combinedText) {
+    if (!gameDir || typeof gameDir !== 'string') {
+        return null;
+    }
     const modsDir = path.join(gameDir, 'mods');
     if (!fs.existsSync(modsDir)) {
         return null;
@@ -654,6 +662,7 @@ function autoResolveIncompatibleMods(gameDir, combinedText) {
  * Detects duplicate mods in mods directory and automatically disables the older duplicate
  */
 function autoResolveDuplicateMods(gameDir, combinedText) {
+    if (!gameDir || typeof gameDir !== 'string') return null;
     const modsDir = path.join(gameDir, 'mods');
     if (!fs.existsSync(modsDir)) return null;
 
@@ -1191,17 +1200,24 @@ async function analyzeCrash(gameDir, exitCode = 1, recentMemoryLogs = [], launch
     }
 
     // ── Diagnostic Rule 8: Specific Mod Incompatibility ─────────────────────
-    const modCrashMatch = combinedText.match(/(?:Caused by:\s+)?net\.fabricmc\.loader\.[^\n]+Exception:\s+([^\n\r]+)/i) ||
+    const incompModMatch = combinedText.match(/Replace mod '([^']+)'/i) ||
+                           combinedText.match(/Mod '([^']+)' requires/i) ||
+                           combinedText.match(/Mod '([^']+)' is incompatible/i);
+    const modCrashMatch = incompModMatch ||
+                          combinedText.match(/(?:Caused by:\s+)?net\.fabricmc\.loader\.[^\n]+Exception:\s+([^\n\r]+)/i) ||
                           combinedText.match(/Could not execute entrypoint stage 'main' due to errors, provided by '([^']+)'/i);
     if (modCrashMatch) {
-        const culprit = modCrashMatch[1];
+        const culprit = incompModMatch ? incompModMatch[1] : modCrashMatch[1];
+        const isKnownIncomp = Boolean(incompModMatch) || /Incompatible mods found/i.test(combinedText);
         return {
             hasCrash: true,
             exitCode,
             reportPath,
-            title: 'Chyba při zavádění modifikace',
+            title: isKnownIncomp ? (incompModMatch ? `Nekompatibilní modifikace: ${culprit}` : 'Nekompatibilní modifikace') : 'Chyba při zavádění modifikace',
             severity: 'warning',
-            description: `Pád způsobil konflikt nebo chyba v modifikaci: ${culprit}`,
+            description: isKnownIncomp
+                ? `Fabric Loader nalezl nekompatibilní modifikace v profilu: ${culprit}. Modifikace neodpovídá verzi Minecraftu nebo jinému modu.`
+                : `Pád způsobil konflikt nebo chyba v modifikaci: ${culprit}`,
             recommendation: 'Zkontroluj složku mods a dočasně zakaž tuto modifikaci přejmenováním na .disabled.',
             logExcerpt,
             autoFix: {
