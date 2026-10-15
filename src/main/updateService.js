@@ -1,3 +1,8 @@
+const dns = require('dns');
+try {
+    dns.setDefaultResultOrder('ipv4first');
+} catch (_) {}
+
 let fs;
 try {
     fs = require('original-fs');

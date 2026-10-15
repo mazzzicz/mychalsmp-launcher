@@ -1,3 +1,8 @@
+const dns = require('dns');
+try {
+    dns.setDefaultResultOrder('ipv4first');
+} catch (_) { }
+
 const { Client } = require('minecraft-launcher-core');
 const Handler = require('minecraft-launcher-core/components/handler');
 const path = require('path');
@@ -109,7 +114,7 @@ function isJarFileValid(filePath) {
 // Intercept Handler.prototype.downloadAsync:
 // Bleskurychlý downloader postavený na nativním Node fetch (HTTP/2 multiplexing, nulová socket starvation,
 // dynamický inactivity timeout a paměťový buffer pro malé assety).
-Handler.prototype.downloadAsync = async function(url, directory, name, retry = 3, type = 'assets') {
+Handler.prototype.downloadAsync = async function (url, directory, name, retry = 3, type = 'assets') {
     if (this.client && this.client._isCancelled) {
         return Promise.reject(new Error('LAUNCH_CANCELLED'));
     }
@@ -121,7 +126,7 @@ Handler.prototype.downloadAsync = async function(url, directory, name, retry = 3
 
     try {
         fs.mkdirSync(directory, { recursive: true });
-    } catch (e) {}
+    } catch (e) { }
 
     const controller = new AbortController();
     if (this.client && this.client._activeControllers) {
@@ -129,13 +134,13 @@ Handler.prototype.downloadAsync = async function(url, directory, name, retry = 3
     }
 
     const isBigFile = (type === 'version-jar' || (name && name.endsWith('.jar') && type !== 'assets'));
-    const defaultTimeoutMs = isBigFile ? 30000 : 12000;
+    const defaultTimeoutMs = isBigFile ? 60000 : 15000;
 
     let timeoutTimer = null;
     const resetTimeout = (ms = defaultTimeoutMs) => {
         if (timeoutTimer) clearTimeout(timeoutTimer);
         timeoutTimer = setTimeout(() => {
-            try { controller.abort(new Error('ETIMEDOUT')); } catch (e) {}
+            try { controller.abort(new Error('ETIMEDOUT')); } catch (e) { }
         }, ms);
     };
 
@@ -192,7 +197,7 @@ Handler.prototype.downloadAsync = async function(url, directory, name, retry = 3
             if (this.client && this.client._isCancelled) return false;
             await fs.promises.writeFile(fullPath, Buffer.from(arrayBuf));
             if (name.endsWith('.jar') && !isJarFileValid(fullPath)) {
-                try { if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath); } catch (e) {}
+                try { if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath); } catch (e) { }
                 throw new Error(`Poškozený stažený archiv JAR: ${name}`);
             }
             this.client.emit('download', name);
@@ -208,7 +213,7 @@ Handler.prototype.downloadAsync = async function(url, directory, name, retry = 3
         const nodeStream = Readable.fromWeb(res.body);
         nodeStream.on('data', (chunk) => {
             if (this.client && this.client._isCancelled) {
-                try { controller.abort(); } catch (e) {}
+                try { controller.abort(); } catch (e) { }
                 return;
             }
             receivedBytes += chunk.length;
@@ -224,12 +229,12 @@ Handler.prototype.downloadAsync = async function(url, directory, name, retry = 3
         await pipeline(nodeStream, fileStream);
 
         if (totalBytes > 0 && receivedBytes < totalBytes) {
-            try { if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath); } catch (e) {}
+            try { if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath); } catch (e) { }
             throw new Error(`Neúplné stažení souboru ${name}: ${receivedBytes}/${totalBytes} B`);
         }
 
         if (name.endsWith('.jar') && !isJarFileValid(fullPath)) {
-            try { if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath); } catch (e) {}
+            try { if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath); } catch (e) { }
             throw new Error(`Poškozený stažený archiv JAR: ${name}`);
         }
 
@@ -241,7 +246,7 @@ Handler.prototype.downloadAsync = async function(url, directory, name, retry = 3
         cleanup();
         try {
             if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
-        } catch (e) {}
+        } catch (e) { }
 
         if (this.client && this.client._isCancelled) {
             return false;
@@ -260,7 +265,7 @@ Handler.prototype.downloadAsync = async function(url, directory, name, retry = 3
 };
 
 const origStartMinecraft = Client.prototype.startMinecraft;
-Client.prototype.startMinecraft = function(launchArguments) {
+Client.prototype.startMinecraft = function (launchArguments) {
     if (this._isCancelled) {
         this.emit('debug', '[MCLC]: Spuštění hry bylo zrušeno, proces nebude nastartován.');
         return null;
@@ -268,7 +273,7 @@ Client.prototype.startMinecraft = function(launchArguments) {
     try {
         const proc = origStartMinecraft.call(this, launchArguments);
         if (this._isCancelled && proc) {
-            try { proc.kill(); } catch (e) {}
+            try { proc.kill(); } catch (e) { }
             return null;
         }
         if (proc) {
@@ -292,7 +297,7 @@ Client.prototype.startMinecraft = function(launchArguments) {
  * Pro verze 26.x i 1.19+ vracíme kořenový adresář hry, protože LWJGL 3 načítá nativní DLL/SO dynamicky z classpath jarů.
  */
 const origGetNatives = Handler.prototype.getNatives;
-Handler.prototype.getNatives = async function() {
+Handler.prototype.getNatives = async function () {
     const vId = String(this.version?.id || this.options?.version?.number || '');
     const firstPart = parseInt(vId.split('.')[0], 10);
     const secondPart = parseInt(vId.split('.')[1], 10);
@@ -316,7 +321,7 @@ function getFileSha1(filePath) {
     }
 }
 
-Handler.prototype.getJar = async function() {
+Handler.prototype.getJar = async function () {
     if (this.client && this.client._isCancelled) {
         return Promise.reject(new Error('LAUNCH_CANCELLED'));
     }
@@ -348,12 +353,12 @@ Handler.prototype.getJar = async function() {
             }
         }
         if (isUpToDate) {
-            try { fs.writeFileSync(targetJsonPath, JSON.stringify(this.version, null, 4)); } catch (e) {}
+            try { fs.writeFileSync(targetJsonPath, JSON.stringify(this.version, null, 4)); } catch (e) { }
             this.client.emit('debug', `[OPTIMALIZACE]: Verze ${jarName} již existuje na disku a je platná.`);
             return;
         } else {
             this.client.emit('debug', `[OPRAVA]: Soubor ${jarName} je poškozený nebo neúplný. Mažu a stahuji znovu...`);
-            try { fs.unlinkSync(targetJarPath); } catch (e) {}
+            try { fs.unlinkSync(targetJarPath); } catch (e) { }
         }
     }
 
@@ -379,9 +384,9 @@ Handler.prototype.getJar = async function() {
                         this.client.emit('debug', `[OPTIMALIZACE]: Převzat platný herní klient ${jarName} z "${candJar}"`);
                         break;
                     } else {
-                        try { fs.unlinkSync(targetJarPath); } catch (e) {}
+                        try { fs.unlinkSync(targetJarPath); } catch (e) { }
                     }
-                } catch (e) {}
+                } catch (e) { }
             }
         }
         if (copied) break;
@@ -394,7 +399,7 @@ Handler.prototype.getJar = async function() {
             try {
                 const vJson = await getOrFetchVanillaVersionJson(this.options.root, this.options.version.number);
                 clientUrl = vJson?.downloads?.client?.url;
-            } catch (e) {}
+            } catch (e) { }
         }
 
         if (clientUrl) {
@@ -403,7 +408,7 @@ Handler.prototype.getJar = async function() {
             const baseJar = path.join(this.options.root, 'versions', this.options.version.number, `${this.options.version.number}.jar`);
             if (fs.existsSync(baseJar) && isJarFileValid(baseJar)) {
                 fs.mkdirSync(this.options.directory, { recursive: true });
-                try { fs.copyFileSync(baseJar, targetJarPath); } catch (e) {}
+                try { fs.copyFileSync(baseJar, targetJarPath); } catch (e) { }
             }
         }
 
@@ -412,7 +417,7 @@ Handler.prototype.getJar = async function() {
             const baseJar = path.join(this.options.root, 'versions', this.options.version.number, `${this.options.version.number}.jar`);
             if (fs.existsSync(baseJar) && isJarFileValid(baseJar)) {
                 fs.mkdirSync(this.options.directory, { recursive: true });
-                try { fs.copyFileSync(baseJar, targetJarPath); } catch (e) {}
+                try { fs.copyFileSync(baseJar, targetJarPath); } catch (e) { }
             }
         }
     }
@@ -423,7 +428,7 @@ Handler.prototype.getJar = async function() {
         throw new Error(`Nepodařilo se stáhnout herní jádro ${jarName}. Zkontroluj připojení k internetu a zkus to znovu.`);
     }
 
-    try { fs.writeFileSync(targetJsonPath, JSON.stringify(this.version, null, 4)); } catch (e) {}
+    try { fs.writeFileSync(targetJsonPath, JSON.stringify(this.version, null, 4)); } catch (e) { }
     this.client.emit('debug', `[MCLC]: Herní klient ${jarName} je připraven.`);
 
     // Pokud je aktivní offline režim, aplikujeme RAW skin ihned po přípravě JARu
@@ -436,7 +441,7 @@ Handler.prototype.getJar = async function() {
                 this.options.version.number,
                 this.options.version
             );
-        } catch (_) {}
+        } catch (_) { }
     }
 
     try {
@@ -445,12 +450,12 @@ Handler.prototype.getJar = async function() {
             const { app } = require('electron');
             launcherVersion = (app && typeof app.getVersion === 'function') ? app.getVersion() : require('../../package.json').version;
         } catch (_) {
-            try { launcherVersion = require('../../package.json').version; } catch (__) {}
+            try { launcherVersion = require('../../package.json').version; } catch (__) { }
         }
         const resolvedLoader = (this.options.version?.custom?.toLowerCase().includes('fabric') ? 'fabric'
             : (this.options.version?.custom?.toLowerCase().includes('neoforge') ? 'neoforge'
-            : (this.options.version?.custom?.toLowerCase().includes('forge') ? 'forge'
-            : (this.options.config?.loader || 'vanilla').toLowerCase())));
+                : (this.options.version?.custom?.toLowerCase().includes('forge') ? 'forge'
+                    : (this.options.config?.loader || 'vanilla').toLowerCase())));
         const customBrand = `smpclient/${launcherVersion}-${resolvedLoader}-${this.options.version?.number || '26.2'}`;
 
         injectSMPClientBrandIntoJars(
@@ -461,7 +466,7 @@ Handler.prototype.getJar = async function() {
             this.options.javaPath,
             customBrand
         );
-    } catch (_) {}
+    } catch (_) { }
 };
 
 /**
@@ -532,10 +537,10 @@ function linkOrShareExistingMinecraftData(targetRootDir, onLog) {
         if (lstat.isSymbolicLink()) {
             fs.unlinkSync(targetLibs);
         }
-    } catch (e) {}
+    } catch (e) { }
     try {
         fs.mkdirSync(targetLibs, { recursive: true });
-    } catch (e) {}
+    } catch (e) { }
 }
 
 /**
@@ -544,7 +549,7 @@ function linkOrShareExistingMinecraftData(targetRootDir, onLog) {
  * chybějících knihoven z Mojang Maven (včetně lwjgl-vulkan a novějších LWJGL 3.4.x).
  * Zabraňuje NoClassDefFoundError / ClassNotFoundException.
  */
-Handler.prototype.downloadToDirectory = async function(directory, libraries, eventName) {
+Handler.prototype.downloadToDirectory = async function (directory, libraries, eventName) {
     const libs = [];
     if (!Array.isArray(libraries)) return libs;
 
@@ -591,7 +596,7 @@ Handler.prototype.downloadToDirectory = async function(directory, libraries, eve
                         exists = true;
                     }
                     if (!exists) {
-                        try { fs.unlinkSync(destFile); } catch (e) {}
+                        try { fs.unlinkSync(destFile); } catch (e) { }
                     }
                 }
             }
@@ -614,7 +619,7 @@ Handler.prototype.downloadToDirectory = async function(directory, libraries, eve
                             exists = true;
                             break;
                         }
-                    } catch (e) {}
+                    } catch (e) { }
                 }
             }
         }
@@ -642,7 +647,7 @@ Handler.prototype.downloadToDirectory = async function(directory, libraries, eve
                         exists = fs.statSync(destFile).size > 0;
                     }
                     if (!exists) {
-                        try { fs.unlinkSync(destFile); } catch (e) {}
+                        try { fs.unlinkSync(destFile); } catch (e) { }
                     }
                 }
             } catch (err) {
@@ -662,10 +667,10 @@ Handler.prototype.downloadToDirectory = async function(directory, libraries, eve
                             exists = fs.statSync(destFile).size > 0;
                         }
                         if (!exists) {
-                            try { fs.unlinkSync(destFile); } catch (e) {}
+                            try { fs.unlinkSync(destFile); } catch (e) { }
                         }
                     }
-                } catch (e) {}
+                } catch (e) { }
             }
         }
 
@@ -701,7 +706,7 @@ Handler.prototype.downloadToDirectory = async function(directory, libraries, eve
  * 1. Oseká 120+ nepotřebných cizích jazyků a stáhne z Mojangu POUZE CS, SK, EN_US a EN_GB (~50 MB úspora).
  * 2. Zkontroluje existující .minecraft na disku a chybějící soubory zkopíruje bleskově z disku namísto stahování.
  */
-Handler.prototype.getAssets = async function() {
+Handler.prototype.getAssets = async function () {
     if (this.client && this.client._isCancelled) {
         return Promise.reject(new Error('LAUNCH_CANCELLED'));
     }
@@ -736,13 +741,13 @@ Handler.prototype.getAssets = async function() {
         try {
             fs.unlinkSync(indexFilePath);
             this.client.emit('debug', `[ASSETY] ⚠ Odstraněn poškozený soubor ${indexName}.json pro čisté znovustažení.`);
-        } catch (_) {}
+        } catch (_) { }
     }
     if (fs.existsSync(customIndexFilePath) && !isAssetIndexValid(customIndexFilePath)) {
         try {
             fs.unlinkSync(customIndexFilePath);
             this.client.emit('debug', `[ASSETY] ⚠ Odstraněn poškozený soubor ${assetId}.json pro čisté znovustažení.`);
-        } catch (_) {}
+        } catch (_) { }
     }
 
     // Pokud nemáme platný soubor a chybí targetUrl, zkusíme najít URL v Mojang manifestu
@@ -753,7 +758,7 @@ Handler.prototype.getAssets = async function() {
             if (manRes.ok) {
                 const manifest = await manRes.json();
                 const verEntry = manifest.versions.find(v => v.id === indexName || v.id === this.options.version.number) ||
-                                 (this.options.version.number === '1.21.11' ? manifest.versions.find(v => v.id === '1.21.1') : null);
+                    (this.options.version.number === '1.21.11' ? manifest.versions.find(v => v.id === '1.21.1') : null);
                 if (verEntry && verEntry.url) {
                     const vRes = await fetch(verEntry.url, { signal: AbortSignal.timeout(6000) });
                     if (vRes.ok) {
@@ -764,7 +769,7 @@ Handler.prototype.getAssets = async function() {
                     }
                 }
             }
-        } catch (_) {}
+        } catch (_) { }
     }
 
     if (!isAssetIndexValid(indexFilePath) && resolvedUrl) {
@@ -772,9 +777,9 @@ Handler.prototype.getAssets = async function() {
     }
 
     if (isAssetIndexValid(indexFilePath) && !isAssetIndexValid(customIndexFilePath)) {
-        try { fs.copyFileSync(indexFilePath, customIndexFilePath); } catch (e) {}
+        try { fs.copyFileSync(indexFilePath, customIndexFilePath); } catch (e) { }
     } else if (isAssetIndexValid(customIndexFilePath) && !isAssetIndexValid(indexFilePath)) {
-        try { fs.copyFileSync(customIndexFilePath, indexFilePath); } catch (e) {}
+        try { fs.copyFileSync(customIndexFilePath, indexFilePath); } catch (e) { }
     }
 
     const finalPath = isAssetIndexValid(indexFilePath) ? indexFilePath : customIndexFilePath;
@@ -786,8 +791,8 @@ Handler.prototype.getAssets = async function() {
     try {
         index = JSON.parse(fs.readFileSync(finalPath, { encoding: 'utf8' }));
     } catch (parseErr) {
-        try { if (fs.existsSync(indexFilePath)) fs.unlinkSync(indexFilePath); } catch (_) {}
-        try { if (fs.existsSync(customIndexFilePath)) fs.unlinkSync(customIndexFilePath); } catch (_) {}
+        try { if (fs.existsSync(indexFilePath)) fs.unlinkSync(indexFilePath); } catch (_) { }
+        try { if (fs.existsSync(customIndexFilePath)) fs.unlinkSync(customIndexFilePath); } catch (_) { }
         throw new Error(`Poškozený soubor asset indexu (${indexName}.json): ${parseErr.message}`);
     }
 
@@ -841,7 +846,7 @@ Handler.prototype.getAssets = async function() {
                         copiedFromDisk = true;
                         reusedCount++;
                         break;
-                    } catch (e) {}
+                    } catch (e) { }
                 }
             }
             if (!copiedFromDisk) {
@@ -937,7 +942,7 @@ function getJavaMajorVersion(binPath) {
         if (!out) {
             try {
                 out = execSync(`"${testBin}" -version 2>&1`, { timeout: 3500, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
-            } catch (_) {}
+            } catch (_) { }
         }
         const match = out.match(/(?:version|Runtime Environment)\s+"?(\d+)(?:\.(\d+))?/i);
         if (match) {
@@ -947,7 +952,7 @@ function getJavaMajorVersion(binPath) {
             }
             return v1;
         }
-    } catch (e) {}
+    } catch (e) { }
     return 0;
 }
 
@@ -985,7 +990,7 @@ function testJavaExecutable(binPath, minMajor = 0) {
             try {
                 execSync(`"${testBin}" -version`, { timeout: 3500, stdio: ['ignore', 'pipe', 'pipe'] });
                 ok = true;
-            } catch (_) {}
+            } catch (_) { }
         }
         if (!ok) return false;
 
@@ -1058,13 +1063,13 @@ async function downloadAndInstallJava(targetVersion = 25, onLog = console.log, o
     onLog(`[JAVA] Archiv stažen (${Math.round(downloadedBytes / 1024 / 1024)} MB). Rozbaluji do ${javaDir}...`);
 
     if (fs.existsSync(javaDir)) {
-        try { fs.rmSync(javaDir, { recursive: true, force: true }); } catch (e) {}
+        try { fs.rmSync(javaDir, { recursive: true, force: true }); } catch (e) { }
     }
     fs.mkdirSync(javaDir, { recursive: true });
 
     const tempExtract = path.join(runtimeBase, `extract_tmp_${targetVersion}`);
     if (fs.existsSync(tempExtract)) {
-        try { fs.rmSync(tempExtract, { recursive: true, force: true }); } catch (e) {}
+        try { fs.rmSync(tempExtract, { recursive: true, force: true }); } catch (e) { }
     }
 
     if (isWin) {
@@ -1102,8 +1107,8 @@ async function downloadAndInstallJava(targetVersion = 25, onLog = console.log, o
         }
     }
 
-    try { fs.rmSync(tempExtract, { recursive: true, force: true }); } catch (e) {}
-    try { fs.unlinkSync(archivePath); } catch (e) {}
+    try { fs.rmSync(tempExtract, { recursive: true, force: true }); } catch (e) { }
+    try { fs.unlinkSync(archivePath); } catch (e) { }
 
     const binName = isWin ? 'javaw.exe' : 'java';
     let finalJavaPath = path.join(javaDir, 'bin', binName);
@@ -1116,7 +1121,7 @@ async function downloadAndInstallJava(targetVersion = 25, onLog = console.log, o
     }
 
     if (!isWin) {
-        try { fs.chmodSync(finalJavaPath, 0o755); } catch (e) {}
+        try { fs.chmodSync(finalJavaPath, 0o755); } catch (e) { }
     }
 
     onLog(`[JAVA] ✓ Java ${targetVersion} úspěšně připravena: ${finalJavaPath}`);
@@ -1192,7 +1197,7 @@ async function ensureJavaExecutable(config, onLog = console.log, onProgress = nu
     const installed = await downloadAndInstallJava(requiredMajor, onLog, onProgress);
     try {
         saveConfig({ javaPath: installed });
-    } catch (e) {}
+    } catch (e) { }
     if (installed) cachedJavaExecutables.set(cacheKey, installed);
     return installed;
 }
@@ -1224,7 +1229,7 @@ function detectJavaPath(minMajor = 25) {
         try {
             const out = execSync('which java', { encoding: 'utf-8', timeout: 1500, stdio: ['ignore', 'pipe', 'pipe'] }).trim().split('\n')[0];
             if (out) candidates.push(out);
-        } catch (e) {}
+        } catch (e) { }
 
         candidates.push('/usr/bin/java');
     } else {
@@ -1249,19 +1254,19 @@ function detectJavaPath(minMajor = 25) {
                         const javaExe = path.join(base, sub, 'bin', 'java.exe');
                         if (fs.existsSync(javaExe)) candidates.push(javaExe);
                     }
-                } catch (e) {}
+                } catch (e) { }
             }
         }
 
         try {
             const out = execSync('where javaw', { encoding: 'utf-8', timeout: 1500, stdio: ['ignore', 'pipe', 'pipe'] }).trim().split('\n')[0];
             if (out) candidates.push(out);
-        } catch (e) {}
+        } catch (e) { }
 
         try {
             const out = execSync('where java', { encoding: 'utf-8', timeout: 1500, stdio: ['ignore', 'pipe', 'pipe'] }).trim().split('\n')[0];
             if (out) candidates.push(out);
-        } catch (e) {}
+        } catch (e) { }
     }
 
     // Evaluate candidate versions
@@ -1343,13 +1348,13 @@ function getAvailableJavas() {
                         const javaw = path.join(base, sub, 'bin', 'javaw.exe');
                         checkPath(javaw, `Instalovaná ${sub}`);
                     }
-                } catch (e) {}
+                } catch (e) { }
             }
         }
         try {
             const out = execSync('where javaw', { encoding: 'utf-8', timeout: 1500, stdio: ['ignore', 'pipe', 'pipe'] }).trim().split('\n')[0];
             if (out) checkPath(out, 'Systémová Java (PATH)');
-        } catch (e) {}
+        } catch (e) { }
     }
 
     list.sort((a, b) => (b.major || 0) - (a.major || 0));
@@ -1378,7 +1383,7 @@ function getInstalledVersions(baseDir) {
                         if (st.size > 100000) {
                             installed.push(v);
                         }
-                    } catch (e) {}
+                    } catch (e) { }
                 }
             }
         }
@@ -1399,8 +1404,8 @@ function cleanupLegacyCharacterPacks(gameDir, baseDir) {
             const rpDir = path.join(d, 'resourcepacks');
             const legacyZip = path.join(rpDir, 'mychalsmp-character.zip');
             const legacyDir = path.join(rpDir, 'mychalsmp-character');
-            if (fs.existsSync(legacyZip)) { try { fs.unlinkSync(legacyZip); } catch (_) {} }
-            if (fs.existsSync(legacyDir)) { try { fs.rmSync(legacyDir, { recursive: true, force: true }); } catch (_) {} }
+            if (fs.existsSync(legacyZip)) { try { fs.unlinkSync(legacyZip); } catch (_) { } }
+            if (fs.existsSync(legacyDir)) { try { fs.rmSync(legacyDir, { recursive: true, force: true }); } catch (_) { } }
 
             const optFile = path.join(d, 'options.txt');
             if (fs.existsSync(optFile)) {
@@ -1421,7 +1426,7 @@ function cleanupLegacyCharacterPacks(gameDir, baseDir) {
                     fs.writeFileSync(optFile, content, 'utf8');
                 }
             }
-        } catch (_) {}
+        } catch (_) { }
     }
 }
 
@@ -1460,7 +1465,7 @@ function injectRawSkinIntoJar(jarPath, activeSkinPath, activeCapePath, onLog = c
     if (activeCapePath && fs.existsSync(activeCapePath)) {
         try {
             capeHash = crypto.createHash('sha1').update(fs.readFileSync(activeCapePath)).digest('hex');
-        } catch (_) {}
+        } catch (_) { }
     }
     const targetSig = `${skinHash}:${capeHash}`;
 
@@ -1471,7 +1476,7 @@ function injectRawSkinIntoJar(jarPath, activeSkinPath, activeCapePath, onLog = c
                 // Skin v tomto JARu je již identický - bleskový 0ms start
                 return true;
             }
-        } catch (_) {}
+        } catch (_) { }
     }
 
     // 3. Přímé RAW přepsání textur v herním JAR souboru
@@ -1519,7 +1524,7 @@ function injectRawSkinIntoJar(jarPath, activeSkinPath, activeCapePath, onLog = c
         const relativePaths = entriesToUpdate.map(e => e.path);
         execFileSync('zip', ['-u', jarPath, ...relativePaths], { cwd: tmpDir, stdio: 'ignore' });
 
-        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) { }
         success = true;
     } catch (cliErr) {
         // B) Multiplatformní fallback (AdmZip)
@@ -1538,7 +1543,7 @@ function injectRawSkinIntoJar(jarPath, activeSkinPath, activeCapePath, onLog = c
     }
 
     if (success && isJarFileValid(jarPath)) {
-        try { fs.writeFileSync(sigPath, targetSig, 'utf8'); } catch (_) {}
+        try { fs.writeFileSync(sigPath, targetSig, 'utf8'); } catch (_) { }
         onLog(`[POSTAVA] ✓ Textury skinu hráče RAW přepsány přímo v jádru hry (${path.basename(jarPath)}). Žádný texture pack ani mód není potřeba!`);
         return true;
     }
@@ -1547,7 +1552,7 @@ function injectRawSkinIntoJar(jarPath, activeSkinPath, activeCapePath, onLog = c
         try {
             fs.copyFileSync(backupPath, jarPath);
             onLog(`[POSTAVA] ⚠ Obnoven původní funkční soubor ${path.basename(jarPath)} ze zálohy po neúspěšné modifikaci.`);
-        } catch (_) {}
+        } catch (_) { }
     }
     return false;
 }
@@ -1570,11 +1575,11 @@ function restoreVanillaJars(baseDir, targetVer, onLog = console.log) {
                         fs.copyFileSync(backupPath, jarPath);
                         fs.unlinkSync(sigPath);
                         onLog(`[POSTAVA] 🔄 Obnoveno výchozí vanilla jádro bez úprav: ${d}.jar`);
-                    } catch (_) {}
+                    } catch (_) { }
                 }
             }
         }
-    } catch (_) {}
+    } catch (_) { }
 }
 
 /**
@@ -1628,7 +1633,7 @@ function findJarCli(javaPath, baseDir) {
                     candidates.push(path.join(rtDir, sub, 'bin', jarName));
                 }
             }
-        } catch (_) {}
+        } catch (_) { }
     }
     if (process.platform !== 'win32') {
         candidates.push(
@@ -1648,7 +1653,7 @@ function findJarCli(javaPath, baseDir) {
         const { execSync } = require('child_process');
         execSync(process.platform === 'win32' ? 'where jar' : 'which jar', { stdio: 'ignore' });
         return 'jar';
-    } catch (_) {}
+    } catch (_) { }
     return null;
 }
 
@@ -1672,13 +1677,13 @@ function injectSMPClientBrandIntoJars(baseDir, targetVersion = null, versionOpts
         const { app } = require('electron');
         launcherVersion = (app && typeof app.getVersion === 'function') ? app.getVersion() : require('../../package.json').version;
     } catch (_) {
-        try { launcherVersion = require('../../package.json').version; } catch (__) {}
+        try { launcherVersion = require('../../package.json').version; } catch (__) { }
     }
 
     const resolvedLoader = (versionOpts?.custom?.toLowerCase().includes('fabric') ? 'fabric'
         : (versionOpts?.custom?.toLowerCase().includes('neoforge') ? 'neoforge'
-        : (versionOpts?.custom?.toLowerCase().includes('forge') ? 'forge'
-        : 'vanilla')));
+            : (versionOpts?.custom?.toLowerCase().includes('forge') ? 'forge'
+                : 'vanilla')));
 
     const effectiveBrand = customBrand || `smpclient/${launcherVersion}-${resolvedLoader}-${targetVer}`;
     const brandSig = `smpclient_brand_v3_${effectiveBrand.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
@@ -1702,7 +1707,7 @@ function injectSMPClientBrandIntoJars(baseDir, targetVersion = null, versionOpts
                     if (fs.existsSync(cand)) jarsToPatch.add(cand);
                 }
             }
-        } catch (_) {}
+        } catch (_) { }
     }
 
     if (jarsToPatch.size === 0) return;
@@ -1727,7 +1732,7 @@ function injectSMPClientBrandIntoJars(baseDir, targetVersion = null, versionOpts
 
         // Čistá vanilla záloha před zápisem (pouze pokud je původní soubor platný)
         if (!fs.existsSync(backupPath) && isJarFileValid(jarPath)) {
-            try { fs.copyFileSync(jarPath, backupPath); } catch (_) {}
+            try { fs.copyFileSync(jarPath, backupPath); } catch (_) { }
         }
 
         // Cache kontrola podpisu (0ms zátěž pokud již bylo aplikováno)
@@ -1736,7 +1741,7 @@ function injectSMPClientBrandIntoJars(baseDir, targetVersion = null, versionOpts
                 if (fs.readFileSync(sigPath, 'utf8').trim() === brandSig) {
                     continue;
                 }
-            } catch (_) {}
+            } catch (_) { }
         }
 
         let success = false;
@@ -1776,15 +1781,15 @@ function injectSMPClientBrandIntoJars(baseDir, targetVersion = null, versionOpts
         } catch (patchErr) {
             onLog(`[KLIENT] ⚠ Zápis brandu do ${path.basename(jarPath)} selhal: ${patchErr.message}`);
         } finally {
-            try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
+            try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) { }
         }
 
         // Striktní ověření integrity po zápisu
         if (success && isJarFileValid(jarPath)) {
-            try { fs.writeFileSync(sigPath, brandSig, 'utf8'); } catch (_) {}
+            try { fs.writeFileSync(sigPath, brandSig, 'utf8'); } catch (_) { }
             onLog(`[KLIENT] ✓ Brand ${effectiveBrand} úspěšně zapsán do jádra hry (${path.basename(jarPath)})`);
         } else if (fs.existsSync(backupPath) && isJarFileValid(backupPath)) {
-            try { fs.copyFileSync(backupPath, jarPath); } catch (_) {}
+            try { fs.copyFileSync(backupPath, jarPath); } catch (_) { }
             onLog(`[KLIENT] ⚠ Obnoveno původní jádro ${path.basename(jarPath)} ze zálohy.`);
         }
     }
@@ -1843,7 +1848,7 @@ async function setupOfflineCustomSkinAndCape(gameDir, config, onLog = console.lo
                         break;
                     }
                 }
-            } catch (_) {}
+            } catch (_) { }
         }
     }
 
@@ -1913,7 +1918,7 @@ async function ensureMojangVersionUpToDate(centralRootDir, targetVersion, onLog 
         mojangVersionCheckCache.set(targetVersion, Date.now());
         try {
             return JSON.parse(fs.readFileSync(localJsonPath, 'utf8'));
-        } catch (_) {}
+        } catch (_) { }
     }
 
     try {
@@ -1927,7 +1932,7 @@ async function ensureMojangVersionUpToDate(centralRootDir, targetVersion, onLog 
 
         const manifest = await manRes.json();
         const vEntry = manifest.versions?.find(v => v.id === targetVersion) ||
-                      (targetVersion === '1.21.11' ? manifest.versions?.find(v => v.id === '1.21.1') : null);
+            (targetVersion === '1.21.11' ? manifest.versions?.find(v => v.id === '1.21.1') : null);
         if (!vEntry || !vEntry.url) {
             mojangVersionCheckCache.set(targetVersion, Date.now());
             return null;
@@ -1941,7 +1946,7 @@ async function ensureMojangVersionUpToDate(centralRootDir, targetVersion, onLog 
                 fs.mkdirSync(localVersionDir, { recursive: true });
                 fs.writeFileSync(localJsonPath, rawText, 'utf8');
                 mojangVersionCheckCache.set(targetVersion, Date.now());
-                try { return JSON.parse(rawText); } catch (_) {}
+                try { return JSON.parse(rawText); } catch (_) { }
             }
             return null;
         }
@@ -1950,7 +1955,7 @@ async function ensureMojangVersionUpToDate(centralRootDir, targetVersion, onLog 
         let localObj = null;
         try {
             localObj = JSON.parse(fs.readFileSync(localJsonPath, 'utf8'));
-        } catch (_) {}
+        } catch (_) { }
 
         const localSha1 = getFileSha1(localJsonPath);
         const mojangSha1 = vEntry.sha1 ? vEntry.sha1.toLowerCase() : null;
@@ -1978,11 +1983,11 @@ async function ensureMojangVersionUpToDate(centralRootDir, targetVersion, onLog 
             // Pokud se změnil hash herního klienta (client.jar), odstranit starý jar a zálohy pro čisté stažení nového patche
             if (newClientSha1 && newClientSha1 !== oldClientSha1) {
                 onLog(`[MOJANG] 🔄 Detekován aktualizovaný herní klient pro ${targetVersion} (nový SHA-1: ${newClientSha1.slice(0, 8)}...). Převezmu nový JAR od Mojangu...`);
-                try { fs.unlinkSync(localJarPath); } catch (_) {}
-                try { fs.unlinkSync(localJarPath.replace(/\.jar$/, '.vanilla.jar')); } catch (_) {}
-                try { fs.unlinkSync(`${localJarPath}.skin_sig`); } catch (_) {}
-                try { fs.unlinkSync(`${localJarPath}.brand_sig`); } catch (_) {}
-                try { fs.unlinkSync(`${localJarPath}.vanilla_bak`); } catch (_) {}
+                try { fs.unlinkSync(localJarPath); } catch (_) { }
+                try { fs.unlinkSync(localJarPath.replace(/\.jar$/, '.vanilla.jar')); } catch (_) { }
+                try { fs.unlinkSync(`${localJarPath}.skin_sig`); } catch (_) { }
+                try { fs.unlinkSync(`${localJarPath}.brand_sig`); } catch (_) { }
+                try { fs.unlinkSync(`${localJarPath}.vanilla_bak`); } catch (_) { }
             }
 
             // Pokud existoval custom Fabric profil dědící z této verze, vymazat sloučený JSON, aby se přegeneroval
@@ -1992,11 +1997,11 @@ async function ensureMojangVersionUpToDate(centralRootDir, targetVersion, onLog 
                     if (f.toLowerCase().includes('fabric') && f.includes(targetVersion)) {
                         const fJson = path.join(versionsDir, f, `${f}.json`);
                         if (fs.existsSync(fJson)) {
-                            try { fs.unlinkSync(fJson); } catch (_) {}
+                            try { fs.unlinkSync(fJson); } catch (_) { }
                         }
                     }
                 }
-            } catch (_) {}
+            } catch (_) { }
 
             mojangVersionCheckCache.set(targetVersion, Date.now());
             return freshJson;
@@ -2017,7 +2022,7 @@ async function getOrFetchVanillaVersionJson(centralRootDir, targetVersion) {
     if (fs.existsSync(localJson)) {
         try {
             return JSON.parse(fs.readFileSync(localJson, 'utf8'));
-        } catch (e) {}
+        } catch (e) { }
     }
 
     const candidates = getExistingMinecraftBaseDirs();
@@ -2029,7 +2034,7 @@ async function getOrFetchVanillaVersionJson(centralRootDir, targetVersion) {
                 fs.mkdirSync(path.join(versionsDir, targetVersion), { recursive: true });
                 fs.copyFileSync(candJson, localJson);
                 return parsed;
-            } catch (e) {}
+            } catch (e) { }
         }
     }
 
@@ -2051,7 +2056,7 @@ async function getOrFetchVanillaVersionJson(centralRootDir, targetVersion) {
                 }
             }
         }
-    } catch (e) {}
+    } catch (e) { }
     return null;
 }
 
@@ -2076,9 +2081,9 @@ async function ensureFabricProfile(centralRootDir, targetVersion, onLog = consol
                     onLog(`[FABRIC] Nalezen kompletní Fabric profil: ${existing}`);
                     return existing;
                 }
-            } catch (e) {}
+            } catch (e) { }
         }
-    } catch (e) {}
+    } catch (e) { }
 
     onLog(`[FABRIC] Zjišťuji nejnovější Fabric loader pro Minecraft ${targetVersion}...`);
     try {
@@ -2157,18 +2162,18 @@ async function ensureFabricProfile(centralRootDir, targetVersion, onLog = consol
         const fabricJar = path.join(targetDir, `${fabricId}.jar`);
         if (fs.existsSync(fabricJar) && !isJarFileValid(fabricJar)) {
             onLog(`[FABRIC] ⚠ Detekován poškozený soubor ${fabricId}.jar (neplatná CEN hlavička). Obnovuji...`);
-            try { fs.unlinkSync(fabricJar); } catch (e) {}
-            try { fs.unlinkSync(`${fabricJar}.skin_sig`); } catch (e) {}
-            try { fs.unlinkSync(`${fabricJar}.brand_sig`); } catch (e) {}
+            try { fs.unlinkSync(fabricJar); } catch (e) { }
+            try { fs.unlinkSync(`${fabricJar}.skin_sig`); } catch (e) { }
+            try { fs.unlinkSync(`${fabricJar}.brand_sig`); } catch (e) { }
         }
         if (fs.existsSync(vanillaJar) && !isJarFileValid(vanillaJar)) {
             onLog(`[FABRIC] ⚠ Detekován poškozený vanilkový soubor ${targetVersion}.jar. Odstraňuji pro čisté znovustažení...`);
-            try { fs.unlinkSync(vanillaJar); } catch (e) {}
-            try { fs.unlinkSync(`${vanillaJar}.skin_sig`); } catch (e) {}
-            try { fs.unlinkSync(`${vanillaJar}.brand_sig`); } catch (e) {}
+            try { fs.unlinkSync(vanillaJar); } catch (e) { }
+            try { fs.unlinkSync(`${vanillaJar}.skin_sig`); } catch (e) { }
+            try { fs.unlinkSync(`${vanillaJar}.brand_sig`); } catch (e) { }
         }
         if (fs.existsSync(vanillaJar) && isJarFileValid(vanillaJar) && !fs.existsSync(fabricJar)) {
-            try { fs.copyFileSync(vanillaJar, fabricJar); } catch (e) {}
+            try { fs.copyFileSync(vanillaJar, fabricJar); } catch (e) { }
         }
 
         onLog(`[FABRIC] ✓ Fabric profil ${fabricId} úspěšně připraven a sloučen s jádrem!`);
@@ -2183,7 +2188,7 @@ async function ensureFabricProfile(centralRootDir, targetVersion, onLog = consol
                 onLog(`[FABRIC] Síťové ověření selhalo (${err.message}), použiji existující lokální profil: ${localFallback}`);
                 return localFallback;
             }
-        } catch (_) {}
+        } catch (_) { }
         onLog(`[FABRIC] ⚠ Nepodařilo se připravit Fabric profil: ${err.message}. Spouštím Vanilla.`);
         return null;
     }
@@ -2205,7 +2210,7 @@ function getBundledSelfNametagPath() {
         if (c && fs.existsSync(c)) {
             try {
                 if (fs.statSync(c).size > 1000) return c;
-            } catch (_) {}
+            } catch (_) { }
         }
     }
     return null;
@@ -2256,7 +2261,7 @@ function ensureSelfNametagModInstalled(targetDir, onLog = console.log, forceOver
                     checkDirs.add(pPath);
                 }
             }
-        } catch (_) {}
+        } catch (_) { }
     }
 
     // Také automatická kontrola všech instancí ve složce instances (včetně imported-*)
@@ -2270,7 +2275,7 @@ function ensureSelfNametagModInstalled(targetDir, onLog = console.log, forceOver
                     checkDirs.add(iPath);
                 }
             }
-        } catch (_) {}
+        } catch (_) { }
     }
 
     // Kontrola všech profilů z launcher-config.json (včetně p.gameDir)
@@ -2282,7 +2287,7 @@ function ensureSelfNametagModInstalled(targetDir, onLog = console.log, forceOver
                 if (p.gameDir) checkDirs.add(p.gameDir);
             }
         }
-    } catch (_) {}
+    } catch (_) { }
 
     let installedCount = 0;
     for (const d of checkDirs) {
@@ -2297,10 +2302,10 @@ function ensureSelfNametagModInstalled(targetDir, onLog = console.log, forceOver
                 const entries = fs.readdirSync(mDir);
                 for (const item of entries) {
                     if (item !== 'selfnametag-1.0.0.jar' && /^self-?nametag.*\.jar$/i.test(item)) {
-                        try { fs.unlinkSync(path.join(mDir, item)); } catch (_) {}
+                        try { fs.unlinkSync(path.join(mDir, item)); } catch (_) { }
                     }
                 }
-            } catch (_) {}
+            } catch (_) { }
 
             const targetJar = path.join(mDir, 'selfnametag-1.0.0.jar');
             let shouldCopy = forceOverwrite || !fs.existsSync(targetJar);
@@ -2335,7 +2340,7 @@ function ensureSelfNametagModInstalled(targetDir, onLog = console.log, forceOver
                     try {
                         const raw = fs.readFileSync(cfgPath, 'utf-8');
                         currentModCfg = { ...currentModCfg, ...JSON.parse(raw) };
-                    } catch (_) {}
+                    } catch (_) { }
                 }
                 if (launcherCfg.screenshotToClipboard !== undefined) {
                     currentModCfg.screenshotToClipboard = launcherCfg.screenshotToClipboard !== false;
@@ -2344,7 +2349,7 @@ function ensureSelfNametagModInstalled(targetDir, onLog = console.log, forceOver
                     currentModCfg.borderlessFullscreen = launcherCfg.borderlessFullscreen === true;
                 }
                 fs.writeFileSync(cfgPath, JSON.stringify(currentModCfg, null, 2), 'utf-8');
-            } catch (_) {}
+            } catch (_) { }
         } catch (err) {
             console.warn(`[LAUNCHER] Nepodařilo se nainstalovat selfnametag do ${d}:`, err.message);
         }
@@ -2380,7 +2385,7 @@ function getModsDirectoryFingerprint(modsDir) {
                 try {
                     const st = fs.statSync(fullPath);
                     parts.push(`${f}:${st.size}:${Math.floor(st.mtimeMs)}`);
-                } catch (_) {}
+                } catch (_) { }
             }
         }
         return parts.join('|');
@@ -2394,7 +2399,7 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
     if (!ldr.includes('fabric')) return;
     const modsDir = path.join(gameInstanceDir, 'mods');
     if (!fs.existsSync(modsDir)) {
-        try { fs.mkdirSync(modsDir, { recursive: true }); } catch (_) {}
+        try { fs.mkdirSync(modsDir, { recursive: true }); } catch (_) { }
     }
 
     // Inkrementální kontrola otisku složky mods: pokud se žádný soubor nezměnil od minula,
@@ -2424,9 +2429,9 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
                     if (typeof onLog === 'function') {
                         onLog(`[ZÁVISLOSTI] 🔄 Obnoven mód: ${path.basename(enabled)}`);
                     }
-                } catch (_) {}
+                } catch (_) { }
             } else {
-                try { fs.unlinkSync(orig); } catch (_) {}
+                try { fs.unlinkSync(orig); } catch (_) { }
             }
         }
     }
@@ -2483,14 +2488,14 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
                     }
                 }
             }
-        } catch (_) {}
+        } catch (_) { }
     }
 
     const targetVersion = config.version || '26.2';
 
     // 2. KLÍČOVÁ KONTROLA: Iris na Minecraftu 26.2 striktně vyžaduje Sodium 0.9.x
     if (hasIris) {
-        const sodiumNeedsUpdate = !sodiumMod || 
+        const sodiumNeedsUpdate = !sodiumMod ||
             (!sodiumMod.version.startsWith('0.9') && !sodiumMod.filename.toLowerCase().includes('0.9'));
 
         if (sodiumNeedsUpdate) {
@@ -2544,7 +2549,7 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
                     onLog(`[ZÁVISLOSTI] ✔ Úspěšně stažen Fabric API: ${dlRes.filename}`);
                 }
             }
-        } catch (_) {}
+        } catch (_) { }
     }
 
     const finalFingerprint = getModsDirectoryFingerprint(modsDir);
@@ -2639,7 +2644,7 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
         fs.mkdirSync(path.join(nativesExtractDir, 'lwjgl'), { recursive: true });
         fs.mkdirSync(path.join(nativesExtractDir, 'jna'), { recursive: true });
         fs.mkdirSync(path.join(nativesExtractDir, 'netty'), { recursive: true });
-    } catch (e) {}
+    } catch (e) { }
 
     // ⚡ Klíčový příznak pro Java 24/25 – Mojang 26.x manifest jej explicitně vyžaduje pro přístup Netty, LWJGL a Fabric k paměti
     if (!jvmArgs.includes('--sun-misc-unsafe-memory-access=allow')) {
@@ -2710,7 +2715,7 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
                 if (loaderMatch) {
                     versionOpts.custom = loaderMatch;
                 }
-            } catch (e) {}
+            } catch (e) { }
         }
     }
 
@@ -2741,7 +2746,7 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
                 }
             }
         }
-    } catch (_) {}
+    } catch (_) { }
 
     // Automatická kontrola a oprava integrity version JAR před spuštěním
     const activeVersionFolder = versionOpts.custom || versionOpts.number;
@@ -2752,20 +2757,20 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
         const bak = clientJarPath.replace(/\.jar$/, '.vanilla.jar');
         if (fs.existsSync(bak) && isJarFileValid(bak)) {
             onLog(`[OPRAVA]: Obnovuji poškozený soubor ${path.basename(clientJarPath)} z čisté vanilla zálohy...`);
-            try { fs.copyFileSync(bak, clientJarPath); } catch (_) {}
+            try { fs.copyFileSync(bak, clientJarPath); } catch (_) { }
         } else if (versionOpts.custom && fs.existsSync(vanillaClientJar) && isJarFileValid(vanillaClientJar)) {
             onLog(`[OPRAVA]: Detekován poškozený soubor klienta ${path.basename(clientJarPath)} (neplatná hlavička). Obnovuji z platného jádra ${path.basename(vanillaClientJar)}...`);
-            try { fs.unlinkSync(clientJarPath); } catch (e) {}
-            try { fs.copyFileSync(vanillaClientJar, clientJarPath); } catch (_) {}
+            try { fs.unlinkSync(clientJarPath); } catch (e) { }
+            try { fs.copyFileSync(vanillaClientJar, clientJarPath); } catch (_) { }
         } else {
             onLog(`[OPRAVA]: Detekován poškozený soubor klienta ${path.basename(clientJarPath)}. Odstraňuji pro čisté znovustažení...`);
-            try { fs.unlinkSync(clientJarPath); } catch (e) {}
+            try { fs.unlinkSync(clientJarPath); } catch (e) { }
         }
-        try { fs.unlinkSync(`${clientJarPath}.skin_sig`); } catch (_) {}
-        try { fs.unlinkSync(`${clientJarPath}.brand_sig`); } catch (_) {}
-        try { fs.unlinkSync(`${clientJarPath}.vanilla_bak`); } catch (_) {}
+        try { fs.unlinkSync(`${clientJarPath}.skin_sig`); } catch (_) { }
+        try { fs.unlinkSync(`${clientJarPath}.brand_sig`); } catch (_) { }
+        try { fs.unlinkSync(`${clientJarPath}.vanilla_bak`); } catch (_) { }
         if (fs.existsSync(bak) && !isJarFileValid(bak)) {
-            try { fs.unlinkSync(bak); } catch (_) {}
+            try { fs.unlinkSync(bak); } catch (_) { }
         }
     }
 
@@ -2773,23 +2778,23 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
         const bak = vanillaClientJar.replace(/\.jar$/, '.vanilla.jar');
         if (fs.existsSync(bak) && isJarFileValid(bak)) {
             onLog(`[OPRAVA]: Obnovuji poškozený ${path.basename(vanillaClientJar)} z vanilkové zálohy...`);
-            try { fs.copyFileSync(bak, vanillaClientJar); } catch (_) {}
+            try { fs.copyFileSync(bak, vanillaClientJar); } catch (_) { }
         } else {
             onLog(`[OPRAVA]: Detekován poškozený soubor jádra ${path.basename(vanillaClientJar)}. Odstraňuji pro čisté znovustažení...`);
-            try { fs.unlinkSync(vanillaClientJar); } catch (e) {}
+            try { fs.unlinkSync(vanillaClientJar); } catch (e) { }
         }
-        try { fs.unlinkSync(`${vanillaClientJar}.skin_sig`); } catch (_) {}
-        try { fs.unlinkSync(`${vanillaClientJar}.brand_sig`); } catch (_) {}
-        try { fs.unlinkSync(`${vanillaClientJar}.vanilla_bak`); } catch (_) {}
+        try { fs.unlinkSync(`${vanillaClientJar}.skin_sig`); } catch (_) { }
+        try { fs.unlinkSync(`${vanillaClientJar}.brand_sig`); } catch (_) { }
+        try { fs.unlinkSync(`${vanillaClientJar}.vanilla_bak`); } catch (_) { }
         if (fs.existsSync(bak) && !isJarFileValid(bak)) {
-            try { fs.unlinkSync(bak); } catch (_) {}
+            try { fs.unlinkSync(bak); } catch (_) { }
         }
     }
 
     // Pro custom zavaděče (Fabric): pokud jar chybí, ale vanilkový existuje a je platný, vytvoříme okamžitě kopii
     if (versionOpts.custom && !fs.existsSync(clientJarPath) && fs.existsSync(vanillaClientJar) && isJarFileValid(vanillaClientJar)) {
         onLog(`[OPRAVA]: Příprava herního jádra pro profil ${versionOpts.custom}...`);
-        try { fs.copyFileSync(vanillaClientJar, clientJarPath); } catch (_) {}
+        try { fs.copyFileSync(vanillaClientJar, clientJarPath); } catch (_) { }
     }
 
     // 🎭 Aplikace vlastního RAW offline skinu a pláště pro warez / offline režim přímo do jádra
@@ -2802,7 +2807,7 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
         const { app } = require('electron');
         launcherVersion = (app && typeof app.getVersion === 'function') ? app.getVersion() : require('../../package.json').version;
     } catch (_) {
-        try { launcherVersion = require('../../package.json').version; } catch (__) {}
+        try { launcherVersion = require('../../package.json').version; } catch (__) { }
     }
 
     let resolvedLoader = 'vanilla';
@@ -2846,7 +2851,7 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
         if (typeof syncKeybindsToProfile === 'function') {
             syncKeybindsToProfile(gameInstanceDir);
         }
-    } catch (_) {}
+    } catch (_) { }
 
     const opts = {
         config: config,
@@ -2904,7 +2909,7 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
                 }
             }
         }
-    } catch (_) {}
+    } catch (_) { }
 
     // Důkladné pročištění starých grafických proměnných z process.env
     // Zabrání chybám 'No supported graphics backend was found' a 'VK_ERROR_INITIALIZATION_FAILED'
@@ -2938,75 +2943,75 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
         delete process.env[key];
     };
 
-// In-memory cache pro detekci hardware platformy a GPU na Linuxu (vyhne se opakovanému čtení sysfs)
-let cachedLinuxGpuInfo = null;
+    // In-memory cache pro detekci hardware platformy a GPU na Linuxu (vyhne se opakovanému čtení sysfs)
+    let cachedLinuxGpuInfo = null;
 
-function getLinuxPlatformPerformanceInfo() {
-    if (cachedLinuxGpuInfo) return cachedLinuxGpuInfo;
-    let isLaptop = false;
-    try {
-        if (fs.existsSync('/sys/class/dmi/id/chassis_type')) {
-            const chassis = fs.readFileSync('/sys/class/dmi/id/chassis_type', 'utf8').trim();
-            const laptopTypes = ['8', '9', '10', '11', '14', '30', '31', '32'];
-            const desktopTypes = ['3', '4', '5', '6', '7', '13', '15', '16', '17', '23', '24', '35', '36'];
-            if (laptopTypes.includes(chassis)) {
-                isLaptop = true;
-            } else if (desktopTypes.includes(chassis)) {
-                isLaptop = false;
+    function getLinuxPlatformPerformanceInfo() {
+        if (cachedLinuxGpuInfo) return cachedLinuxGpuInfo;
+        let isLaptop = false;
+        try {
+            if (fs.existsSync('/sys/class/dmi/id/chassis_type')) {
+                const chassis = fs.readFileSync('/sys/class/dmi/id/chassis_type', 'utf8').trim();
+                const laptopTypes = ['8', '9', '10', '11', '14', '30', '31', '32'];
+                const desktopTypes = ['3', '4', '5', '6', '7', '13', '15', '16', '17', '23', '24', '35', '36'];
+                if (laptopTypes.includes(chassis)) {
+                    isLaptop = true;
+                } else if (desktopTypes.includes(chassis)) {
+                    isLaptop = false;
+                }
             }
-        }
-        if (!isLaptop && fs.existsSync('/sys/class/power_supply')) {
-            const supplies = fs.readdirSync('/sys/class/power_supply');
-            for (const s of supplies) {
-                if (s.startsWith('BAT')) {
-                    const scopePath = path.join('/sys/class/power_supply', s, 'scope');
-                    const typePath = path.join('/sys/class/power_supply', s, 'type');
-                    const scope = fs.existsSync(scopePath) ? fs.readFileSync(scopePath, 'utf8').trim().toLowerCase() : '';
-                    const type = fs.existsSync(typePath) ? fs.readFileSync(typePath, 'utf8').trim().toLowerCase() : '';
-                    if ((type === 'battery' || !type) && scope !== 'device') {
-                        isLaptop = true;
-                        break;
+            if (!isLaptop && fs.existsSync('/sys/class/power_supply')) {
+                const supplies = fs.readdirSync('/sys/class/power_supply');
+                for (const s of supplies) {
+                    if (s.startsWith('BAT')) {
+                        const scopePath = path.join('/sys/class/power_supply', s, 'scope');
+                        const typePath = path.join('/sys/class/power_supply', s, 'type');
+                        const scope = fs.existsSync(scopePath) ? fs.readFileSync(scopePath, 'utf8').trim().toLowerCase() : '';
+                        const type = fs.existsSync(typePath) ? fs.readFileSync(typePath, 'utf8').trim().toLowerCase() : '';
+                        if ((type === 'battery' || !type) && scope !== 'device') {
+                            isLaptop = true;
+                            break;
+                        }
                     }
                 }
             }
-        }
-    } catch (_) {}
+        } catch (_) { }
 
-    let gpuDeviceCount = 1;
-    try {
-        const drmDir = '/sys/class/drm';
-        if (fs.existsSync(drmDir)) {
-            const cards = fs.readdirSync(drmDir).filter(f => /^card\d+$/.test(f));
-            const uniqueDevices = new Set();
-            for (const c of cards) {
-                try {
-                    const devPath = fs.realpathSync(path.join(drmDir, c, 'device'));
-                    uniqueDevices.add(devPath);
-                } catch (_) {}
+        let gpuDeviceCount = 1;
+        try {
+            const drmDir = '/sys/class/drm';
+            if (fs.existsSync(drmDir)) {
+                const cards = fs.readdirSync(drmDir).filter(f => /^card\d+$/.test(f));
+                const uniqueDevices = new Set();
+                for (const c of cards) {
+                    try {
+                        const devPath = fs.realpathSync(path.join(drmDir, c, 'device'));
+                        uniqueDevices.add(devPath);
+                    } catch (_) { }
+                }
+                gpuDeviceCount = uniqueDevices.size;
             }
-            gpuDeviceCount = uniqueDevices.size;
-        }
-    } catch (_) {}
+        } catch (_) { }
 
-    const isHybridMultiGpu = isLaptop && (gpuDeviceCount >= 2);
-    const hasNvidia = fs.existsSync('/proc/driver/nvidia') || fs.existsSync('/sys/module/nvidia');
+        const isHybridMultiGpu = isLaptop && (gpuDeviceCount >= 2);
+        const hasNvidia = fs.existsSync('/proc/driver/nvidia') || fs.existsSync('/sys/module/nvidia');
 
-    let gamemodeLib = null;
-    const gamemodeLibs = [
-        '/usr/lib/libgamemodeauto.so.0',
-        '/usr/lib/x86_64-linux-gnu/libgamemodeauto.so.0',
-        '/usr/lib64/libgamemodeauto.so.0'
-    ];
-    for (const lib of gamemodeLibs) {
-        if (fs.existsSync(lib)) {
-            gamemodeLib = lib;
-            break;
+        let gamemodeLib = null;
+        const gamemodeLibs = [
+            '/usr/lib/libgamemodeauto.so.0',
+            '/usr/lib/x86_64-linux-gnu/libgamemodeauto.so.0',
+            '/usr/lib64/libgamemodeauto.so.0'
+        ];
+        for (const lib of gamemodeLibs) {
+            if (fs.existsSync(lib)) {
+                gamemodeLib = lib;
+                break;
+            }
         }
+
+        cachedLinuxGpuInfo = { isLaptop, isHybridMultiGpu, hasNvidia, gamemodeLib };
+        return cachedLinuxGpuInfo;
     }
-
-    cachedLinuxGpuInfo = { isLaptop, isHybridMultiGpu, hasNvidia, gamemodeLib };
-    return cachedLinuxGpuInfo;
-}
 
     if (process.platform === 'linux') {
         const linuxInfo = getLinuxPlatformPerformanceInfo();
@@ -3244,26 +3249,26 @@ function cancelLaunch() {
 
         if (activeLauncherClient._activeControllers) {
             for (const ctrl of activeLauncherClient._activeControllers) {
-                try { ctrl.abort(); } catch (e) {}
+                try { ctrl.abort(); } catch (e) { }
             }
             activeLauncherClient._activeControllers.clear();
         }
 
         if (activeLauncherClient._activeRequests) {
             for (const req of activeLauncherClient._activeRequests) {
-                try { req.abort(); } catch (e) {}
+                try { req.abort(); } catch (e) { }
             }
             activeLauncherClient._activeRequests.clear();
         }
 
         if (activeLauncherClient._activeStreams) {
             for (const [filePath, st] of activeLauncherClient._activeStreams.entries()) {
-                try { st.destroy(); } catch (e) {}
+                try { st.destroy(); } catch (e) { }
                 try {
                     if (fs.existsSync(filePath)) {
                         fs.unlinkSync(filePath);
                     }
-                } catch (e) {}
+                } catch (e) { }
             }
             activeLauncherClient._activeStreams.clear();
         }
@@ -3274,7 +3279,7 @@ function cancelLaunch() {
                     if (fs.existsSync(filePath)) {
                         fs.unlinkSync(filePath);
                     }
-                } catch (e) {}
+                } catch (e) { }
             }
             activeLauncherClient._sessionDownloadedFiles.clear();
         }
@@ -3283,7 +3288,7 @@ function cancelLaunch() {
     if (activeMinecraftProcess) {
         try {
             activeMinecraftProcess.kill();
-        } catch (e) {}
+        } catch (e) { }
         activeMinecraftProcess = null;
     }
 
@@ -3309,7 +3314,7 @@ async function getOrFetchAssetIndex(baseDir, targetVersion = '26.2') {
             const parsed = JSON.parse(fs.readFileSync(indexFile, 'utf8'));
             if (parsed && parsed.objects) return parsed;
         } catch (e) {
-            try { fs.unlinkSync(indexFile); } catch (_) {}
+            try { fs.unlinkSync(indexFile); } catch (_) { }
         }
     }
 
@@ -3322,10 +3327,10 @@ async function getOrFetchAssetIndex(baseDir, targetVersion = '26.2') {
                     const parsed = JSON.parse(fs.readFileSync(fPath, 'utf8'));
                     if (parsed && parsed.objects) return parsed;
                 } catch (e) {
-                    try { fs.unlinkSync(fPath); } catch (_) {}
+                    try { fs.unlinkSync(fPath); } catch (_) { }
                 }
             }
-        } catch (e) {}
+        } catch (e) { }
     }
 
     try {
@@ -3334,9 +3339,9 @@ async function getOrFetchAssetIndex(baseDir, targetVersion = '26.2') {
         if (manifestRes.ok) {
             const manifest = await manifestRes.json();
             let vEntry = manifest.versions.find(v => v.id === targetVersion) ||
-                         (targetVersion === '1.21.11' ? manifest.versions.find(v => v.id === '1.21.1') : null) ||
-                         manifest.versions.find(v => v.id === manifest.latest.release) ||
-                         manifest.versions[0];
+                (targetVersion === '1.21.11' ? manifest.versions.find(v => v.id === '1.21.1') : null) ||
+                manifest.versions.find(v => v.id === manifest.latest.release) ||
+                manifest.versions[0];
             if (vEntry && vEntry.url) {
                 const vRes = await fetch(vEntry.url, { signal: AbortSignal.timeout(8000) });
                 if (vRes.ok) {
@@ -3402,7 +3407,7 @@ async function checkAudioDlcStatus(baseDir, targetVersion = '26.2') {
 
 async function downloadAudioDlc(baseDir, targetVersion = '26.2', onProgress) {
     if (activeDlcAbortController) {
-        try { activeDlcAbortController.abort(); } catch (e) {}
+        try { activeDlcAbortController.abort(); } catch (e) { }
     }
     const abortCtrl = new AbortController();
     activeDlcAbortController = abortCtrl;
@@ -3473,7 +3478,7 @@ async function downloadAudioDlc(baseDir, targetVersion = '26.2', onProgress) {
                     processed++;
                     report();
                     return;
-                } catch (e) {}
+                } catch (e) { }
             }
         }
 
@@ -3522,7 +3527,7 @@ async function downloadAudioDlc(baseDir, targetVersion = '26.2', onProgress) {
 
 function cancelAudioDlcDownload() {
     if (activeDlcAbortController) {
-        try { activeDlcAbortController.abort(); } catch (e) {}
+        try { activeDlcAbortController.abort(); } catch (e) { }
         activeDlcAbortController = null;
         return true;
     }
@@ -3537,20 +3542,20 @@ function cancelAudioDlcDownload() {
  */
 async function prewarmLaunchEnvironment(centralRootDir, targetVersion = '26.2', config = null) {
     try {
-        await ensureMojangVersionUpToDate(centralRootDir || BASE_DIR, targetVersion, () => {}, true);
-    } catch (_) {}
+        await ensureMojangVersionUpToDate(centralRootDir || BASE_DIR, targetVersion, () => { }, true);
+    } catch (_) { }
 
     try {
         if (config) {
-            await ensureJavaExecutable(config, () => {});
+            await ensureJavaExecutable(config, () => { });
         }
-    } catch (_) {}
+    } catch (_) { }
 
     try {
         if (process.platform === 'linux') {
             getLinuxPlatformPerformanceInfo();
         }
-    } catch (_) {}
+    } catch (_) { }
 }
 
 module.exports = {

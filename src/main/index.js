@@ -1,3 +1,8 @@
+const dns = require('dns');
+try {
+    dns.setDefaultResultOrder('ipv4first');
+} catch (_) {}
+
 // Globální ochrana proti neošetřeným výjimkám v hlavním procesu (zabrání crash dialogům na Windows)
 process.on('uncaughtException', (err) => {
     console.error('[MAIN PROCESS] Uncaught Exception:', err);
@@ -1756,8 +1761,8 @@ let isLaunchingProcess = false;
 let launchProcessStartTime = 0;
 
 ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
-    // ⚡ Bezpečnostní auto-recovery: Pokud stav spouštění visí déle než 15 sekund a hra reálně neběží, resetovat zablokování
-    if (isLaunchingProcess && (Date.now() - launchProcessStartTime > 15000) && !isGameRunning()) {
+    // ⚡ Bezpečnostní auto-recovery: Pokud stav spouštění visí déle než 120 sekund a hra reálně neběží, resetovat zablokování
+    if (isLaunchingProcess && (Date.now() - launchProcessStartTime > 120000) && !isGameRunning()) {
         console.warn('[LAUNCHER] Detekován uvízlý stav spouštění bez běžícího procesu, automaticky odblokuji.');
         isLaunchingProcess = false;
     }
