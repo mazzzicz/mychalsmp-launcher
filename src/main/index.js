@@ -446,6 +446,21 @@ if (!gotTheLock) {
                 const cfg = loadConfig();
                 const targetVer = cfg.version || '26.2';
                 prewarmLaunchEnvironment(BASE_DIR, targetVer, cfg);
+
+                // Asynchronní pre-warm aktualizací módů pro aktivní profil (0 ms prodleva při kliknutí na HRÁT)
+                if (cfg.autoUpdateMods !== false) {
+                    const activeProfile = (cfg.profiles || []).find(p => p.id === cfg.activeProfileId);
+                    if (activeProfile && activeProfile.loader && activeProfile.loader !== 'vanilla') {
+                        const gDir = activeProfile.gameDir || path.join(BASE_DIR, 'profiles', activeProfile.id);
+                        checkProfileModUpdates({
+                            profileId: activeProfile.id,
+                            gameDir: gDir,
+                            version: activeProfile.version || '26.2',
+                            loader: activeProfile.loader || 'fabric',
+                            force: false
+                        }).catch(() => {});
+                    }
+                }
             } catch (_) {}
         }, 1200);
 
@@ -669,7 +684,7 @@ ipcMain.handle('search-modrinth', async (event, query, version, loader, category
     return await searchModrinth(query, version, loader, category, projectType, offset, limit);
 });
 
-ipcMain.handle('check-profile-mod-updates', async (event, profileId) => {
+ipcMain.handle('check-profile-mod-updates', async (event, profileId, force = false) => {
     try {
         const config = loadConfig();
         const targetProfId = profileId || config.activeProfileId;
@@ -682,7 +697,8 @@ ipcMain.handle('check-profile-mod-updates', async (event, profileId) => {
             profileId: targetProfId,
             gameDir: targetDir,
             version: profile.version || '26.2',
-            loader: profile.loader || 'fabric'
+            loader: profile.loader || 'fabric',
+            force
         });
     } catch (e) {
         console.warn('[MOD UPDATES] Chyba při kontrole aktualizací módů:', e.message);
@@ -1800,6 +1816,19 @@ ipcMain.handle('preload-launch-environment', async (event, profileId) => {
         const version = profile ? profile.version : (config.version || '26.2');
         const verJson = path.join(BASE_DIR, 'versions', version, `${version}.json`);
         fs.promises.access(verJson, fs.constants.R_OK).catch(() => {});
+
+        // Pre-warm / background kontrola módů na pozadí při hoveru, pokud je profil modovaný
+        if (profile && profile.loader && profile.loader !== 'vanilla' && config.autoUpdateMods !== false) {
+            const gameDir = profile.gameDir || path.join(BASE_DIR, 'profiles', profile.id);
+            checkProfileModUpdates({
+                profileId: profile.id,
+                gameDir,
+                version: profile.version || '26.2',
+                loader: profile.loader || 'fabric',
+                force: false
+            }).catch(() => {});
+        }
+
         return { success: true };
     } catch (_) {
         return { success: false };
@@ -2003,6 +2032,16 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
                     mainWindow.webContents.send('launch-log', logLine);
                 }
 
+                // ⚡ Bleskové zrušení grace periody: V okamžiku, kdy z JVM dorazí první výstup,
+                // víme, že proces žije a úspěšně bootuje – nemusíme čekat na vypršení časovače!
+                if (resolveGracePeriod) {
+                    if (hideWindowTimeout) clearTimeout(hideWindowTimeout);
+                    const resolveFn = resolveGracePeriod;
+                    resolveGracePeriod = null;
+                    hideWindowTimeout = null;
+                    resolveFn();
+                }
+
                 // Ignorujeme logy z doplňkových služeb (hlasový chat Simple Voice Chat, Plasmo Voice, audio, telemetry, auth apod.)
                 const isAuxiliaryLog = /\[(?:.*VoiceChat.*|.*PlasmoVoice.*|.*Voice.*|.*Audio.*)\]/i.test(logLine) ||
                     /(?:voicechat|plasmovoice|simple\s*voice|voice\s*(?:chat|server|proxy)|audioplayer|essential|telemetry|skin\s*server|auth\s*server|session\s*server|ice\s*server|stun:|turn:)/i.test(logLine);
@@ -2187,15 +2226,16 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
         // Skrytí launcheru do systémové lišty (Tray) pro nulovou zátěž při běhu hry
         setupTray();
 
-        // ⚡ Grace period 1.5 sekundy: Vyčkáme, zda proces nezkolabuje v prvních okamžicích bootstrapu
-        if (!hasExited && proc.exitCode === null && !proc.killed) {
+        // ⚡ Dynamická grace period: Pokud již JVM vygeneroval výstup (recentGameLogs), proces stabilně běží a čekání je 0 ms.
+        // V opačném případě čekáme pouze na první řádek výstupu (nebo max 750 ms fallback).
+        if (!hasExited && proc.exitCode === null && !proc.killed && recentGameLogs.length === 0) {
             await new Promise(resolve => {
                 resolveGracePeriod = resolve;
                 hideWindowTimeout = setTimeout(() => {
                     resolveGracePeriod = null;
                     hideWindowTimeout = null;
                     resolve();
-                }, 1500);
+                }, 750);
             });
             hideWindowTimeout = null;
             resolveGracePeriod = null;
@@ -2217,13 +2257,18 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
             };
         }
 
-        // Teprve pokud proces stabilně běží, schováme okno do lišty a pošleme 'game-started'
+        // Teprve pokud proces stabilně běží, provedeme plynulý Launch Handoff a schováme okno do lišty
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('game-started', {
                 profileId: activeSessionData ? activeSessionData.profileId : profileId,
                 version: activeSessionData ? activeSessionData.version : null
             });
-            mainWindow.hide();
+            // 🪟 Plynulý Apple Launch Handoff: 160ms fade-out před reálným schováním okna
+            setTimeout(() => {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.hide();
+                }
+            }, 160);
         }
 
         return { success: true };

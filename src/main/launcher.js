@@ -321,6 +321,34 @@ function getFileSha1(filePath) {
     }
 }
 
+const verifiedJarsCache = new Map();
+const dnsResolutionCache = new Map();
+
+/**
+ * ⚡ Asynchronní vyřešení domény serveru s 10minutovou paměťovou cache a 350ms limitem,
+ * která zabraňuje zasekávání startu hry při pomalém nebo nedostupném DNS.
+ */
+async function isServerHostResolvable(hostOnly) {
+    if (!hostOnly) return true;
+    const lower = hostOnly.toLowerCase();
+    const cached = dnsResolutionCache.get(lower);
+    if (cached && (Date.now() - cached.timestamp < 10 * 60 * 1000)) {
+        return cached.resolvable;
+    }
+    const dns = require('dns').promises;
+    try {
+        await Promise.race([
+            dns.lookup(hostOnly),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('DNS_TIMEOUT')), 350))
+        ]);
+        dnsResolutionCache.set(lower, { resolvable: true, timestamp: Date.now() });
+        return true;
+    } catch (_) {
+        dnsResolutionCache.set(lower, { resolvable: false, timestamp: Date.now() });
+        return false;
+    }
+}
+
 Handler.prototype.getJar = async function () {
     if (this.client && this.client._isCancelled) {
         return Promise.reject(new Error('LAUNCH_CANCELLED'));
@@ -334,24 +362,40 @@ Handler.prototype.getJar = async function () {
 
     // 1. Zkontrolovat, zda cílový client jar již existuje a je 100% platný (ověření SHA-1 hashe a ZIP hlavičky)
     if (fs.existsSync(targetJarPath)) {
-        let isUpToDate = isJarFileValid(targetJarPath);
-        if (isUpToDate && expectedSha1) {
-            const actualSha1 = getFileSha1(targetJarPath);
-            if (actualSha1 && actualSha1 !== expectedSha1) {
-                const vanillaBackup = targetJarPath.replace(/\.jar$/, '.vanilla.jar');
-                const sigPath = `${targetJarPath}.skin_sig`;
-                const hasValidVanillaBackup = fs.existsSync(vanillaBackup) && isJarFileValid(vanillaBackup);
-                const hasSkinSig = fs.existsSync(sigPath);
+        let isUpToDate = false;
+        try {
+            const st = fs.statSync(targetJarPath);
+            const cacheKey = `${st.size}:${Math.floor(st.mtimeMs)}:${expectedSha1 || 'any'}`;
+            if (verifiedJarsCache.get(targetJarPath) === cacheKey) {
+                // ⚡ Bleskový start z cache (0 ms zátěž namísto čtení a hešování 85 MB!)
+                isUpToDate = true;
+            } else {
+                isUpToDate = isJarFileValid(targetJarPath);
+                if (isUpToDate && expectedSha1) {
+                    const actualSha1 = getFileSha1(targetJarPath);
+                    if (actualSha1 && actualSha1 !== expectedSha1) {
+                        const vanillaBackup = targetJarPath.replace(/\.jar$/, '.vanilla.jar');
+                        const sigPath = `${targetJarPath}.skin_sig`;
+                        const hasValidVanillaBackup = fs.existsSync(vanillaBackup) && isJarFileValid(vanillaBackup);
+                        const hasSkinSig = fs.existsSync(sigPath);
 
-                if (hasSkinSig || hasValidVanillaBackup) {
-                    // Cílový JAR má aplikovaný náš RAW skin offline postavy, není poškozený
-                    this.client.emit('debug', `[POSTAVA]: Herní klient ${jarName} má aplikovaný RAW offline skin postavy.`);
-                } else {
-                    isUpToDate = false;
-                    this.client.emit('debug', `[AKTUALIZACE]: Lokální hash ${actualSha1} neodpovídá ${expectedSha1}. Stahuji aktualizovaný klient jar...`);
+                        if (hasSkinSig || hasValidVanillaBackup) {
+                            // Cílový JAR má aplikovaný náš RAW skin offline postavy, není poškozený
+                            this.client.emit('debug', `[POSTAVA]: Herní klient ${jarName} má aplikovaný RAW offline skin postavy.`);
+                        } else {
+                            isUpToDate = false;
+                            this.client.emit('debug', `[AKTUALIZACE]: Lokální hash ${actualSha1} neodpovídá ${expectedSha1}. Stahuji aktualizovaný klient jar...`);
+                        }
+                    }
+                }
+                if (isUpToDate) {
+                    verifiedJarsCache.set(targetJarPath, cacheKey);
                 }
             }
+        } catch (_) {
+            isUpToDate = false;
         }
+
         if (isUpToDate) {
             try { fs.writeFileSync(targetJsonPath, JSON.stringify(this.version, null, 4)); } catch (e) { }
             this.client.emit('debug', `[OPTIMALIZACE]: Verze ${jarName} již existuje na disku a je platná.`);
@@ -706,6 +750,8 @@ Handler.prototype.downloadToDirectory = async function (directory, libraries, ev
  * 1. Oseká 120+ nepotřebných cizích jazyků a stáhne z Mojangu POUZE CS, SK, EN_US a EN_GB (~50 MB úspora).
  * 2. Zkontroluje existující .minecraft na disku a chybějící soubory zkopíruje bleskově z disku namísto stahování.
  */
+const verifiedAssetIndexes = new Set();
+
 Handler.prototype.getAssets = async function () {
     if (this.client && this.client._isCancelled) {
         return Promise.reject(new Error('LAUNCH_CANCELLED'));
@@ -820,6 +866,17 @@ Handler.prototype.getAssets = async function () {
         .map(d => path.join(d, 'assets', 'objects'))
         .filter(d => fs.existsSync(d));
 
+    const assetIndexCacheKey = `${indexName}:${assetDirectory}:${downloadAudioDlc}`;
+    if (verifiedAssetIndexes.has(assetIndexCacheKey)) {
+        this.client.emit('debug', `[DELTA ASSETY]: Všech ${filteredAssetKeys.length} textur a zvuků ověřeno z relace (bleskový start).`);
+        this.client.emit('progress', {
+            type: 'assets',
+            task: filteredAssetKeys.length,
+            total: filteredAssetKeys.length
+        });
+        return;
+    }
+
     // ── Inteligentní Delta Analýza Textur & Assetů ───────────────────────────
     // Zjistíme, které textury a assety už existují (z předchozích verzí 26.1/26.2 nebo .minecraft).
     // Pokud Mojang textury nezměnil, mají totožný SHA-1 hash a znovupoužijí se bez stahování!
@@ -856,6 +913,7 @@ Handler.prototype.getAssets = async function () {
     }
 
     if (missingAssetKeys.length === 0) {
+        verifiedAssetIndexes.add(assetIndexCacheKey);
         this.client.emit('debug', `[DELTA ASSETY]: Všech ${filteredAssetKeys.length} textur a zvuků existuje na disku a je aktuální.`);
         this.client.emit('progress', {
             type: 'assets',
@@ -904,6 +962,7 @@ Handler.prototype.getAssets = async function () {
     });
 
     await Promise.all(workers);
+    verifiedAssetIndexes.add(assetIndexCacheKey);
     this.client.emit('debug', `[OPTIMALIZACE]: Staženo ${counter} nových/změněných assetů, ${reusedCount} převzato z disku.`);
 };
 
@@ -2738,11 +2797,9 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
     let serverToJoin = customServer || (config.autoConnectServer ? config.serverIp : null);
     if (serverToJoin) {
         if (serverToJoin.toLowerCase().includes('mychalsmp')) {
-            try {
-                const dns = require('dns').promises;
-                const hostOnly = serverToJoin.includes(':') ? serverToJoin.split(':')[0] : serverToJoin;
-                await dns.lookup(hostOnly);
-            } catch (dnsErr) {
+            const hostOnly = serverToJoin.includes(':') ? serverToJoin.split(':')[0] : serverToJoin;
+            const isResolvable = await isServerHostResolvable(hostOnly);
+            if (!isResolvable) {
                 const portOnly = serverToJoin.includes(':') ? serverToJoin.split(':')[1] : '25565';
                 onLog(`[SÍŤ] Doména mychalsmp.xyz je nedostupná (Unknown host). Přepínám na záložní IP: 130.61.89.37:${portOnly}`);
                 serverToJoin = `130.61.89.37:${portOnly}`;
@@ -3625,6 +3682,10 @@ async function prewarmLaunchEnvironment(centralRootDir, targetVersion = '26.2', 
         if (process.platform === 'linux') {
             getLinuxPlatformPerformanceInfo();
         }
+    } catch (_) { }
+
+    try {
+        isServerHostResolvable('mychalsmp.xyz').catch(() => {});
     } catch (_) { }
 }
 

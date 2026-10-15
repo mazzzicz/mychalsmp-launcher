@@ -714,11 +714,14 @@ async function downloadModOrPack(options, targetDir) {
     };
 }
 
+const modUpdatesCache = new Map();
+
 /**
  * Kontroluje aktualizace nainstalovaných módů v profilu přes Modrinth API.
  * Využívá hromadný endpoint /v2/version_files/update pro bleskový dotaz během stovek milisekund.
+ * Obsahuje inteligentní diskovou a časovou cache (30 min), aby neblokoval spuštění hry síťovými dotazy.
  */
-async function checkProfileModUpdates({ profileId, gameDir, version = '26.2', loader = 'fabric' }) {
+async function checkProfileModUpdates({ profileId, gameDir, version = '26.2', loader = 'fabric', force = false }) {
     const modsDir = path.join(gameDir, 'mods');
     if (!fs.existsSync(modsDir)) {
         return { success: true, updates: [] };
@@ -726,12 +729,6 @@ async function checkProfileModUpdates({ profileId, gameDir, version = '26.2', lo
 
     const normLoader = (loader && loader !== 'vanilla') ? loader.toLowerCase() : 'fabric';
     const normVersion = version || '26.2';
-
-    let metaMap = {};
-    const metaPath = path.join(modsDir, '.mod_meta.json');
-    if (fs.existsSync(metaPath)) {
-        try { metaMap = JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch (_) {}
-    }
 
     let files = [];
     try {
@@ -742,6 +739,29 @@ async function checkProfileModUpdates({ profileId, gameDir, version = '26.2', lo
 
     if (files.length === 0) {
         return { success: true, updates: [] };
+    }
+
+    // ⚡ Inteligentní cache otisku složky: pokud se nezměnily soubory ani jejich mtime a neuplynuly 2 hodiny, vrátíme výsledek ihned (0 ms)
+    const cacheKey = `${profileId || gameDir}:${normLoader}:${normVersion}`;
+    let dirFingerprint = '';
+    try {
+        dirFingerprint = files.map(f => {
+            const st = fs.statSync(path.join(modsDir, f));
+            return `${f}:${st.size}:${Math.floor(st.mtimeMs)}`;
+        }).join('|');
+    } catch (_) { }
+
+    if (!force && modUpdatesCache.has(cacheKey)) {
+        const cached = modUpdatesCache.get(cacheKey);
+        if (cached && (Date.now() - cached.timestamp < 2 * 60 * 60 * 1000) && cached.fingerprint === dirFingerprint) {
+            return { success: true, updates: cached.updates, fromCache: true };
+        }
+    }
+
+    let metaMap = {};
+    const metaPath = path.join(modsDir, '.mod_meta.json');
+    if (fs.existsSync(metaPath)) {
+        try { metaMap = JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch (_) {}
     }
 
     const fileByHash = {};
@@ -815,6 +835,12 @@ async function checkProfileModUpdates({ profileId, gameDir, version = '26.2', lo
     } catch (apiErr) {
         console.warn('[MOD UPDATES] Chyba při volání Modrinth /v2/version_files/update:', apiErr.message);
     }
+
+    modUpdatesCache.set(cacheKey, {
+        timestamp: Date.now(),
+        fingerprint: dirFingerprint,
+        updates: updates
+    });
 
     return { success: true, updates };
 }

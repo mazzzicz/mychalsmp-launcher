@@ -1838,6 +1838,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── Quick Play MYCHAL SMP Banner ────────────────────────────────────────
     if (btnQuickPlayMychal) {
+        btnQuickPlayMychal.addEventListener('pointerenter', () => {
+            if (!isRunning && !isLaunching && typeof prewarmLaunchEnvironment === 'function') {
+                prewarmLaunchEnvironment();
+            }
+        }, { passive: true });
+
         btnQuickPlayMychal.addEventListener('click', async () => {
             if (isRunning) {
                 showToast('Hra již běží. Před připojením k serveru nejprve ukonči běžící instanci.', 'error');
@@ -2969,6 +2975,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── Launch Minecraft ────────────────────────────────────────────────────
     async function startLaunch(profileId, serverIp) {
+        if (isRunning) {
+            const currentRunningPid = runningProfileId || currentConfig.activeProfileId;
+            if (profileId === currentRunningPid || (!profileId && currentConfig.activeProfileId === currentRunningPid)) {
+                if (confirm('Chceš ukončit běžící Minecraft proces?')) {
+                    await window.api.killGame();
+                    resetPlayState();
+                }
+            } else {
+                showToast('Hra již běží. Před spuštěním nebo stažením jiné verze nejprve ukonči běžící instanci.', 'error');
+            }
+            return;
+        }
+
         if (isLaunching) {
             console.warn('[LAUNCH] Spuštění již probíhá...');
             showToast('Probíhá spouštění nebo stahování verze. Počkej na dokončení.', 'warning');
@@ -2977,6 +2996,36 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const targetPid = profileId || currentConfig.activeProfileId || 'minecraft-26.2';
         const targetProf = (currentConfig.profiles || []).find(x => x.id === targetPid);
+
+        // ⚡ Blesková vizuální odezva do 16 ms (1. frame):
+        isLaunching = true;
+        launchingProfileId = targetPid;
+        setHeroLaunchCelebration(true);
+        if (sidebarPlayBtn) sidebarPlayBtn.style.opacity = '0.5';
+
+        const isAlreadyInstalled = targetProf && Array.isArray(installedVersions) && installedVersions.includes(targetProf.version);
+        const initStatusText = isAlreadyInstalled ? 'Příprava herního jádra...' : 'Stahuji verzi a herní data...';
+        maxRenderedProgress = calculatePerceptualProgress(15);
+        lastProgressData = { percent: 15, text: initStatusText };
+        const friendlyInit = getHumanFriendlyStatus(initStatusText, 15);
+
+        if (progressContainer) {
+            progressContainer.style.display = 'flex';
+            if (progressBar) progressBar.style.width = `${maxRenderedProgress}%`;
+            if (progressPercent) progressPercent.textContent = `${maxRenderedProgress}%`;
+            if (progressText) {
+                progressText.textContent = friendlyInit;
+                progressText.title = initStatusText;
+            }
+        }
+        if (globalDownloadChip) {
+            globalDownloadChip.style.display = 'inline-flex';
+            if (globalDownloadBar) globalDownloadBar.style.width = `${maxRenderedProgress}%`;
+            if (globalDownloadText) globalDownloadText.textContent = `${friendlyInit} (${maxRenderedProgress}%)`;
+        }
+
+        renderProfilesList();
+        refreshVersionStatuses();
 
         // ── Kontrola nepovolených módů (Warden Probe) při připojení na MYCHAL SMP ──
         const isMychalServer = serverIp && (
@@ -2996,6 +3045,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (countText) countText.textContent = `${wardenScan.blockedCount} nepovolených módů pro MYCHAL SMP`;
                     showToast(`Připojení k MYCHAL SMP zablokováno: V profilu je ${wardenScan.blockedCount} nepovolených módů.`, 'error');
                     appendLog(`[BEZPEČNOST] Připojení k MYCHAL SMP zablokováno systémem Warden. Nalezeny nepovolené modifikace (${wardenScan.blockedCount}).`);
+                    resetPlayState();
+                    renderProfilesList();
                     openWardenModal();
                     return;
                 }
@@ -3004,37 +3055,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        if (isRunning) {
-            const currentRunningPid = runningProfileId || currentConfig.activeProfileId;
-            if (targetPid === currentRunningPid) {
-                if (confirm('Chceš ukončit běžící Minecraft proces?')) {
-                    await window.api.killGame();
-                    resetPlayState();
-                }
-            } else {
-                showToast('Hra již běží. Před spuštěním nebo stažením jiné verze nejprve ukonči běžící instanci.', 'error');
-            }
-            return;
-        }
-
+        // 💾 Uložit nastavení pouze v případě reálné změny (isSettingsDirty)
         try {
-            if (typeof autoSaveSettings === 'function') {
+            if (typeof autoSaveSettings === 'function' && isSettingsDirty) {
                 await Promise.race([
-                    autoSaveSettings(true),
+                    autoSaveSettings(true, true),
                     new Promise(r => setTimeout(r, 600))
                 ]).catch(() => { });
             }
         } catch (_) { }
 
-        isLaunching = true;
-        launchingProfileId = targetPid;
-        setHeroLaunchCelebration(true);
-        if (sidebarPlayBtn) sidebarPlayBtn.style.opacity = '0.5';
-
-        renderProfilesList();
-        refreshVersionStatuses();
-
-        const isAlreadyInstalled = targetProf && Array.isArray(installedVersions) && installedVersions.includes(targetProf.version);
         const hasBeenPlayed = targetProf && (Boolean(targetProf.lastPlayed) || (typeof targetProf.playtimeSeconds === 'number' && targetProf.playtimeSeconds > 0));
         const hasExplicitLoader = targetProf && Boolean(targetProf.loader) && ['fabric', 'vanilla', 'forge', 'neoforge'].includes(targetProf.loader);
 
@@ -3080,7 +3110,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 const updateRes = await Promise.race([
                     window.api.checkProfileModUpdates(targetPid),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 4000))
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 1500))
                 ]).catch(err => {
                     appendLog(`[AKTUALIZACE MÓDŮ] Kontrola přeskočena (${err.message})`);
                     return { success: false, updates: [] };
@@ -3155,25 +3185,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        const initStatusText = isAlreadyInstalled ? 'Načítání hry...' : 'Stahuji verzi a herní data...';
-        maxRenderedProgress = calculatePerceptualProgress(8);
-        lastProgressData = { percent: 8, text: initStatusText };
-        const friendlyInit = getHumanFriendlyStatus(initStatusText, 8);
+        const launchStatusText = isAlreadyInstalled ? 'Načítání hry...' : 'Stahuji verzi a herní data...';
+        maxRenderedProgress = Math.max(maxRenderedProgress, calculatePerceptualProgress(20));
+        lastProgressData = { percent: 20, text: launchStatusText };
+        const friendlyLaunch = getHumanFriendlyStatus(launchStatusText, 20);
 
         if (progressContainer) {
             progressContainer.style.display = 'flex';
             if (progressBar) progressBar.style.width = `${maxRenderedProgress}%`;
             if (progressPercent) progressPercent.textContent = `${maxRenderedProgress}%`;
             if (progressText) {
-                progressText.textContent = friendlyInit;
-                progressText.title = initStatusText;
+                progressText.textContent = friendlyLaunch;
+                progressText.title = launchStatusText;
             }
         }
 
         if (globalDownloadChip) {
             globalDownloadChip.style.display = 'inline-flex';
             if (globalDownloadBar) globalDownloadBar.style.width = `${maxRenderedProgress}%`;
-            if (globalDownloadText) globalDownloadText.textContent = `${friendlyInit} (${maxRenderedProgress}%)`;
+            if (globalDownloadText) globalDownloadText.textContent = `${friendlyLaunch} (${maxRenderedProgress}%)`;
         }
 
         appendLog(isAlreadyInstalled
@@ -3359,6 +3389,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function resetPlayState() {
+        document.body.classList.remove('launch-handoff');
         isRunning = false;
         runningProfileId = null;
         isLaunching = false;
@@ -6703,13 +6734,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     let autoSaveSettingsTimer = null;
-    async function autoSaveSettings(instant = false) {
+    let isSettingsDirty = false;
+
+    function markSettingsDirty() {
+        isSettingsDirty = true;
+    }
+
+    async function autoSaveSettings(instant = false, force = false) {
+        if (!force) {
+            isSettingsDirty = true;
+        } else if (!isSettingsDirty && !autoSaveSettingsTimer) {
+            return;
+        }
+
         if (autoSaveSettingsTimer) {
             clearTimeout(autoSaveSettingsTimer);
             autoSaveSettingsTimer = null;
         }
 
         const doSave = async () => {
+            isSettingsDirty = false;
             try {
                 const updated = collectCurrentSettings();
                 currentConfig = { ...currentConfig, ...updated };
@@ -7081,7 +7125,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Zero-overhead during gameplay & background pause (Tray restore)
     if (window.api && window.api.onGameStarted) {
         window.api.onGameStarted((data) => {
-            appendLog('[VÝKON] Hra spuštěna – launcher minimalizován do Tray lišty, pozastaveno 3D vykreslování pro 0% zátěž CPU/GPU.');
+            appendLog('[VÝKON] Hra spuštěna – plynulý přechod (Launch Handoff) do herního okna, launcher minimalizován do Tray lišty.');
+            document.body.classList.add('launch-handoff');
             isRunning = true;
             isLaunching = false;
             launchingProfileId = null;
@@ -7104,6 +7149,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (window.api && window.api.onGameStopped) {
         window.api.onGameStopped(() => {
+            document.body.classList.remove('launch-handoff');
             appendLog('[VÝKON] Hra ukončena – okno launcheru obnoveno ze systémové lišty.');
             resetPlayState();
             resumeLauncherBackgroundActivity();
