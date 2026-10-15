@@ -108,8 +108,8 @@ function isJarFileValid(filePath) {
 
 // Intercept Handler.prototype.downloadAsync:
 // Bleskurychlý downloader postavený na nativním Node fetch (HTTP/2 multiplexing, nulová socket starvation,
-// 10s inactivity timeout namísto zamrzání na 50 sekund a paměťový buffer pro malé assety).
-Handler.prototype.downloadAsync = async function(url, directory, name, retry = true, type = 'assets') {
+// dynamický inactivity timeout a paměťový buffer pro malé assety).
+Handler.prototype.downloadAsync = async function(url, directory, name, retry = 3, type = 'assets') {
     if (this.client && this.client._isCancelled) {
         return Promise.reject(new Error('LAUNCH_CANCELLED'));
     }
@@ -128,16 +128,18 @@ Handler.prototype.downloadAsync = async function(url, directory, name, retry = t
         this.client._activeControllers.add(controller);
     }
 
-    // Inactivity timeout: pokud se spojení na školní/pomalé síti zasekne na 10s bez jediného bajtu, okamžitě abortujeme a zkusíme znovu
+    const isBigFile = (type === 'version-jar' || (name && name.endsWith('.jar') && type !== 'assets'));
+    const defaultTimeoutMs = isBigFile ? 30000 : 12000;
+
     let timeoutTimer = null;
-    const resetTimeout = (ms = 10000) => {
+    const resetTimeout = (ms = defaultTimeoutMs) => {
         if (timeoutTimer) clearTimeout(timeoutTimer);
         timeoutTimer = setTimeout(() => {
             try { controller.abort(new Error('ETIMEDOUT')); } catch (e) {}
         }, ms);
     };
 
-    resetTimeout(10000);
+    resetTimeout(defaultTimeoutMs);
 
     let fileStream = null;
 
@@ -162,7 +164,7 @@ Handler.prototype.downloadAsync = async function(url, directory, name, retry = t
             }
         });
 
-        resetTimeout(10000);
+        resetTimeout(defaultTimeoutMs);
 
         if (this.client && this.client._isCancelled) {
             cleanup();
@@ -210,7 +212,7 @@ Handler.prototype.downloadAsync = async function(url, directory, name, retry = t
                 return;
             }
             receivedBytes += chunk.length;
-            resetTimeout(10000);
+            resetTimeout(defaultTimeoutMs);
             this.client.emit('download-status', {
                 name: name,
                 type: type,
@@ -245,12 +247,13 @@ Handler.prototype.downloadAsync = async function(url, directory, name, retry = t
             return false;
         }
 
-        this.client.emit('debug', `[MCLC]: Chyba při stahování ${name} (${err.message}). Opakuji pokus... (${retry})`);
+        let retriesLeft = typeof retry === 'number' ? retry : (retry ? 3 : 0);
+        this.client.emit('debug', `[MCLC]: Chyba při stahování ${name} (${err.message}). Zbývající pokusy: ${retriesLeft}`);
 
-        if (retry) {
-            // Rychlý backoff 120ms před opakováním pokusu
-            await new Promise(r => setTimeout(r, 120));
-            return await this.downloadAsync(url, directory, name, false, type);
+        if (retriesLeft > 0) {
+            const backoff = retriesLeft === 3 ? 250 : (retriesLeft === 2 ? 600 : 1200);
+            await new Promise(r => setTimeout(r, backoff));
+            return await this.downloadAsync(url, directory, name, retriesLeft - 1, type);
         }
         return false;
     }
@@ -395,7 +398,7 @@ Handler.prototype.getJar = async function() {
         }
 
         if (clientUrl) {
-            await this.downloadAsync(clientUrl, this.options.directory, jarName, true, 'version-jar');
+            await this.downloadAsync(clientUrl, this.options.directory, jarName, 3, 'version-jar');
         } else {
             const baseJar = path.join(this.options.root, 'versions', this.options.version.number, `${this.options.version.number}.jar`);
             if (fs.existsSync(baseJar) && isJarFileValid(baseJar)) {
@@ -412,6 +415,12 @@ Handler.prototype.getJar = async function() {
                 try { fs.copyFileSync(baseJar, targetJarPath); } catch (e) {}
             }
         }
+    }
+
+    // ⚡ Bezpečnostní kontrola integrity: Nikdy nedovolit start Minecraftu s chybějícím nebo poškozeným jádrem!
+    if (!isJarFileValid(targetJarPath)) {
+        this.client.emit('debug', `[CHYBA]: Herní klient ${jarName} nebyl úspěšně stažen nebo je poškozený!`);
+        throw new Error(`Nepodařilo se stáhnout herní jádro ${jarName}. Zkontroluj připojení k internetu a zkus to znovu.`);
     }
 
     try { fs.writeFileSync(targetJsonPath, JSON.stringify(this.version, null, 4)); } catch (e) {}
@@ -542,7 +551,10 @@ Handler.prototype.downloadToDirectory = async function(directory, libraries, eve
     const candidates = getExistingMinecraftBaseDirs();
     let counter = 0;
 
-    await Promise.all(libraries.map(async (library) => {
+    const concurrency = 20;
+    let idx = 0;
+
+    const processLibrary = async (library) => {
         if (!library) return;
         if (this.parseRule(library)) return;
         const lib = library.name.split(':');
@@ -620,7 +632,7 @@ Handler.prototype.downloadToDirectory = async function(directory, libraries, eve
 
             try {
                 fs.mkdirSync(jarPath, { recursive: true });
-                await this.downloadAsync(downloadUrl, jarPath, name, true, eventName);
+                await this.downloadAsync(downloadUrl, jarPath, name, 3, eventName);
                 if (fs.existsSync(destFile)) {
                     if (library.downloads?.artifact?.sha1) {
                         exists = verifyFileSha1(destFile, library.downloads.artifact.sha1);
@@ -640,7 +652,7 @@ Handler.prototype.downloadToDirectory = async function(directory, libraries, eve
             // Fallback na Mojang Maven pokud původní selhalo
             if (!exists && !downloadUrl.includes('libraries.minecraft.net')) {
                 try {
-                    await this.downloadAsync(`https://libraries.minecraft.net/${relPath}`, jarPath, name, true, eventName);
+                    await this.downloadAsync(`https://libraries.minecraft.net/${relPath}`, jarPath, name, 3, eventName);
                     if (fs.existsSync(destFile)) {
                         if (library.downloads?.artifact?.sha1) {
                             exists = verifyFileSha1(destFile, library.downloads.artifact.sha1);
@@ -669,7 +681,17 @@ Handler.prototype.downloadToDirectory = async function(directory, libraries, eve
         } else {
             this.client.emit('debug', `[MCLC]: ⚠ Knihovna ${library.name} nebyla nalezena (${destFile})`);
         }
-    }));
+    };
+
+    const workers = Array.from({ length: concurrency }, async () => {
+        while (idx < libraries.length) {
+            if (this.client && this.client._isCancelled) break;
+            const library = libraries[idx++];
+            await processLibrary(library);
+        }
+    });
+
+    await Promise.all(workers);
 
     return libs;
 };
@@ -848,7 +870,7 @@ Handler.prototype.getAssets = async function() {
     });
 
     // Paralelní zpracování po dávkách pro maximální rychlost přes HTTP/2 multiplexing
-    const concurrency = 35;
+    const concurrency = 45;
     let idx = 0;
 
     const downloadMissingAsset = async (assetKey) => {

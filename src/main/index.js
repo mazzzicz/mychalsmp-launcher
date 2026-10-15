@@ -1753,8 +1753,15 @@ ipcMain.handle('preload-launch-environment', async (event, profileId) => {
 });
 
 let isLaunchingProcess = false;
+let launchProcessStartTime = 0;
 
 ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
+    // ⚡ Bezpečnostní auto-recovery: Pokud stav spouštění visí déle než 15 sekund a hra reálně neběží, resetovat zablokování
+    if (isLaunchingProcess && (Date.now() - launchProcessStartTime > 15000) && !isGameRunning()) {
+        console.warn('[LAUNCHER] Detekován uvízlý stav spouštění bez běžícího procesu, automaticky odblokuji.');
+        isLaunchingProcess = false;
+    }
+
     if (isLaunchingProcess) {
         return {
             success: false,
@@ -1769,6 +1776,7 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
         };
     }
     isLaunchingProcess = true;
+    launchProcessStartTime = Date.now();
 
     const config = loadConfig();
     let authData;
@@ -1923,6 +1931,7 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
         let hasExited = false;
         let earlyExitCode = null;
         let hideWindowTimeout = null;
+        let resolveGracePeriod = null;
 
         const proc = await launchGame(
             launchConfig,
@@ -2053,6 +2062,11 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
                     clearTimeout(hideWindowTimeout);
                     hideWindowTimeout = null;
                 }
+                if (resolveGracePeriod) {
+                    const r = resolveGracePeriod;
+                    resolveGracePeriod = null;
+                    r();
+                }
                 endSessionTracking(exitCode);
 
                 // Reset Discord RPC back to Launcher status
@@ -2120,10 +2134,18 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
         setupTray();
 
         // ⚡ Grace period 1.5 sekundy: Vyčkáme, zda proces nezkolabuje v prvních okamžicích bootstrapu
-        await new Promise(resolve => {
-            hideWindowTimeout = setTimeout(resolve, 1500);
-        });
-        hideWindowTimeout = null;
+        if (!hasExited && proc.exitCode === null && !proc.killed) {
+            await new Promise(resolve => {
+                resolveGracePeriod = resolve;
+                hideWindowTimeout = setTimeout(() => {
+                    resolveGracePeriod = null;
+                    hideWindowTimeout = null;
+                    resolve();
+                }, 1500);
+            });
+            hideWindowTimeout = null;
+            resolveGracePeriod = null;
+        }
 
         // Pokud během grace periody proces zkolaboval
         if (hasExited || proc.exitCode !== null || proc.killed) {
