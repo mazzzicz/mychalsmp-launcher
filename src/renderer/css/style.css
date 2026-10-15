@@ -174,8 +174,8 @@ body {
 }
 
 body.launch-handoff {
-    opacity: 0 !important;
-    transform: scale(0.988) !important;
+    opacity: 0.25;
+    transform: scale(0.99);
     pointer-events: none;
 }
 
@@ -8040,10 +8040,11 @@ input[type="range"].slider.is-dragging::-webkit-slider-thumb {
 }
 
 /* ── Úsporný režim při skrytí do Tray lišty (0% zátěž GPU & CPU) ── */
-body.app-in-tray-paused,
-body.app-in-tray-paused * {
+body.app-in-tray-paused .ui-icon-spin,
+body.app-in-tray-paused .shimmer,
+body.app-in-tray-paused .download-chip-spinner svg,
+body.app-in-tray-paused .status-dot {
     animation-play-state: paused !important;
-    transition: none !important;
 }
 
 body.app-in-tray-paused #heroSkinCanvas3D,

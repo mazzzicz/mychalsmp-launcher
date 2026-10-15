@@ -33,6 +33,7 @@ class DiscordRpcClient {
         this.lastPlayedServer = null;
         this.reconnectTimer = null;
         this.readBuffer = Buffer.alloc(0);
+        this.isSleeping = false;
     }
 
     /**

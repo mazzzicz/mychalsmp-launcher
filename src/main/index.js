@@ -86,15 +86,8 @@ const { scanLauncherCache, cleanLauncherCache } = require('./cleaner');
 const { discordRpc } = require('./discordRpc');
 const keybindManager = require('./keybindManager');
 
-// ⚡ Optimalizace hardwarové akcelerace Electronu (hladký 60/120/144Hz+ rendering rozhraní bez záseků CPU)
+// ⚡ Povolení V8 Garbage Collection pro úsporný režim v liště (Tray)
 try {
-    app.commandLine.appendSwitch('enable-gpu-rasterization');
-    app.commandLine.appendSwitch('enable-zero-copy');
-    app.commandLine.appendSwitch('ignore-gpu-blocklist');
-    app.commandLine.appendSwitch('enable-native-gpu-memory-buffers');
-    app.commandLine.appendSwitch('enable-accelerated-2d-canvas');
-    app.commandLine.appendSwitch('enable-accelerated-video-decode');
-    app.commandLine.appendSwitch('force_high_performance_gpu');
     app.commandLine.appendSwitch('js-flags', '--expose-gc');
 } catch (_) { }
 
@@ -128,8 +121,11 @@ function restoreAndFocusMainWindow() {
             mainWindow.webContents.send('window-restored-from-tray');
         } catch (_) { }
 
-        // Obnovit Discord RPC aktivitu, pokud hra neběží
+        // Probudit Discord RPC a obnovit aktivitu, pokud hra neběží
         try {
+            if (typeof discordRpc.wake === 'function') {
+                discordRpc.wake();
+            }
             if (!isGameRunning()) {
                 const cfg = loadConfig();
                 if (cfg.enableDiscordRpc !== false) {
@@ -143,6 +139,8 @@ function restoreAndFocusMainWindow() {
                 }
             }
         } catch (_) { }
+
+        updateTrayMenu();
     }
 }
 
@@ -150,8 +148,8 @@ function restoreAndFocusMainWindow() {
  * ⚡ Maximální úspora RAM a VRAM při skrytí launcheru do systémové lišty:
  * - Spustí V8 Garbage Collection v Node.js i v Chromium rendereru
  * - Na Windows ořeže Working Set (fyzické stránky v RAM)
- * - Uvolní kódovou/obrazovou mezipaměť Chromia
- * - Uspí Discord RPC aktivitu při nečinnosti (pokud neběží hra)
+ * - Uvolní kódovou i diskovou mezipaměť Chromia
+ * - Uspí Discord RPC spojení při nečinnosti v liště (pokud neběží hra)
  */
 function cleanupTrayMemory() {
     try {
@@ -162,7 +160,7 @@ function cleanupTrayMemory() {
 
     try {
         if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
-            mainWindow.webContents.executeJavaScript('if (typeof window.gc === "function") window.gc();').catch(() => {});
+            mainWindow.webContents.executeJavaScript('if (typeof window.gc === "function") window.gc(); else if (typeof gc === "function") gc();').catch(() => {});
         }
     } catch (_) { }
 
@@ -176,51 +174,90 @@ function cleanupTrayMemory() {
         const { session } = require('electron');
         if (session && session.defaultSession) {
             session.defaultSession.clearCodeCaches({}).catch(() => {});
+            session.defaultSession.clearCache().catch(() => {});
+        }
+    } catch (_) { }
+
+    try {
+        if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
+            mainWindow.webContents.invalidate();
         }
     } catch (_) { }
 
     try {
         if (!isGameRunning() && (!activeSessionData || !isProcessAlive(activeSessionData.pid))) {
-            discordRpc.clearActivity();
+            if (typeof discordRpc.sleep === 'function') {
+                discordRpc.sleep();
+            } else {
+                discordRpc.clearActivity();
+            }
         }
     } catch (_) { }
 }
 
+function updateTrayMenu() {
+    if (!appTray || appTray.isDestroyed()) return;
+    try {
+        const isGame = isGameRunning();
+        const isWinVisible = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible();
+        const session = activeSessionData;
+        const profileName = session ? (session.profileName || 'Minecraft') : 'SMPClient';
+
+        const menuTemplate = [
+            {
+                label: isGame ? `🟢 Hra běží: ${profileName}` : 'SMPClient • V liště',
+                enabled: false
+            },
+            { type: 'separator' },
+            {
+                label: isWinVisible ? 'Skrýt launcher do lišty' : 'Zobrazit launcher',
+                click: () => {
+                    if (isWinVisible) {
+                        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+                    } else {
+                        restoreAndFocusMainWindow();
+                    }
+                }
+            }
+        ];
+
+        if (isGame) {
+            menuTemplate.push({
+                label: '🛑 Ukončit běžící hru',
+                click: () => {
+                    killGame();
+                }
+            });
+        }
+
+        menuTemplate.push(
+            { type: 'separator' },
+            {
+                label: 'Ukončit aplikaci',
+                click: () => {
+                    isQuitting = true;
+                    app.quit();
+                }
+            }
+        );
+
+        const contextMenu = Menu.buildFromTemplate(menuTemplate);
+        appTray.setContextMenu(contextMenu);
+        appTray.setToolTip(isGame ? `SMPClient • Hra běží (${profileName})` : 'SMPClient - MYCHAL SMP');
+    } catch (_) { }
+}
+
 function setupTray() {
-    if (appTray && !appTray.isDestroyed()) return appTray;
+    if (appTray && !appTray.isDestroyed()) {
+        updateTrayMenu();
+        return appTray;
+    }
     try {
         const iconPath = getAppIconPath();
         if (fs.existsSync(iconPath)) {
             const icon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
             appTray = new Tray(icon);
-            const contextMenu = Menu.buildFromTemplate([
-                { label: 'SMPClient', enabled: false },
-                { type: 'separator' },
-                {
-                    label: 'Zobrazit launcher',
-                    click: () => {
-                        restoreAndFocusMainWindow();
-                    }
-                },
-                {
-                    label: 'Skrýt do lišty',
-                    click: () => {
-                        if (mainWindow && !mainWindow.isDestroyed()) {
-                            mainWindow.hide();
-                        }
-                    }
-                },
-                { type: 'separator' },
-                {
-                    label: 'Ukončit aplikaci',
-                    click: () => {
-                        isQuitting = true;
-                        app.quit();
-                    }
-                }
-            ]);
-            appTray.setToolTip('SMPClient');
-            appTray.setContextMenu(contextMenu);
+            updateTrayMenu();
             appTray.on('click', () => {
                 if (mainWindow && !mainWindow.isDestroyed()) {
                     if (mainWindow.isVisible()) {
@@ -348,6 +385,7 @@ function createWindow() {
                 mainWindow.webContents.send('window-hidden-to-tray');
             } catch (_) { }
             cleanupTrayMemory();
+            updateTrayMenu();
         }
     });
 
@@ -358,6 +396,9 @@ function createWindow() {
                 mainWindow.webContents.send('window-restored-from-tray');
             } catch (_) { }
             try {
+                if (typeof discordRpc.wake === 'function') {
+                    discordRpc.wake();
+                }
                 if (!isGameRunning()) {
                     const cfg = loadConfig();
                     if (cfg.enableDiscordRpc !== false) {
@@ -371,6 +412,7 @@ function createWindow() {
                     }
                 }
             } catch (_) { }
+            updateTrayMenu();
         }
     });
 
@@ -381,6 +423,7 @@ function createWindow() {
                 mainWindow.webContents.send('window-hidden-to-tray');
             } catch (_) { }
             cleanupTrayMemory();
+            updateTrayMenu();
         }
     });
 
@@ -391,6 +434,9 @@ function createWindow() {
                 mainWindow.webContents.send('window-restored-from-tray');
             } catch (_) { }
             try {
+                if (typeof discordRpc.wake === 'function') {
+                    discordRpc.wake();
+                }
                 if (!isGameRunning()) {
                     const cfg = loadConfig();
                     if (cfg.enableDiscordRpc !== false) {
@@ -404,6 +450,7 @@ function createWindow() {
                     }
                 }
             } catch (_) { }
+            updateTrayMenu();
         }
     });
 
@@ -595,6 +642,12 @@ app.on('will-quit', () => {
     if (activeSessionData) {
         saveSessionTick(activeSessionData, true);
     }
+    try {
+        if (appTray && !appTray.isDestroyed()) {
+            appTray.destroy();
+            appTray = null;
+        }
+    } catch (_) { }
     try {
         discordRpc.shutdown();
     } catch (e) { }
@@ -1739,6 +1792,7 @@ function startSessionTracking(pid, profileId, profileName, instanceDir, serverIp
     } catch (e) {
         console.error('[PLAYTIME] Nelze zapsat active-game-session.json:', e);
     }
+    updateTrayMenu();
 
     activeHeartbeatInterval = setInterval(() => {
         if (!activeSessionData) return;
@@ -1775,6 +1829,7 @@ function endSessionTracking(exitCode = 0) {
             mainWindow.show();
             mainWindow.focus();
         }
+        updateTrayMenu();
 
         try {
             const cfg = loadConfig();

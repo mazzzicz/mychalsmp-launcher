@@ -223,12 +223,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (isLauncherSuspendedInTray) return;
         isLauncherSuspendedInTray = true;
 
-        // 1. Okamžitě zmrazit 3D WebGL renderování v skinview3d a uvolnit rAF smyčky
+        // 1. Okamžitě zmrazit 3D WebGL renderování v skinview3d a smrštit buffery na 1x1 pro uvolnění VRAM
         if (heroSkinViewer) {
             heroSkinViewer.renderPaused = true;
+            try { heroSkinViewer.setSize(1, 1); } catch (_) { }
         }
         if (skinViewer) {
             skinViewer.renderPaused = true;
+            try { skinViewer.setSize(1, 1); } catch (_) { }
         }
 
         // 2. Vynulovat interakce a sledování kurzoru hero modelu
@@ -242,13 +244,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         // 3. Pozastavit periodický 15s interval zjišťování stavu sítě (ping)
         stopNetworkStatusPolling();
 
-        // 4. Zmrazit veškeré CSS keyframe animace a GPU kompozitor v celém DOMu
+        // 4. Zmrazit veškeré CSS keyframe animace na pozadí
         document.body.classList.add('app-in-tray-paused');
 
         // 5. Uvolnit V8 paměťovou haldu v rendereru pro sražení RAM na minimum
         try {
             if (typeof window.gc === 'function') {
                 window.gc();
+            } else if (typeof gc === 'function') {
+                gc();
             }
         } catch (_) { }
 
@@ -256,10 +260,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function resumeLauncherBackgroundActivity() {
-        if (!isLauncherSuspendedInTray) return;
         isLauncherSuspendedInTray = false;
 
-        // 1. Odmrazit CSS animace
+        // 1. Odmrazit CSS animace a zajistit plnou viditelnost okna
+        document.body.classList.remove('launch-handoff');
         document.body.classList.remove('app-in-tray-paused');
 
         // 2. Obnovit 3D renderování pouze pro aktivní záložku
@@ -301,15 +305,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    document.addEventListener('visibilitychange', () => {
-        if (document.hidden) {
-            pauseLauncherBackgroundActivity();
-        } else {
-            resumeLauncherBackgroundActivity();
-        }
-    });
-
     window.addEventListener('focus', () => {
+        document.body.classList.remove('launch-handoff');
+        document.body.classList.remove('app-in-tray-paused');
         if (isLauncherSuspendedInTray) {
             resumeLauncherBackgroundActivity();
         }
@@ -7134,6 +7132,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.api.onGameStarted((data) => {
             appendLog('[VÝKON] Hra spuštěna – plynulý přechod (Launch Handoff) do herního okna, launcher minimalizován do Tray lišty.');
             document.body.classList.add('launch-handoff');
+            setTimeout(() => {
+                document.body.classList.remove('launch-handoff');
+            }, 400);
             isRunning = true;
             isLaunching = false;
             launchingProfileId = null;
