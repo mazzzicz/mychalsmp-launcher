@@ -245,7 +245,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         // 4. Zmrazit veškeré CSS keyframe animace a GPU kompozitor v celém DOMu
         document.body.classList.add('app-in-tray-paused');
 
-        console.log('[VÝKON] Launcher v Tray liště – 3D renderování, JS intervaly a animace pozastaveny (0% zátěž CPU/GPU).');
+        // 5. Uvolnit V8 paměťovou haldu v rendereru pro sražení RAM na minimum
+        try {
+            if (typeof window.gc === 'function') {
+                window.gc();
+            }
+        } catch (_) { }
+
+        console.log('[VÝKON] Launcher v Tray liště – 3D renderování, JS intervaly, animace pozastaveny a RAM uvolněna (0% zátěž CPU/GPU).');
     }
 
     function resumeLauncherBackgroundActivity() {

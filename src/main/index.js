@@ -95,6 +95,7 @@ try {
     app.commandLine.appendSwitch('enable-accelerated-2d-canvas');
     app.commandLine.appendSwitch('enable-accelerated-video-decode');
     app.commandLine.appendSwitch('force_high_performance_gpu');
+    app.commandLine.appendSwitch('js-flags', '--expose-gc');
 } catch (_) { }
 
 // ⚡ Na Windows je nezbytné nastavit AppUserModelId odpovídající appId z electron-builder.yml (xyz.mychalsmp.launcher).
@@ -126,7 +127,63 @@ function restoreAndFocusMainWindow() {
             mainWindow.webContents.setBackgroundThrottling(false);
             mainWindow.webContents.send('window-restored-from-tray');
         } catch (_) { }
+
+        // Obnovit Discord RPC aktivitu, pokud hra neběží
+        try {
+            if (!isGameRunning()) {
+                const cfg = loadConfig();
+                if (cfg.enableDiscordRpc !== false) {
+                    const activeProfile = (cfg.profiles || []).find(p => p.id === cfg.activeProfileId);
+                    discordRpc.updateActivity({
+                        username: cfg.username || 'Hráč',
+                        server: cfg.serverIp || 'mychalsmp.xyz',
+                        profileName: activeProfile ? activeProfile.name : 'Minecraft 26.2',
+                        isPlaying: false
+                    });
+                }
+            }
+        } catch (_) { }
     }
+}
+
+/**
+ * ⚡ Maximální úspora RAM a VRAM při skrytí launcheru do systémové lišty:
+ * - Spustí V8 Garbage Collection v Node.js i v Chromium rendereru
+ * - Na Windows ořeže Working Set (fyzické stránky v RAM)
+ * - Uvolní kódovou/obrazovou mezipaměť Chromia
+ * - Uspí Discord RPC aktivitu při nečinnosti (pokud neběží hra)
+ */
+function cleanupTrayMemory() {
+    try {
+        if (global.gc) {
+            global.gc();
+        }
+    } catch (_) { }
+
+    try {
+        if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
+            mainWindow.webContents.executeJavaScript('if (typeof window.gc === "function") window.gc();').catch(() => {});
+        }
+    } catch (_) { }
+
+    try {
+        if (process.platform === 'win32' && typeof process.trimWorkingSet === 'function') {
+            process.trimWorkingSet();
+        }
+    } catch (_) { }
+
+    try {
+        const { session } = require('electron');
+        if (session && session.defaultSession) {
+            session.defaultSession.clearCodeCaches({}).catch(() => {});
+        }
+    } catch (_) { }
+
+    try {
+        if (!isGameRunning() && (!activeSessionData || !isProcessAlive(activeSessionData.pid))) {
+            discordRpc.clearActivity();
+        }
+    } catch (_) { }
 }
 
 function setupTray() {
@@ -290,6 +347,7 @@ function createWindow() {
                 mainWindow.webContents.setBackgroundThrottling(true);
                 mainWindow.webContents.send('window-hidden-to-tray');
             } catch (_) { }
+            cleanupTrayMemory();
         }
     });
 
@@ -298,6 +356,20 @@ function createWindow() {
             try {
                 mainWindow.webContents.setBackgroundThrottling(false);
                 mainWindow.webContents.send('window-restored-from-tray');
+            } catch (_) { }
+            try {
+                if (!isGameRunning()) {
+                    const cfg = loadConfig();
+                    if (cfg.enableDiscordRpc !== false) {
+                        const activeProfile = (cfg.profiles || []).find(p => p.id === cfg.activeProfileId);
+                        discordRpc.updateActivity({
+                            username: cfg.username || 'Hráč',
+                            server: cfg.serverIp || 'mychalsmp.xyz',
+                            profileName: activeProfile ? activeProfile.name : 'Minecraft 26.2',
+                            isPlaying: false
+                        });
+                    }
+                }
             } catch (_) { }
         }
     });
@@ -308,6 +380,7 @@ function createWindow() {
                 mainWindow.webContents.setBackgroundThrottling(true);
                 mainWindow.webContents.send('window-hidden-to-tray');
             } catch (_) { }
+            cleanupTrayMemory();
         }
     });
 
@@ -316,6 +389,20 @@ function createWindow() {
             try {
                 mainWindow.webContents.setBackgroundThrottling(false);
                 mainWindow.webContents.send('window-restored-from-tray');
+            } catch (_) { }
+            try {
+                if (!isGameRunning()) {
+                    const cfg = loadConfig();
+                    if (cfg.enableDiscordRpc !== false) {
+                        const activeProfile = (cfg.profiles || []).find(p => p.id === cfg.activeProfileId);
+                        discordRpc.updateActivity({
+                            username: cfg.username || 'Hráč',
+                            server: cfg.serverIp || 'mychalsmp.xyz',
+                            profileName: activeProfile ? activeProfile.name : 'Minecraft 26.2',
+                            isPlaying: false
+                        });
+                    }
+                }
             } catch (_) { }
         }
     });
@@ -506,7 +593,7 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
     if (activeSessionData) {
-        saveSessionTick(activeSessionData);
+        saveSessionTick(activeSessionData, true);
     }
     try {
         discordRpc.shutdown();
@@ -1508,22 +1595,39 @@ function isProcessAlive(pid) {
     }
 }
 
-function saveSessionTick(session) {
+let lastSessionDiskFlushTime = 0;
+
+function saveSessionTick(session, forceDiskFlush = false) {
     if (!session || !session.profileId) return;
     const now = Date.now();
     const elapsedSec = Math.max(0, Math.floor((now - (session.lastTickTime || session.startTime || now)) / 1000));
-    if (elapsedSec > 0) {
-        session.lastTickTime = now;
-        try {
-            fs.writeFileSync(SESSION_FILE, JSON.stringify(session, null, 2), 'utf-8');
-        } catch (_) { }
+    if (elapsedSec <= 0 && !forceDiskFlush) return;
 
+    session.lastTickTime = now;
+    session.pendingElapsedSec = (session.pendingElapsedSec || 0) + elapsedSec;
+
+    // ⚡ Diskový zápis provádíme pouze při ukončení hry (force) nebo úsporně 1× za 60 sekund.
+    // Tím eliminujeme 720 atomických diskových zápisů za hodinu hraní a uvolníme 100 % diskového I/O pro Minecraft!
+    const shouldFlushDisk = forceDiskFlush || (now - lastSessionDiskFlushTime >= 60000);
+    if (!shouldFlushDisk) {
+        return;
+    }
+
+    lastSessionDiskFlushTime = now;
+    const flushSec = session.pendingElapsedSec || 0;
+    session.pendingElapsedSec = 0;
+
+    try {
+        fs.writeFileSync(SESSION_FILE, JSON.stringify(session, null, 2), 'utf-8');
+    } catch (_) { }
+
+    if (flushSec > 0) {
         try {
             const freshConfig = loadConfig();
             let totalPlaytime = 0;
             const updated = (freshConfig.profiles || []).map(p => {
                 if (p.id === session.profileId) {
-                    const newTotal = (p.playtimeSeconds || 0) + elapsedSec;
+                    const newTotal = (p.playtimeSeconds || 0) + flushSec;
                     totalPlaytime = newTotal;
                     return { ...p, playtimeSeconds: newTotal, lastPlayed: now };
                 }
@@ -1541,7 +1645,7 @@ function saveSessionTick(session) {
                     if (ip === cleanTarget || sub === cleanTarget || backup === cleanTarget || isMychal) {
                         return {
                             ...s,
-                            playtimeSeconds: (Number(s.playtimeSeconds) || 0) + elapsedSec
+                            playtimeSeconds: (Number(s.playtimeSeconds) || 0) + flushSec
                         };
                     }
                     return s;
@@ -1550,10 +1654,11 @@ function saveSessionTick(session) {
 
             saveConfig({ profiles: updated, servers: updatedServers });
 
-            if (mainWindow && !mainWindow.isDestroyed()) {
+            // IPC zprávu posíláme pouze pokud je okno launcheru viditelné (0 % režie v Trayi)
+            if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
                 mainWindow.webContents.send('playtime-updated', {
                     profileId: session.profileId,
-                    addedSeconds: elapsedSec,
+                    addedSeconds: flushSec,
                     totalPlaytime,
                     serverIp: session.currentServerIp || null
                 });
@@ -1617,6 +1722,7 @@ function startSessionTracking(pid, profileId, profileName, instanceDir, serverIp
     }
 
     const now = Date.now();
+    lastSessionDiskFlushTime = now;
     activeSessionData = {
         pid,
         profileId,
@@ -1624,6 +1730,7 @@ function startSessionTracking(pid, profileId, profileName, instanceDir, serverIp
         instanceDir: instanceDir || BASE_DIR,
         startTime: now,
         lastTickTime: now,
+        pendingElapsedSec: 0,
         currentServerIp: serverIp || null
     };
 
@@ -1650,7 +1757,7 @@ function endSessionTracking(exitCode = 0) {
         activeHeartbeatInterval = null;
     }
     if (activeSessionData) {
-        saveSessionTick(activeSessionData);
+        saveSessionTick(activeSessionData, true);
         const finishedProfileId = activeSessionData.profileId;
         activeSessionData = null;
 
@@ -1698,7 +1805,8 @@ function checkAndResumeActiveSession() {
         if (isProcessAlive(session.pid)) {
             console.log(`[PLAYTIME] Obnovena běžící relace hry (PID: ${session.pid}, Profil: ${session.profileId}). Pokračuji v měření času.`);
             activeSessionData = session;
-            saveSessionTick(activeSessionData);
+            lastSessionDiskFlushTime = Date.now();
+            saveSessionTick(activeSessionData, true);
 
             activeHeartbeatInterval = setInterval(() => {
                 if (!activeSessionData) return;
