@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { protectAccount, unprotectAccount } = require('./cryptoVault');
 
 function getBaseDirectory() {
     if (process.platform === 'win32') {
@@ -147,6 +148,9 @@ function loadConfig() {
         }
 
         if (parsed) {
+            if (parsed.microsoftAccount) {
+                parsed.microsoftAccount = unprotectAccount(parsed.microsoftAccount);
+            }
             const merged = {
                 ...DEFAULT_CONFIG,
                 ...parsed,
@@ -229,6 +233,25 @@ function saveConfig(newConfig) {
                 cleanedNewConfig[k] = v;
             }
         }
+
+        // Pokud caller poskytuje microsoftAccount, zachováme citlivé tokeny z current, pokud je vynechal
+        if (cleanedNewConfig.microsoftAccount && current.microsoftAccount) {
+            const curAcc = current.microsoftAccount;
+            const newAcc = cleanedNewConfig.microsoftAccount;
+            if (!newAcc.refreshToken && curAcc.refreshToken) {
+                newAcc.refreshToken = curAcc.refreshToken;
+            }
+            if (!newAcc.access_token && curAcc.access_token) {
+                newAcc.access_token = curAcc.access_token;
+            }
+            if (!newAcc.client_token && curAcc.client_token) {
+                newAcc.client_token = curAcc.client_token;
+            }
+            if (curAcc.meta?.refresh && (!newAcc.meta || !newAcc.meta.refresh)) {
+                newAcc.meta = { ...(newAcc.meta || {}), refresh: curAcc.meta.refresh };
+            }
+        }
+
         merged = {
             ...current,
             ...cleanedNewConfig,
@@ -238,7 +261,13 @@ function saveConfig(newConfig) {
         };
         delete merged.baseDir;
 
-        safeAtomicWriteSync(CONFIG_FILE, JSON.stringify(merged, null, 2));
+        // Před zápisem na disk zašifrujeme veškeré autentizační tokeny na hardwarový klíč PC
+        const diskReady = { ...merged };
+        if (diskReady.microsoftAccount) {
+            diskReady.microsoftAccount = protectAccount(diskReady.microsoftAccount);
+        }
+
+        safeAtomicWriteSync(CONFIG_FILE, JSON.stringify(diskReady, null, 2));
         try {
             fs.copyFileSync(CONFIG_FILE, `${CONFIG_FILE}.bak`);
         } catch (e) { }

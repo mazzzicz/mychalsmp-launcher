@@ -1853,6 +1853,102 @@ async function setupOfflineCustomSkinAndCape(gameDir, config, onLog = console.lo
 }
 
 /**
+ * ⚡ Kontrola a aktualizace verze proti oficiálnímu Mojang manifestu (piston-meta).
+ * Pokud Mojang vydá tichý patch na starší verzi (např. 1.8.9, 1.12.2, 1.20.x hotfix),
+ * tato funkce bleskově porovná lokální SHA-1 manifestu s oficiálním Mojang version_manifest_v2.json.
+ * Při detekci změny stáhne aktualizovaný manifest a označí herní JAR k přestažení.
+ */
+async function ensureMojangVersionUpToDate(centralRootDir, targetVersion, onLog = console.log) {
+    if (!targetVersion || targetVersion === 'custom') return null;
+
+    const versionsDir = path.join(centralRootDir, 'versions');
+    const localVersionDir = path.join(versionsDir, targetVersion);
+    const localJsonPath = path.join(localVersionDir, `${targetVersion}.json`);
+    const localJarPath = path.join(localVersionDir, `${targetVersion}.jar`);
+
+    try {
+        const manRes = await fetch('https://piston-meta.mojang.com/mc/game/version_manifest_v2.json', {
+            signal: AbortSignal.timeout(3000)
+        });
+        if (!manRes.ok) return null;
+
+        const manifest = await manRes.json();
+        const vEntry = manifest.versions?.find(v => v.id === targetVersion) ||
+                      (targetVersion === '1.21.11' ? manifest.versions?.find(v => v.id === '1.21.1') : null);
+        if (!vEntry || !vEntry.url) return null;
+
+        // Pokud lokální JSON manifest zatím neexistuje, stáhnout čerstvý v originálním formátu
+        if (!fs.existsSync(localJsonPath)) {
+            const vRes = await fetch(vEntry.url, { signal: AbortSignal.timeout(6000) });
+            if (vRes.ok) {
+                const rawText = await vRes.text();
+                fs.mkdirSync(localVersionDir, { recursive: true });
+                fs.writeFileSync(localJsonPath, rawText, 'utf8');
+                try { return JSON.parse(rawText); } catch (_) {}
+            }
+            return null;
+        }
+
+        // Lokální JSON existuje – ověříme integritu a revizi vůči Mojangu
+        let localObj = null;
+        try {
+            localObj = JSON.parse(fs.readFileSync(localJsonPath, 'utf8'));
+        } catch (_) {}
+
+        const localSha1 = getFileSha1(localJsonPath);
+        const mojangSha1 = vEntry.sha1 ? vEntry.sha1.toLowerCase() : null;
+        const isSha1Match = Boolean(mojangSha1 && localSha1 && localSha1.toLowerCase() === mojangSha1);
+        const isTimeMatch = Boolean(localObj && localObj.time && vEntry.time && localObj.time === vEntry.time);
+
+        // Pokud je manifest na disku aktuální (odpovídá SHA-1 hash nebo časové razítko revize z manifestu), pokračujeme
+        if (isSha1Match || isTimeMatch) {
+            return localObj;
+        }
+
+        onLog(`[MOJANG] ⚡ Zjištěna nová oficiální aktualizace/patch pro Minecraft ${targetVersion} (${vEntry.time})! Aktualizuji herní soubory...`);
+
+        const vRes = await fetch(vEntry.url, { signal: AbortSignal.timeout(8000) });
+        if (vRes.ok) {
+            const rawText = await vRes.text();
+            const freshJson = JSON.parse(rawText);
+            const newClientSha1 = freshJson.downloads?.client?.sha1 ? freshJson.downloads.client.sha1.toLowerCase() : null;
+            const oldClientSha1 = localObj?.downloads?.client?.sha1 ? localObj.downloads.client.sha1.toLowerCase() : null;
+
+            // Uložit surový čerstvý manifest (přesný byte-to-byte hash)
+            fs.writeFileSync(localJsonPath, rawText, 'utf8');
+
+            // Pokud se změnil hash herního klienta (client.jar), odstranit starý jar a zálohy pro čisté stažení nového patche
+            if (newClientSha1 && newClientSha1 !== oldClientSha1) {
+                onLog(`[MOJANG] 🔄 Detekován aktualizovaný herní klient pro ${targetVersion} (nový SHA-1: ${newClientSha1.slice(0, 8)}...). Převezmu nový JAR od Mojangu...`);
+                try { fs.unlinkSync(localJarPath); } catch (_) {}
+                try { fs.unlinkSync(localJarPath.replace(/\.jar$/, '.vanilla.jar')); } catch (_) {}
+                try { fs.unlinkSync(`${localJarPath}.skin_sig`); } catch (_) {}
+                try { fs.unlinkSync(`${localJarPath}.brand_sig`); } catch (_) {}
+                try { fs.unlinkSync(`${localJarPath}.vanilla_bak`); } catch (_) {}
+            }
+
+            // Pokud existoval custom Fabric profil dědící z této verze, vymazat sloučený JSON, aby se přegeneroval
+            try {
+                const files = fs.readdirSync(versionsDir);
+                for (const f of files) {
+                    if (f.toLowerCase().includes('fabric') && f.includes(targetVersion)) {
+                        const fJson = path.join(versionsDir, f, `${f}.json`);
+                        if (fs.existsSync(fJson)) {
+                            try { fs.unlinkSync(fJson); } catch (_) {}
+                        }
+                    }
+                }
+            } catch (_) {}
+
+            return freshJson;
+        }
+    } catch (err) {
+        // Při výpadku sítě nebo offline režimu tiše pokračujeme s existujícími soubory
+    }
+    return null;
+}
+
+/**
  * Pomocná funkce pro získání kompletního Vanilla JSON manifestu pro cílovou verzi.
  */
 async function getOrFetchVanillaVersionJson(centralRootDir, targetVersion) {
@@ -2388,6 +2484,9 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
 
     // ⚡ Vynucená kontrola a instalace módu Self Nametag (F5) před každým spuštěním pro tento profil/instanci
     ensureSelfNametagModInstalled(gameInstanceDir, onLog);
+
+    // ⚡ Blesková online kontrola zda Mojang nevydal nový patch/hotfix pro cílovou verzi (např. 1.8.9, 1.12.2, 26.2)
+    await ensureMojangVersionUpToDate(BASE_DIR, targetVersion, onLog);
 
     // ⚡ Bleskové převzetí existujících assetů a knihoven ze systému (.minecraft)
     linkOrShareExistingMinecraftData(BASE_DIR, onLog);

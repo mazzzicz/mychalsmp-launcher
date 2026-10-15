@@ -33,6 +33,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { loadConfig, saveConfig, BASE_DIR } = require('./config');
+const { sanitizeAccountForRenderer } = require('./cryptoVault');
 const { pingServer } = require('./serverPing');
 const { createOfflineAuth, loginMicrosoft, refreshMicrosoftSession } = require('./auth');
 const {
@@ -492,7 +493,11 @@ app.on('will-quit', () => {
 // ── IPC Handlers ─────────────────────────────────────────────────────────────
 
 ipcMain.handle('get-config', () => {
-    return loadConfig();
+    const config = loadConfig();
+    return (config && config.microsoftAccount) ? {
+        ...config,
+        microsoftAccount: sanitizeAccountForRenderer(config.microsoftAccount)
+    } : config;
 });
 
 ipcMain.handle('save-config', (event, newConfig) => {
@@ -536,7 +541,10 @@ ipcMain.handle('save-config', (event, newConfig) => {
             } catch (_) {}
         }
     } catch (e) { }
-    return saved;
+    return (saved && saved.microsoftAccount) ? {
+        ...saved,
+        microsoftAccount: sanitizeAccountForRenderer(saved.microsoftAccount)
+    } : saved;
 });
 
 ipcMain.handle('ping-server', async (event, ip = 'mychalsmp.xyz', port = 25565) => {
@@ -1284,6 +1292,14 @@ ipcMain.handle('login-microsoft', async () => {
                 capes: res.profile.capes || []
             }
         });
+        return {
+            ...res,
+            auth: {
+                name: res.profile.name,
+                username: res.profile.name,
+                uuid: res.profile.id
+            }
+        };
     }
     return res;
 });
