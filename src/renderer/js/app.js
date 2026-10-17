@@ -2585,6 +2585,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const isBlocked = (isRunning || isLaunching) && !isThisRunning && !isThisLaunching;
 
             const isInst = Array.isArray(installedVersions) && installedVersions.includes(p.version);
+            const canUpgrade = p.version !== '26.3' && p.version !== '26.4';
             let launchBtnClass = 'mc-btn btn-launch-profile';
             let launchBtnAttrs = `data-profile-id="${escapeHtml(p.id)}"`;
             let launchBtnContent = '';
@@ -2627,6 +2628,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </div>
                     <div class="profile-card-right">
                         <div class="profile-actions">
+                            ${canUpgrade ? `
+                            <button class="btn-upgrade-profile" data-profile-id="${escapeHtml(p.id)}" title="Upgradovat tento profil na novou verzi">
+                                <svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--blue" viewBox="0 0 24 24">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <polyline points="16 12 12 8 8 12"></polyline>
+                                    <line x1="12" y1="16" x2="12" y2="8"></line>
+                                </svg>
+                                Upgrade
+                            </button>` : ''}
                             <button class="profile-tool-btn btn-profile-settings" data-profile-id="${escapeHtml(p.id)}" title="Nastavení profilu">
                                 <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                             </button>
@@ -9017,7 +9027,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         const upgradeBanner = document.getElementById('profileQuickUpgradeBanner');
-        const canUpgrade = !isImported && profile.version !== '26.3' && profile.version !== '26.4';
+        const canUpgrade = profile.version !== '26.3' && profile.version !== '26.4';
         if (upgradeBanner) {
             if (canUpgrade) {
                 upgradeBanner.style.display = 'flex';
