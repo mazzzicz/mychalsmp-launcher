@@ -745,6 +745,46 @@ Handler.prototype.downloadToDirectory = async function (directory, libraries, ev
     return libs;
 };
 
+function downloadFileWithHttps(targetUrl, destPath, timeoutMs = 15000) {
+    return new Promise((resolve, reject) => {
+        const https = require('https');
+        const http = require('http');
+        const client = targetUrl.startsWith('https') ? https : http;
+        try { fs.mkdirSync(path.dirname(destPath), { recursive: true }); } catch (_) { }
+
+        const req = client.get(targetUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+            },
+            timeout: timeoutMs
+        }, (res) => {
+            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                return downloadFileWithHttps(res.headers.location, destPath, timeoutMs).then(resolve).catch(reject);
+            }
+            if (res.statusCode !== 200) {
+                return reject(new Error(`HTTP ${res.statusCode}`));
+            }
+            const fileStream = fs.createWriteStream(destPath);
+            res.pipe(fileStream);
+            fileStream.on('finish', () => {
+                fileStream.close();
+                resolve(true);
+            });
+            fileStream.on('error', (err) => {
+                try { if (fs.existsSync(destPath)) fs.unlinkSync(destPath); } catch (_) { }
+                reject(err);
+            });
+        });
+        req.on('timeout', () => {
+            req.destroy(new Error('ETIMEDOUT'));
+        });
+        req.on('error', (err) => {
+            try { if (fs.existsSync(destPath)) fs.unlinkSync(destPath); } catch (_) { }
+            reject(err);
+        });
+    });
+}
+
 /**
  * Intercept Handler.prototype.getAssets:
  * 1. Oseká 120+ nepotřebných cizích jazyků a stáhne z Mojangu POUZE CS, SK, EN_US a EN_GB (~50 MB úspora).
@@ -762,8 +802,14 @@ Handler.prototype.getAssets = async function () {
         ? this.version.assetIndex.id
         : (this.options.version.number || '26.2');
     const assetId = this.options.version.custom || this.options.version.number;
-    const indexFilePath = path.join(assetDirectory, 'indexes', `${indexName}.json`);
-    const customIndexFilePath = path.join(assetDirectory, 'indexes', `${assetId}.json`);
+    const versionNumber = this.options.version.number || '26.2';
+
+    const indexesDir = path.join(assetDirectory, 'indexes');
+    try { fs.mkdirSync(indexesDir, { recursive: true }); } catch (_) { }
+
+    const indexFilePath = path.join(indexesDir, `${indexName}.json`);
+    const customIndexFilePath = path.join(indexesDir, `${assetId}.json`);
+    const versionIndexFilePath = path.join(indexesDir, `${versionNumber}.json`);
 
     const targetUrl = (this.version && this.version.assetIndex && this.version.assetIndex.url)
         ? this.version.assetIndex.url
@@ -771,7 +817,7 @@ Handler.prototype.getAssets = async function () {
 
     // Pomocná funkce pro ověření neporušenosti JSON souboru assetů
     const isAssetIndexValid = (filePath) => {
-        if (!fs.existsSync(filePath)) return false;
+        if (!filePath || !fs.existsSync(filePath)) return false;
         try {
             const raw = fs.readFileSync(filePath, 'utf8');
             if (!raw || raw.length < 50) return false;
@@ -795,43 +841,179 @@ Handler.prototype.getAssets = async function () {
             this.client.emit('debug', `[ASSETY] ⚠ Odstraněn poškozený soubor ${assetId}.json pro čisté znovustažení.`);
         } catch (_) { }
     }
+    if (fs.existsSync(versionIndexFilePath) && !isAssetIndexValid(versionIndexFilePath)) {
+        try { fs.unlinkSync(versionIndexFilePath); } catch (_) { }
+    }
 
-    // Pokud nemáme platný soubor a chybí targetUrl, zkusíme najít URL v Mojang manifestu
-    let resolvedUrl = targetUrl;
-    if (!isAssetIndexValid(indexFilePath) && !resolvedUrl) {
+    // ── KROK 1: Kontrola existujících lokálních indexů na disku ─────────────
+    let sourceValidIndex = null;
+    const localCandidates = [
+        indexFilePath,
+        customIndexFilePath,
+        versionIndexFilePath,
+        path.join(indexesDir, '32.json'),
+        path.join(indexesDir, '26.2.json'),
+        path.join(indexesDir, '26.3.json')
+    ];
+    for (const cPath of localCandidates) {
+        if (isAssetIndexValid(cPath)) {
+            sourceValidIndex = cPath;
+            break;
+        }
+    }
+
+    // ── KROK 2: Vestavěné asset indexy v launcheru (Offline bundle) ─────────
+    if (!sourceValidIndex) {
+        const bundledDirs = [
+            path.join(__dirname, '..', '..', 'assets', 'indexes'),
+            path.join(process.resourcesPath || '', 'assets', 'indexes'),
+            path.join(process.resourcesPath || '', 'app', 'assets', 'indexes')
+        ];
         try {
-            const manRes = await fetch('https://piston-meta.mojang.com/mc/game/version_manifest_v2.json', { signal: AbortSignal.timeout(6000) });
-            if (manRes.ok) {
-                const manifest = await manRes.json();
-                const verEntry = manifest.versions.find(v => v.id === indexName || v.id === this.options.version.number) ||
-                    (this.options.version.number === '1.21.11' ? manifest.versions.find(v => v.id === '1.21.1') : null);
-                if (verEntry && verEntry.url) {
-                    const vRes = await fetch(verEntry.url, { signal: AbortSignal.timeout(6000) });
-                    if (vRes.ok) {
-                        const vJson = await vRes.json();
-                        if (vJson.assetIndex && vJson.assetIndex.url) {
-                            resolvedUrl = vJson.assetIndex.url;
-                        }
-                    }
-                }
+            const { app } = require('electron');
+            if (app && typeof app.getAppPath === 'function') {
+                bundledDirs.push(path.join(app.getAppPath(), 'assets', 'indexes'));
             }
         } catch (_) { }
+
+        for (const bDir of bundledDirs) {
+            const bCandidates = [
+                path.join(bDir, `${indexName}.json`),
+                path.join(bDir, `${versionNumber}.json`),
+                path.join(bDir, '32.json'),
+                path.join(bDir, '26.2.json'),
+                path.join(bDir, '26.3.json')
+            ];
+            for (const bPath of bCandidates) {
+                if (isAssetIndexValid(bPath)) {
+                    sourceValidIndex = bPath;
+                    this.client.emit('debug', `[ASSETY] Použit vestavěný asset index z bundle: ${bPath}`);
+                    break;
+                }
+            }
+            if (sourceValidIndex) break;
+        }
     }
 
-    if (!isAssetIndexValid(indexFilePath) && resolvedUrl) {
-        await this.downloadAsync(resolvedUrl, path.join(assetDirectory, 'indexes'), `${indexName}.json`, true, 'asset-json');
+    // ── KROK 3: Prohledat existující instalace (.minecraft / PrismLauncher) ───
+    if (!sourceValidIndex) {
+        const extBases = getExistingMinecraftBaseDirs();
+        for (const extBase of extBases) {
+            const extIdxDir = path.join(extBase, 'assets', 'indexes');
+            const extCandidates = [
+                path.join(extIdxDir, `${indexName}.json`),
+                path.join(extIdxDir, `${versionNumber}.json`),
+                path.join(extIdxDir, '32.json'),
+                path.join(extIdxDir, '26.2.json'),
+                path.join(extIdxDir, `${assetId}.json`)
+            ];
+            for (const extPath of extCandidates) {
+                if (isAssetIndexValid(extPath)) {
+                    sourceValidIndex = extPath;
+                    this.client.emit('debug', `[ASSETY] Převzat platný asset index z existující instalace: ${extPath}`);
+                    break;
+                }
+            }
+            if (sourceValidIndex) break;
+        }
     }
 
-    if (isAssetIndexValid(indexFilePath) && !isAssetIndexValid(customIndexFilePath)) {
-        try { fs.copyFileSync(indexFilePath, customIndexFilePath); } catch (e) { }
-    } else if (isAssetIndexValid(customIndexFilePath) && !isAssetIndexValid(indexFilePath)) {
-        try { fs.copyFileSync(customIndexFilePath, indexFilePath); } catch (e) { }
+    // Pokud jsme našli platný lokální index, naklonujeme jej do všech požadovaných cest
+    if (sourceValidIndex) {
+        try { if (!isAssetIndexValid(indexFilePath)) fs.copyFileSync(sourceValidIndex, indexFilePath); } catch (_) { }
+        try { if (!isAssetIndexValid(customIndexFilePath)) fs.copyFileSync(sourceValidIndex, customIndexFilePath); } catch (_) { }
+        try { if (!isAssetIndexValid(versionIndexFilePath)) fs.copyFileSync(sourceValidIndex, versionIndexFilePath); } catch (_) { }
     }
 
-    const finalPath = isAssetIndexValid(indexFilePath) ? indexFilePath : customIndexFilePath;
-    if (!isAssetIndexValid(finalPath)) {
+    // ── KROK 4: Robustní online stažení s multi-mirror zrcadly a HTTPS fallbackem ──
+    if (!isAssetIndexValid(indexFilePath) && !isAssetIndexValid(customIndexFilePath) && !isAssetIndexValid(versionIndexFilePath)) {
+        const downloadUrls = [];
+        if (targetUrl) {
+            downloadUrls.push(targetUrl);
+            downloadUrls.push(targetUrl.replace('piston-meta.mojang.com', 'bmclapi2.bangbang93.com').replace('launchermeta.mojang.com', 'bmclapi2.bangbang93.com'));
+            downloadUrls.push(targetUrl.replace('piston-meta.mojang.com', 'launchermeta.mojang.com'));
+        }
+
+        // Známé oficiální hashe pro Mojang asset indexy 32 (26.2) a 26.3
+        if (indexName === '32' || versionNumber === '26.2') {
+            const mojang32 = 'https://piston-meta.mojang.com/v1/packages/72b2ca7f98a3af7c84ac7c47a3292faea80280c5/32.json';
+            const bmcl32 = 'https://bmclapi2.bangbang93.com/v1/packages/72b2ca7f98a3af7c84ac7c47a3292faea80280c5/32.json';
+            if (!downloadUrls.includes(mojang32)) downloadUrls.push(mojang32);
+            if (!downloadUrls.includes(bmcl32)) downloadUrls.push(bmcl32);
+        }
+
+        // Dotaz na oficiální a zrcadlený manifest verzí
+        if (downloadUrls.length === 0) {
+            const manifestApis = [
+                'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json',
+                'https://bmclapi2.bangbang93.com/mc/game/version_manifest_v2.json'
+            ];
+            for (const manApi of manifestApis) {
+                try {
+                    const manRes = await fetch(manApi, { signal: AbortSignal.timeout(10000) });
+                    if (manRes.ok) {
+                        const manifest = await manRes.json();
+                        const verEntry = manifest.versions.find(v => v.id === indexName || v.id === versionNumber) ||
+                            (versionNumber === '1.21.11' ? manifest.versions.find(v => v.id === '1.21.1') : null);
+                        if (verEntry && verEntry.url) {
+                            const vRes = await fetch(verEntry.url, { signal: AbortSignal.timeout(10000) });
+                            if (vRes.ok) {
+                                const vJson = await vRes.json();
+                                if (vJson.assetIndex && vJson.assetIndex.url) {
+                                    downloadUrls.push(vJson.assetIndex.url);
+                                    downloadUrls.push(vJson.assetIndex.url.replace('piston-meta.mojang.com', 'bmclapi2.bangbang93.com'));
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                } catch (_) { }
+            }
+        }
+
+        for (const dlUrl of downloadUrls) {
+            this.client.emit('debug', `[ASSETY] Pokus o stažení asset indexu z: ${dlUrl}`);
+            await this.downloadAsync(dlUrl, indexesDir, `${indexName}.json`, 2, 'asset-json');
+            if (isAssetIndexValid(indexFilePath)) break;
+
+            // Nativní Node https fallback (obejde případný IPv6 / undici timeout na Windows)
+            try {
+                await downloadFileWithHttps(dlUrl, indexFilePath, 12000);
+                if (isAssetIndexValid(indexFilePath)) {
+                    this.client.emit('debug', `[ASSETY] ✓ Úspěšně staženo přes nativní HTTPS fallback z ${dlUrl}`);
+                    break;
+                }
+            } catch (_) { }
+        }
+
+        if (isAssetIndexValid(indexFilePath)) {
+            try { if (!isAssetIndexValid(customIndexFilePath)) fs.copyFileSync(indexFilePath, customIndexFilePath); } catch (_) { }
+            try { if (!isAssetIndexValid(versionIndexFilePath)) fs.copyFileSync(indexFilePath, versionIndexFilePath); } catch (_) { }
+            try {
+                const p32 = path.join(indexesDir, '32.json');
+                if (!isAssetIndexValid(p32)) fs.copyFileSync(indexFilePath, p32);
+            } catch (_) { }
+        }
+    }
+
+    const finalPath = isAssetIndexValid(indexFilePath)
+        ? indexFilePath
+        : (isAssetIndexValid(customIndexFilePath)
+            ? customIndexFilePath
+            : (isAssetIndexValid(versionIndexFilePath) ? versionIndexFilePath : null));
+
+    if (!finalPath) {
         throw new Error(`Nepodařilo se stáhnout nebo ověřit integritu indexu assetů: ${indexName}.json`);
     }
+
+    // Zajistíme zrcadlení platného indexu do všech variant (indexName, customId, versionNumber a 32.json)
+    try { if (!isAssetIndexValid(indexFilePath)) fs.copyFileSync(finalPath, indexFilePath); } catch (_) { }
+    try { if (!isAssetIndexValid(customIndexFilePath)) fs.copyFileSync(finalPath, customIndexFilePath); } catch (_) { }
+    try { if (!isAssetIndexValid(versionIndexFilePath)) fs.copyFileSync(finalPath, versionIndexFilePath); } catch (_) { }
+    try {
+        const p32 = path.join(indexesDir, '32.json');
+        if (!isAssetIndexValid(p32)) fs.copyFileSync(finalPath, p32);
+    } catch (_) { }
 
     let index;
     try {
@@ -3436,15 +3618,25 @@ async function getOrFetchAssetIndex(baseDir, targetVersion = '26.2') {
     const indexesDir = path.join(assetsDir, 'indexes');
     const indexFile = path.join(indexesDir, `${targetVersion}.json`);
 
-    if (fs.existsSync(indexFile)) {
-        try {
-            const parsed = JSON.parse(fs.readFileSync(indexFile, 'utf8'));
-            if (parsed && parsed.objects) return parsed;
-        } catch (e) {
-            try { fs.unlinkSync(indexFile); } catch (_) { }
+    // 1. Přímá kontrola kandidátů v lokální složce (targetVersion, 32.json pro 26.2, 26.2.json)
+    const localCandidates = [
+        indexFile,
+        path.join(indexesDir, '32.json'),
+        path.join(indexesDir, '26.2.json'),
+        path.join(indexesDir, '26.3.json')
+    ];
+    for (const cPath of localCandidates) {
+        if (fs.existsSync(cPath)) {
+            try {
+                const parsed = JSON.parse(fs.readFileSync(cPath, 'utf8'));
+                if (parsed && parsed.objects && Object.keys(parsed.objects).length > 50) return parsed;
+            } catch (e) {
+                try { fs.unlinkSync(cPath); } catch (_) { }
+            }
         }
     }
 
+    // 2. Prohledat jakýkoliv jiný platný .json v indexesDir
     if (fs.existsSync(indexesDir)) {
         try {
             const files = fs.readdirSync(indexesDir).filter(f => f.endsWith('.json'));
@@ -3452,7 +3644,7 @@ async function getOrFetchAssetIndex(baseDir, targetVersion = '26.2') {
                 const fPath = path.join(indexesDir, f);
                 try {
                     const parsed = JSON.parse(fs.readFileSync(fPath, 'utf8'));
-                    if (parsed && parsed.objects) return parsed;
+                    if (parsed && parsed.objects && Object.keys(parsed.objects).length > 50) return parsed;
                 } catch (e) {
                     try { fs.unlinkSync(fPath); } catch (_) { }
                 }
@@ -3460,6 +3652,74 @@ async function getOrFetchAssetIndex(baseDir, targetVersion = '26.2') {
         } catch (e) { }
     }
 
+    // 3. Vestavěné asset indexy v launcheru (Offline bundle)
+    const bundledDirs = [
+        path.join(__dirname, '..', '..', 'assets', 'indexes'),
+        path.join(process.resourcesPath || '', 'assets', 'indexes'),
+        path.join(process.resourcesPath || '', 'app', 'assets', 'indexes')
+    ];
+    try {
+        const { app } = require('electron');
+        if (app && typeof app.getAppPath === 'function') {
+            bundledDirs.push(path.join(app.getAppPath(), 'assets', 'indexes'));
+        }
+    } catch (_) { }
+
+    for (const bDir of bundledDirs) {
+        if (fs.existsSync(bDir)) {
+            const bCandidates = [
+                path.join(bDir, `${targetVersion}.json`),
+                path.join(bDir, '32.json'),
+                path.join(bDir, '26.2.json'),
+                path.join(bDir, '26.3.json')
+            ];
+            for (const bPath of bCandidates) {
+                if (fs.existsSync(bPath)) {
+                    try {
+                        const parsed = JSON.parse(fs.readFileSync(bPath, 'utf8'));
+                        if (parsed && parsed.objects && Object.keys(parsed.objects).length > 50) {
+                            try {
+                                fs.mkdirSync(indexesDir, { recursive: true });
+                                fs.copyFileSync(bPath, indexFile);
+                                fs.copyFileSync(bPath, path.join(indexesDir, '32.json'));
+                            } catch (_) { }
+                            return parsed;
+                        }
+                    } catch (_) { }
+                }
+            }
+        }
+    }
+
+    // 4. Prohledat existující instalace (.minecraft / Prism)
+    try {
+        const extBases = getExistingMinecraftBaseDirs();
+        for (const extBase of extBases) {
+            const extIdxDir = path.join(extBase, 'assets', 'indexes');
+            const extCandidates = [
+                path.join(extIdxDir, `${targetVersion}.json`),
+                path.join(extIdxDir, '32.json'),
+                path.join(extIdxDir, '26.2.json')
+            ];
+            for (const extPath of extCandidates) {
+                if (fs.existsSync(extPath)) {
+                    try {
+                        const parsed = JSON.parse(fs.readFileSync(extPath, 'utf8'));
+                        if (parsed && parsed.objects && Object.keys(parsed.objects).length > 50) {
+                            try {
+                                fs.mkdirSync(indexesDir, { recursive: true });
+                                fs.copyFileSync(extPath, indexFile);
+                                fs.copyFileSync(extPath, path.join(indexesDir, '32.json'));
+                            } catch (_) { }
+                            return parsed;
+                        }
+                    } catch (_) { }
+                }
+            }
+        }
+    } catch (_) { }
+
+    // 5. Online stažení z Mojangu / zrcadel
     try {
         fs.mkdirSync(indexesDir, { recursive: true });
         const manifestRes = await fetch('https://piston-meta.mojang.com/mc/game/version_manifest_v2.json', { signal: AbortSignal.timeout(8000) });
@@ -3478,6 +3738,11 @@ async function getOrFetchAssetIndex(baseDir, targetVersion = '26.2') {
                         if (indexRes.ok) {
                             const indexText = await indexRes.text();
                             fs.writeFileSync(indexFile, indexText, 'utf8');
+                            if (vJson.assetIndex.id) {
+                                try {
+                                    fs.writeFileSync(path.join(indexesDir, `${vJson.assetIndex.id}.json`), indexText, 'utf8');
+                                } catch (_) { }
+                            }
                             return JSON.parse(indexText);
                         }
                     }
@@ -3668,6 +3933,49 @@ function cancelAudioDlcDownload() {
  * - Zachešuje systémovou konfiguraci GPU/GameMode na Linuxu.
  */
 async function prewarmLaunchEnvironment(centralRootDir, targetVersion = '26.2', config = null) {
+    // ⚡ Okamžité nasazení vestavěných asset indexů (32.json, 26.2.json, 26.3.json) do assets/indexes
+    try {
+        const root = centralRootDir || BASE_DIR;
+        const indexesDir = path.join(root, 'assets', 'indexes');
+        fs.mkdirSync(indexesDir, { recursive: true });
+
+        const bundledDirs = [
+            path.join(__dirname, '..', '..', 'assets', 'indexes'),
+            path.join(process.resourcesPath || '', 'assets', 'indexes'),
+            path.join(process.resourcesPath || '', 'app', 'assets', 'indexes')
+        ];
+        try {
+            const { app } = require('electron');
+            if (app && typeof app.getAppPath === 'function') {
+                bundledDirs.push(path.join(app.getAppPath(), 'assets', 'indexes'));
+            }
+        } catch (_) { }
+
+        for (const bDir of bundledDirs) {
+            if (fs.existsSync(bDir)) {
+                const bFiles = fs.readdirSync(bDir).filter(f => f.endsWith('.json'));
+                for (const f of bFiles) {
+                    const src = path.join(bDir, f);
+                    const dest = path.join(indexesDir, f);
+                    try {
+                        if (!fs.existsSync(dest) || fs.statSync(dest).size < 100) {
+                            fs.copyFileSync(src, dest);
+                        }
+                    } catch (_) { }
+                }
+            }
+        }
+
+        // Pokud existuje 32.json nebo 26.2.json, vzájemně se synchronizují
+        const p32 = path.join(indexesDir, '32.json');
+        const p26_2 = path.join(indexesDir, '26.2.json');
+        if (fs.existsSync(p32) && (!fs.existsSync(p26_2) || fs.statSync(p26_2).size < 100)) {
+            try { fs.copyFileSync(p32, p26_2); } catch (_) { }
+        } else if (fs.existsSync(p26_2) && (!fs.existsSync(p32) || fs.statSync(p32).size < 100)) {
+            try { fs.copyFileSync(p26_2, p32); } catch (_) { }
+        }
+    } catch (_) { }
+
     try {
         await ensureMojangVersionUpToDate(centralRootDir || BASE_DIR, targetVersion, () => { }, true);
     } catch (_) { }
