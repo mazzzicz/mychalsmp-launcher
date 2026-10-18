@@ -170,22 +170,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     let runningProfileId = null;
     let launchingProfileId = null;
     const BUNDLED_KEYARTS = {
-        '1.21.11': 'assets/keyarts/1.21.11.png',
-        '26.1': 'assets/keyarts/26.1.png',
-        '26.2': 'assets/keyarts/26.2.png',
-        '26.3': 'assets/keyarts/26.3.png',
-        'card-1.21.11': 'assets/keyarts/card-1.21.11.png',
-        'card-26.1': 'assets/keyarts/card-26.1.png',
-        'card-26.2': 'assets/keyarts/card-26.2.png',
-        'card-26.3': 'assets/keyarts/card-26.3.png',
-        'default': 'assets/keyarts/default.jpg'
+        '1.21.11': 'assets/keyarts/1.21.11.webp',
+        '26.1': 'assets/keyarts/26.1.webp',
+        '26.2': 'assets/keyarts/26.2.webp',
+        '26.3': 'assets/keyarts/26.3.webp',
+        'card-1.21.11': 'assets/keyarts/card-1.21.11.webp',
+        'card-26.1': 'assets/keyarts/card-26.1.webp',
+        'card-26.2': 'assets/keyarts/card-26.2.webp',
+        'card-26.3': 'assets/keyarts/card-26.3.webp',
+        'default': 'assets/keyarts/default.webp'
     };
     const BUNDLED_CARD_KEYARTS = {
-        '1.21.11': 'assets/keyarts/card-1.21.11.png',
-        '26.1': 'assets/keyarts/card-26.1.png',
-        '26.2': 'assets/keyarts/card-26.2.png',
-        '26.3': 'assets/keyarts/card-26.3.png',
-        'default': 'assets/keyarts/default.jpg'
+        '1.21.11': 'assets/keyarts/card-1.21.11.webp',
+        '26.1': 'assets/keyarts/card-26.1.webp',
+        '26.2': 'assets/keyarts/card-26.2.webp',
+        '26.3': 'assets/keyarts/card-26.3.webp',
+        'default': 'assets/keyarts/default.webp'
     };
     let availableKeyartsMap = { ...BUNDLED_KEYARTS };
     let currentModFilter = {
@@ -759,9 +759,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const checkDiscreteGpu = document.getElementById('checkDiscreteGpu');
             if (checkDiscreteGpu) checkDiscreteGpu.checked = currentConfig.enableDiscreteGpu !== false;
-
-            const checkMangoHud = document.getElementById('checkMangoHud');
-            if (checkMangoHud) checkMangoHud.checked = !!currentConfig.enableMangoHud;
 
             const checkZink = document.getElementById('checkZink');
             if (checkZink) checkZink.checked = !!currentConfig.enableZink;
@@ -2396,7 +2393,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── Version Key Arts (Background Artworks) ──────────────────────────────
     function resolveKeyartUrl(versionStr) {
         if (!availableKeyartsMap || Object.keys(availableKeyartsMap).length === 0) {
-            return 'assets/keyarts/default.jpg';
+            return 'assets/keyarts/default.webp';
         }
         if (!versionStr) {
             return availableKeyartsMap['26.2'] || availableKeyartsMap['default'] || null;
@@ -2447,7 +2444,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function resolveCardKeyartUrl(versionStr) {
         if (!availableKeyartsMap || Object.keys(availableKeyartsMap).length === 0) {
-            return BUNDLED_CARD_KEYARTS['26.2'] || 'assets/keyarts/default.jpg';
+            return BUNDLED_CARD_KEYARTS['26.2'] || 'assets/keyarts/default.webp';
         }
         if (!versionStr) {
             return availableKeyartsMap['card-26.2'] || BUNDLED_CARD_KEYARTS['26.2'] || null;
@@ -6785,7 +6782,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Linux settings
         const checkGameMode = document.getElementById('checkGameMode');
         const checkDiscreteGpu = document.getElementById('checkDiscreteGpu');
-        const checkMangoHud = document.getElementById('checkMangoHud');
         const checkZink = document.getElementById('checkZink');
         const checkDisableVsync = document.getElementById('checkDisableVsync');
         const checkNativeWayland = document.getElementById('checkNativeWayland');
@@ -6810,7 +6806,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             winTrimMemory: checkWinTrimMemory ? checkWinTrimMemory.checked : true,
             enableGameMode: checkGameMode ? checkGameMode.checked : true,
             enableDiscreteGpu: checkDiscreteGpu ? checkDiscreteGpu.checked : true,
-            enableMangoHud: checkMangoHud ? checkMangoHud.checked : false,
             enableZink: checkZink ? checkZink.checked : false,
             disableVsync: checkDisableVsync ? checkDisableVsync.checked : false,
             enableNativeWayland: checkNativeWayland ? checkNativeWayland.checked : false,
@@ -6943,9 +6938,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const checkDiscreteGpuEl = document.getElementById('checkDiscreteGpu');
     if (checkDiscreteGpuEl) checkDiscreteGpuEl.addEventListener('change', () => autoSaveSettings(true));
-
-    const checkMangoHudEl = document.getElementById('checkMangoHud');
-    if (checkMangoHudEl) checkMangoHudEl.addEventListener('change', () => autoSaveSettings(true));
 
     const checkZinkEl = document.getElementById('checkZink');
     if (checkZinkEl) checkZinkEl.addEventListener('change', () => autoSaveSettings(true));

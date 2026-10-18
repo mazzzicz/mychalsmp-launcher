@@ -1,6 +1,6 @@
 {
   "name": "mychalsmp-launcher",
-  "version": "1.4.30",
+  "version": "1.5.0",
   "description": "Oficiální multiplatformní launcher pro síť MYCHAL SMP s optimalizovaným klientem pro Windows 11 a Linux",
   "main": "src/main/index.js",
   "scripts": {
@@ -9,6 +9,7 @@
     "build:win": "electron-builder --win nsis portable",
     "build:all": "electron-builder -wl",
     "pack": "electron-builder --dir",
+    "build:native": "cd native && cargo build --release && (cp target/release/libmychalsmp_native.so mychalsmp_native.node 2>/dev/null || cp target/release/mychalsmp_native.dll mychalsmp_native.node 2>/dev/null || true) && cp mychalsmp_native.node ../src/main/mychalsmp_native.node 2>/dev/null || true",
     "release": "bash release.sh"
   },
   "homepage": "https://mychalsmp.xyz",
@@ -21,8 +22,8 @@
     "skinview3d": "^3.4.2"
   },
   "devDependencies": {
-    "electron": "^33.2.1",
-    "electron-builder": "^25.1.8",
+    "electron": "^33.4.11",
+    "electron-builder": "^26.15.3",
     "png-to-ico": "^3.0.2",
     "sharp": "^0.35.5"
   }

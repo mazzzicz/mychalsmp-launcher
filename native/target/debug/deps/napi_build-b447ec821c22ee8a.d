@@ -1,0 +1,11 @@
+/home/michal/DiscordBot/Discord Bot/mychalsmp-launcher/native/target/debug/deps/napi_build-b447ec821c22ee8a.d: /home/michal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/napi-build-2.6.0/src/lib.rs /home/michal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/napi-build-2.6.0/src/android.rs /home/michal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/napi-build-2.6.0/src/wasi.rs /home/michal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/napi-build-2.6.0/src/windows.rs /home/michal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/napi-build-2.6.0/src/wasi_heap_sync_exports.o
+
+/home/michal/DiscordBot/Discord Bot/mychalsmp-launcher/native/target/debug/deps/libnapi_build-b447ec821c22ee8a.rlib: /home/michal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/napi-build-2.6.0/src/lib.rs /home/michal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/napi-build-2.6.0/src/android.rs /home/michal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/napi-build-2.6.0/src/wasi.rs /home/michal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/napi-build-2.6.0/src/windows.rs /home/michal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/napi-build-2.6.0/src/wasi_heap_sync_exports.o
+
+/home/michal/DiscordBot/Discord Bot/mychalsmp-launcher/native/target/debug/deps/libnapi_build-b447ec821c22ee8a.rmeta: /home/michal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/napi-build-2.6.0/src/lib.rs /home/michal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/napi-build-2.6.0/src/android.rs /home/michal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/napi-build-2.6.0/src/wasi.rs /home/michal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/napi-build-2.6.0/src/windows.rs /home/michal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/napi-build-2.6.0/src/wasi_heap_sync_exports.o
+
+/home/michal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/napi-build-2.6.0/src/lib.rs:
+/home/michal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/napi-build-2.6.0/src/android.rs:
+/home/michal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/napi-build-2.6.0/src/wasi.rs:
+/home/michal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/napi-build-2.6.0/src/windows.rs:
+/home/michal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/napi-build-2.6.0/src/wasi_heap_sync_exports.o:

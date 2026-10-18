@@ -15,6 +15,7 @@ const { app, shell } = require('electron');
 const { Readable } = require('stream');
 const { pipeline } = require('stream/promises');
 const packageJson = require('../../package.json');
+const nativeLoader = require('./nativeLoader');
 
 const GITHUB_REPO = 'mychalVidea/mychalsmp-launcher';
 const CURRENT_VERSION = packageJson.version || '1.0.0';
@@ -112,7 +113,11 @@ async function checkForUpdates() {
             size: a.size
         }));
 
-        // Detekce bleskového delta balíčku (update-v2.asar, update.asar nebo app.asar ~3 MB)
+        // 1. Detekce binárního mikro-patche (Cesta B: ~200-500 KB, blesková Rust aplikace)
+        const diffName = `patch-${CURRENT_VERSION}-to-${latestTag}.diff`;
+        const diffAsset = assets.find(a => a.name === diffName || (a.name.endsWith('.diff') && a.name.includes(CURRENT_VERSION)));
+
+        // 2. Detekce bleskového delta balíčku (update-v2.asar, update.asar nebo app.asar ~2.5 MB)
         const deltaAsset = assets.find(a => a.name === 'update-v2.asar' || a.name === 'update.asar' || a.name === 'app.asar');
         const tarAsset = assets.find(a => a.name.endsWith('.tar.gz') && !a.name.includes('blockmap'));
         const winAsset = assets.find(a => a.name.endsWith('.exe') && !a.name.includes('blockmap'));
@@ -128,10 +133,12 @@ async function checkForUpdates() {
         if (isPortable) {
             preferredAsset = winPortableAsset || winAsset;
             isDelta = false;
+        } else if (diffAsset && nativeLoader.isNativeActive()) {
+            // Cesta B: Binární Diff (~200-500 KB) - aplikováno bleskově v Rustu!
+            preferredAsset = diffAsset;
+            isDelta = true;
         } else if (deltaAsset) {
-            // Blesková Delta aktualizace (update-v2.asar) – preferujeme na Windows i Linuxu!
-            // Na Windows se bezpečně stáhne a při restartu se atomicky prohodí přes app.asar.pending (PowerShell),
-            // čímž se vyhneme stahování 105+ MB plného instalátoru.
+            // Cesta A: Delta ASAR (~2.5 MB)
             preferredAsset = deltaAsset;
             isDelta = true;
         } else if (process.platform === 'win32' && (winSetupAsset || winAsset)) {
@@ -256,8 +263,8 @@ async function applyUpdate(assetUrl, onProgress) {
         throw new Error('Chybí odkaz na aktualizační balíček.');
     }
 
-    // ── 1. Blesková Delta Aktualizace (jen změněné soubory app.asar ~3 MB) ────
-    if (assetUrl.endsWith('.asar')) {
+    // ── 1. Blesková Delta Aktualizace (Binární Diff .diff ~300 KB nebo Delta .asar ~2.5 MB) ────
+    if (assetUrl.endsWith('.diff') || assetUrl.endsWith('.asar')) {
         const prevNoAsar = process.noAsar;
         process.noAsar = true;
         try {
@@ -265,37 +272,86 @@ async function applyUpdate(assetUrl, onProgress) {
             const targetAsar = path.join(resourcesDir, 'app.asar');
             // Použijeme .download příponu během streamu, aby Electron nezkoušel balíček parsovat
             const tmpAsar = path.join(os.tmpdir(), `mychalsmp-update-${Date.now()}.download`);
-
-            const res = await fetch(assetUrl, {
-                headers: { 'User-Agent': 'mychalsmp-launcher-updater' }
-            });
-            if (!res.ok) throw new Error(`Chyba stahování delta balíčku: HTTP ${res.status}`);
-
-            const totalBytes = parseInt(res.headers.get('content-length')) || 0;
             let receivedBytes = 0;
-            const fileStream = fs.createWriteStream(tmpAsar);
-            const nodeStream = Readable.fromWeb(res.body);
+            let totalBytes = 0;
 
-            let lastReport = 0;
-            nodeStream.on('data', (chunk) => {
-                receivedBytes += chunk.length;
-                const now = Date.now();
-                if (now - lastReport > 40 || receivedBytes === totalBytes) {
-                    lastReport = now;
-                    const percent = totalBytes > 0 ? Math.round((receivedBytes / totalBytes) * 100) : 0;
-                    if (onProgress) {
-                        onProgress({
-                            current: receivedBytes,
-                            total: totalBytes,
-                            percent: Math.min(percent, 100),
-                            status: 'downloading',
-                            isDelta: true
-                        });
+            if (assetUrl.endsWith('.diff')) {
+                // Cesta B: Binární Diff Patch přes Rust engine
+                const tmpDiff = path.join(os.tmpdir(), `mychalsmp-diff-${Date.now()}.diff`);
+                if (onProgress) {
+                    onProgress({
+                        current: 10,
+                        total: 100,
+                        percent: 10,
+                        status: 'downloading',
+                        isDelta: true,
+                        step: 'Stahuji binární mikro-patch (Rust)...'
+                    });
+                }
+
+                await nativeLoader.fastDownloadFile(assetUrl, tmpDiff);
+
+                if (onProgress) {
+                    onProgress({
+                        current: 60,
+                        total: 100,
+                        percent: 60,
+                        status: 'extracting',
+                        isDelta: true,
+                        step: 'Aplikuji binární patch v Rustu...'
+                    });
+                }
+
+                nativeLoader.applyBinaryPatch(targetAsar, tmpDiff, tmpAsar);
+                try { fs.unlinkSync(tmpDiff); } catch (_) {}
+                const st = fs.statSync(tmpAsar);
+                receivedBytes = st.size;
+                totalBytes = st.size;
+            } else {
+                // Cesta A: Delta ASAR balíček
+                if (nativeLoader.isNativeActive()) {
+                    try {
+                        const dlRes = await nativeLoader.fastDownloadFile(assetUrl, tmpAsar);
+                        receivedBytes = dlRes.bytes_downloaded;
+                        totalBytes = dlRes.bytes_downloaded;
+                    } catch (_) {
+                        // Fallback na standardní fetch stream níže
+                        receivedBytes = 0;
                     }
                 }
-            });
 
-            await pipeline(nodeStream, fileStream);
+                if (receivedBytes === 0) {
+                    const res = await fetch(assetUrl, {
+                        headers: { 'User-Agent': 'mychalsmp-launcher-updater' }
+                    });
+                    if (!res.ok) throw new Error(`Chyba stahování delta balíčku: HTTP ${res.status}`);
+
+                    totalBytes = parseInt(res.headers.get('content-length')) || 0;
+                    const fileStream = fs.createWriteStream(tmpAsar);
+                    const nodeStream = Readable.fromWeb(res.body);
+
+                    let lastReport = 0;
+                    nodeStream.on('data', (chunk) => {
+                        receivedBytes += chunk.length;
+                        const now = Date.now();
+                        if (now - lastReport > 40 || receivedBytes === totalBytes) {
+                            lastReport = now;
+                            const percent = totalBytes > 0 ? Math.round((receivedBytes / totalBytes) * 100) : 0;
+                            if (onProgress) {
+                                onProgress({
+                                    current: receivedBytes,
+                                    total: totalBytes,
+                                    percent: Math.min(percent, 100),
+                                    status: 'downloading',
+                                    isDelta: true
+                                });
+                            }
+                        }
+                    });
+
+                    await pipeline(nodeStream, fileStream);
+                }
+            }
 
             if (onProgress) {
                 onProgress({

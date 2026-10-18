@@ -1,0 +1,534 @@
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+/**
+ * Native Rust Module Loader for MYCHAL SMP Launcher
+ * Provides zero-cost abstraction with automatic high-speed Rust bridge
+ * and transparent JavaScript fallback if native binary is unavailable.
+ */
+
+let nativeModule = null;
+let isLoaded = false;
+
+// Candidate locations for the compiled native module (.node)
+const candidatePaths = [
+    path.join(__dirname, '..', '..', 'native', 'mychalsmp_native.node'),
+    path.join(__dirname, '..', '..', 'native', 'target', 'release', 'mychalsmp_native.node'),
+    path.join(__dirname, 'mychalsmp_native.node')
+];
+
+for (const p of candidatePaths) {
+    if (fs.existsSync(p)) {
+        try {
+            nativeModule = require(p);
+            isLoaded = true;
+            console.log(`[RUST NATIVE] Úspěšně načten nativní modul z: ${p}`);
+            break;
+        } catch (err) {
+            console.warn(`[RUST NATIVE] Nepodařilo se načíst z ${p}:`, err.message);
+        }
+    }
+}
+
+if (!isLoaded) {
+    console.log('[RUST NATIVE] Nativní Rust modul není přítomen, aktivuji standardní JS fallback.');
+}
+
+// ── Native / Fallback API ───────────────────────────────────────────────────
+
+function isNativeActive() {
+    if (isLoaded && nativeModule && typeof nativeModule.isNativeActive === 'function') {
+        try {
+            return nativeModule.isNativeActive();
+        } catch (_) {
+            return false;
+        }
+    }
+    return false;
+}
+
+/**
+ * Fast parallel verification of mods directory
+ * Returns parsed ModScanResult object: { total_mods, clean_mods, prohibited_mods, mods, scan_time_ms }
+ */
+function fastVerifyModsDir(modsDir) {
+    if (isLoaded && nativeModule && typeof nativeModule.fastVerifyModsDir === 'function') {
+        try {
+            const rawJson = nativeModule.fastVerifyModsDir(modsDir);
+            return JSON.parse(rawJson);
+        } catch (err) {
+            console.warn('[RUST NATIVE] fastVerifyModsDir selhalo, použiji JS fallback:', err);
+        }
+    }
+
+    // JS Fallback
+    const start = Date.now();
+    const result = {
+        total_mods: 0,
+        clean_mods: 0,
+        prohibited_mods: 0,
+        mods: [],
+        scan_time_ms: 0
+    };
+
+    if (!fs.existsSync(modsDir)) {
+        return result;
+    }
+
+    const PROHIBITED_KEYWORDS = [
+        ['baritone', 'Baritone / Bot Pathing'],
+        ['xray', 'X-Ray modifikace'],
+        ['x-ray', 'X-Ray modifikace'],
+        ['x_ray', 'X-Ray modifikace'],
+        ['orefinder', 'Ore finder cheat'],
+        ['freecam', 'Freecam modifikace'],
+        ['seedcracker', 'Seed cracker exploit'],
+        ['autoclicker', 'Auto clicker'],
+        ['chestesp', 'Chest ESP'],
+        ['crystalaura', 'Crystal Aura combat cheat'],
+        ['meteor', 'Meteor Hack Client'],
+        ['wurst', 'Wurst Hack Client'],
+        ['liquidbounce', 'LiquidBounce Hack Client'],
+        ['rusherhack', 'Rusherhack Client'],
+        ['vape', 'Vape Client']
+    ];
+
+    try {
+        const files = fs.readdirSync(modsDir);
+        for (const file of files) {
+            if (file.toLowerCase().endsWith('.jar')) {
+                result.total_mods++;
+                const fullPath = path.join(modsDir, file);
+                const stat = fs.statSync(fullPath);
+                
+                // SHA-256 hash
+                let sha256 = 'unknown';
+                try {
+                    const buf = fs.readFileSync(fullPath);
+                    sha256 = crypto.createHash('sha256').update(buf).digest('hex');
+                } catch (_) {}
+
+                const lowerName = file.toLowerCase();
+                let isProhibited = false;
+                let reason = null;
+
+                for (const [kw, desc] of PROHIBITED_KEYWORDS) {
+                    if (lowerName.includes(kw)) {
+                        isProhibited = true;
+                        reason = desc;
+                        break;
+                    }
+                }
+
+                if (isProhibited) {
+                    result.prohibited_mods++;
+                } else {
+                    result.clean_mods++;
+                }
+
+                result.mods.push({
+                    file_name: file,
+                    relative_path: file,
+                    size_bytes: stat.size,
+                    sha256,
+                    is_prohibited: isProhibited,
+                    detection_reason: reason
+                });
+            }
+        }
+    } catch (e) {
+        console.error('[JS FALLBACK] Chyba skenování složky módů:', e);
+    }
+
+    result.scan_time_ms = Date.now() - start;
+    return result;
+}
+
+/**
+ * High-speed SHA-1 file hash
+ */
+function fastHashFileSha1(filePath) {
+    if (isLoaded && nativeModule && typeof nativeModule.fastHashFileSha1 === 'function') {
+        try {
+            return nativeModule.fastHashFileSha1(filePath);
+        } catch (_) {}
+    }
+
+    // JS Fallback
+    const buf = fs.readFileSync(filePath);
+    return crypto.createHash('sha1').update(buf).digest('hex');
+}
+
+/**
+ * High-speed SHA-256 file hash
+ */
+function fastHashFileSha256(filePath) {
+    if (isLoaded && nativeModule && typeof nativeModule.fastHashFileSha256 === 'function') {
+        try {
+            return nativeModule.fastHashFileSha256(filePath);
+        } catch (_) {}
+    }
+
+    // JS Fallback
+    const buf = fs.readFileSync(filePath);
+    return crypto.createHash('sha256').update(buf).digest('hex');
+}
+
+/**
+ * Fast log crash analyzer
+ */
+function fastScanLogForCrashes(logPath) {
+    if (isLoaded && nativeModule && typeof nativeModule.fastScanLogForCrashes === 'function') {
+        try {
+            const raw = nativeModule.fastScanLogForCrashes(logPath);
+            return JSON.parse(raw);
+        } catch (_) {}
+    }
+
+    // JS Fallback
+    if (!fs.existsSync(logPath)) {
+        return { has_crash: false, crash_type: null, summary_line: null, suspected_cause: null };
+    }
+
+    try {
+        const text = fs.readFileSync(logPath, 'utf-8');
+        if (text.includes('java.lang.OutOfMemoryError')) {
+            return {
+                has_crash: true,
+                crash_type: 'OUT_OF_MEMORY',
+                summary_line: 'java.lang.OutOfMemoryError',
+                suspected_cause: 'Nedostatek alokované RAM pro Minecraft'
+            };
+        }
+        if (text.includes('Minecraft has crashed!') || text.includes('---- Minecraft Crash Report ----')) {
+            return {
+                has_crash: true,
+                crash_type: 'GAME_CRASH',
+                summary_line: 'Minecraft Crash Report',
+                suspected_cause: 'Kritický pád herního jádra Minecraftu'
+            };
+        }
+        if (text.includes('# A fatal error has been detected by the Java Runtime Environment')) {
+            return {
+                has_crash: true,
+                crash_type: 'JVM_FATAL_ERROR',
+                summary_line: 'Fatal error in Java Runtime',
+                suspected_cause: 'Pád JVM / grafického ovladače'
+            };
+        }
+    } catch (_) {}
+
+    return { has_crash: false, crash_type: null, summary_line: null, suspected_cause: null };
+}
+
+/**
+ * High-speed native file downloader (Rust streaming directly to disk with SHA-256 calculation)
+ */
+async function fastDownloadFile(url, destPath) {
+    if (isLoaded && nativeModule && typeof nativeModule.fastDownloadFile === 'function') {
+        try {
+            const raw = nativeModule.fastDownloadFile(url, destPath);
+            return JSON.parse(raw);
+        } catch (err) {
+            console.warn('[RUST NATIVE] fastDownloadFile selhalo, fallbackuji na JS fetch:', err);
+        }
+    }
+
+    // JS Fallback
+    const start = Date.now();
+    const destDir = path.dirname(destPath);
+    if (!fs.existsSync(destDir)) {
+        fs.mkdirSync(destDir, { recursive: true });
+    }
+
+    const res = await fetch(url, { headers: { 'User-Agent': 'mychalVidea/mychalsmp-launcher' } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
+
+    const buffer = Buffer.from(await res.arrayBuffer());
+    fs.writeFileSync(destPath, buffer);
+    const sha256 = crypto.createHash('sha256').update(buffer).digest('hex');
+
+    return {
+        success: true,
+        bytes_downloaded: buffer.length,
+        elapsed_ms: Date.now() - start,
+        sha256,
+        error: null
+    };
+}
+
+/**
+ * Parallel batch downloader for mods/assets
+ * @param {Array<{ url: string, dest_path: string }>} items
+ */
+async function fastDownloadBatch(items) {
+    if (isLoaded && nativeModule && typeof nativeModule.fastDownloadBatch === 'function') {
+        try {
+            const raw = nativeModule.fastDownloadBatch(JSON.stringify(items));
+            return JSON.parse(raw);
+        } catch (err) {
+            console.warn('[RUST NATIVE] fastDownloadBatch selhalo, fallbackuji na JS:', err);
+        }
+    }
+
+    // JS Fallback
+    const start = Date.now();
+    const results = [];
+    let totalBytes = 0;
+    let successful = 0;
+    let failed = 0;
+
+    for (const item of items) {
+        try {
+            const single = await fastDownloadFile(item.url, item.dest_path);
+            results.push({
+                url: item.url,
+                dest_path: item.dest_path,
+                success: true,
+                bytes_downloaded: single.bytes_downloaded,
+                error: null
+            });
+            totalBytes += single.bytes_downloaded;
+            successful++;
+        } catch (err) {
+            results.push({
+                url: item.url,
+                dest_path: item.dest_path,
+                success: false,
+                bytes_downloaded: 0,
+                error: err.message
+            });
+            failed++;
+        }
+    }
+
+    return {
+        total: items.length,
+        successful,
+        failed,
+        total_bytes: totalBytes,
+        elapsed_ms: Date.now() - start,
+        items: results
+    };
+}
+
+/**
+ * Creates binary diff patch between two files (e.g. old app.asar and new app.asar)
+ */
+function createBinaryPatch(oldPath, newPath, patchOutputPath) {
+    if (isLoaded && nativeModule && typeof nativeModule.createBinaryPatch === 'function') {
+        const raw = nativeModule.createBinaryPatch(oldPath, newPath, patchOutputPath);
+        return JSON.parse(raw);
+    }
+    throw new Error('Nativní Rust modul není dostupný pro generování binárního patche');
+}
+
+/**
+ * Applies binary diff patch to reconstruct target file
+ */
+function applyBinaryPatch(oldPath, patchPath, targetOutputPath) {
+    if (isLoaded && nativeModule && typeof nativeModule.applyBinaryPatch === 'function') {
+        const raw = nativeModule.applyBinaryPatch(oldPath, patchPath, targetOutputPath);
+        return JSON.parse(raw);
+    }
+    throw new Error('Nativní Rust modul není dostupný pro aplikaci binárního patche');
+}
+
+/**
+ * OS-level memory trimmer (glibc malloc_trim on Linux, Win32 EmptyWorkingSet on Windows)
+ */
+function fastTrimMemory(pid = null) {
+    if (isLoaded && nativeModule && typeof nativeModule.fastTrimMemory === 'function') {
+        try {
+            return nativeModule.fastTrimMemory(pid || null);
+        } catch (_) {}
+    }
+
+    if (process.platform === 'win32' && typeof process.trimWorkingSet === 'function') {
+        try {
+            process.trimWorkingSet();
+            return true;
+        } catch (_) {}
+    }
+    return false;
+}
+
+/**
+ * High-speed Minecraft game log line parser (sub-microsecond)
+ */
+function fastParseGameLogLine(line) {
+    if (isLoaded && nativeModule && typeof nativeModule.fastParseGameLogLine === 'function') {
+        try {
+            const raw = nativeModule.fastParseGameLogLine(line);
+            return JSON.parse(raw);
+        } catch (_) {}
+    }
+
+    // JS Fallback
+    const lower = (line || '').toLowerCase();
+    if (lower.includes('voicechat') || lower.includes('plasmovoice') || lower.includes('simple voice') || lower.includes('audioplayer') || lower.includes('essential') || lower.includes('telemetry') || lower.includes('ice:') || lower.includes('stun:') || lower.includes('turn:')) {
+        return { event_type: 'ignored_auxiliary', host: null, port: null };
+    }
+    if (lower.includes('connecting to ')) {
+        const m = line.match(/Connecting to\s+(?:server\s+)?\[?([a-zA-Z0-9_.-]+)\]?(?:(?:,\s*|\:)(\d+))?/i);
+        if (m && m[1]) {
+            return {
+                event_type: 'connecting',
+                host: m[1].trim(),
+                port: m[2] ? parseInt(m[2], 10) : 25565
+            };
+        }
+    }
+    if (lower.includes('starting integrated minecraft server') || lower.includes('[integrated server/info]') || lower.includes('preparing start region for dimension')) {
+        return { event_type: 'singleplayer', host: null, port: null };
+    }
+    if (lower.includes('stopping integrated server') || lower.includes('lost connection to server') || lower.includes('client disconnected with reason') || lower.includes('disconnected from server')) {
+        return { event_type: 'menu', host: null, port: null };
+    }
+    return { event_type: 'none', host: null, port: null };
+}
+
+/**
+ * Parallel cache scanner for cleaner
+ */
+function fastScanCleanerCache(directories, maxAgeDays = 30) {
+    if (isLoaded && nativeModule && typeof nativeModule.fastScanCleanerCache === 'function') {
+        try {
+            const raw = nativeModule.fastScanCleanerCache(directories, maxAgeDays);
+            return JSON.parse(raw);
+        } catch (e) {
+            console.warn('[RUST NATIVE] fastScanCleanerCache selhalo, fallback na JS:', e.message);
+        }
+    }
+    return null;
+}
+
+/**
+ * High-speed archive / modpack / jar extraction in Rust
+ */
+function fastExtractArchive(archivePath, destDir) {
+    if (isLoaded && nativeModule && typeof nativeModule.fastExtractArchive === 'function') {
+        const raw = nativeModule.fastExtractArchive(archivePath, destDir);
+        return JSON.parse(raw);
+    }
+    throw new Error('Nativní Rust modul není dostupný pro extrakci archivu');
+}
+
+/**
+ * Parallel batch file integrity check (SHA-1) in Rust across all CPU cores
+ */
+function fastVerifyFileHashesBatch(items) {
+    if (isLoaded && nativeModule && typeof nativeModule.fastVerifyFileHashesBatch === 'function') {
+        try {
+            const raw = nativeModule.fastVerifyFileHashesBatch(JSON.stringify(items));
+            return JSON.parse(raw);
+        } catch (e) {
+            console.warn('[RUST NATIVE] fastVerifyFileHashesBatch selhalo, fallback na JS:', e.message);
+        }
+    }
+
+    // JS Fallback
+    const start = Date.now();
+    let valid = 0;
+    let corrupted = 0;
+    let missing = 0;
+    const invalid_files = [];
+
+    for (const item of items) {
+        if (!fs.existsSync(item.path)) {
+            missing++;
+            invalid_files.push(item.path);
+            continue;
+        }
+        if (item.expected_size !== undefined && item.expected_size !== null) {
+            try {
+                const s = fs.statSync(item.path);
+                if (s.size !== item.expected_size) {
+                    corrupted++;
+                    invalid_files.push(item.path);
+                    continue;
+                }
+            } catch (_) {}
+        }
+        try {
+            const buf = fs.readFileSync(item.path);
+            const actual = crypto.createHash('sha1').update(buf).digest('hex');
+            if (actual.toLowerCase() === item.expected_sha1.toLowerCase()) {
+                valid++;
+            } else {
+                corrupted++;
+                invalid_files.push(item.path);
+            }
+        } catch (_) {
+            corrupted++;
+            invalid_files.push(item.path);
+        }
+    }
+
+    return {
+        total: items.length,
+        valid,
+        corrupted,
+        missing,
+        elapsed_ms: Date.now() - start,
+        invalid_files
+    };
+}
+
+/**
+ * Zero-CPU asynchronous process exit waiter using OS kernel primitives
+ * (Linux pidfd_open / Windows WaitForSingleObject)
+ */
+function fastWaitForProcessExit(pid, timeoutMs = 0) {
+    if (isLoaded && nativeModule && typeof nativeModule.fastWaitForProcessExit === 'function') {
+        try {
+            return nativeModule.fastWaitForProcessExit(pid, timeoutMs || 0);
+        } catch (e) {
+            console.warn('[RUST NATIVE] fastWaitForProcessExit selhalo, fallback na polling:', e.message);
+        }
+    }
+
+    // JS Fallback: 1-second polling loop
+    return new Promise((resolve) => {
+        const start = Date.now();
+        const interval = setInterval(() => {
+            let alive = false;
+            try {
+                process.kill(pid, 0);
+                alive = true;
+            } catch (err) {
+                alive = err.code === 'EPERM';
+            }
+
+            if (!alive) {
+                clearInterval(interval);
+                resolve(0);
+                return;
+            }
+
+            if (timeoutMs > 0 && Date.now() - start >= timeoutMs) {
+                clearInterval(interval);
+                resolve(0);
+            }
+        }, 1000);
+    });
+}
+
+module.exports = {
+    isNativeActive,
+    fastVerifyModsDir,
+    fastHashFileSha1,
+    fastHashFileSha256,
+    fastScanLogForCrashes,
+    fastDownloadFile,
+    fastDownloadBatch,
+    createBinaryPatch,
+    applyBinaryPatch,
+    fastTrimMemory,
+    fastParseGameLogLine,
+    fastScanCleanerCache,
+    fastExtractArchive,
+    fastVerifyFileHashesBatch,
+    fastWaitForProcessExit
+};

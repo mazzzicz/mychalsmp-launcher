@@ -99,7 +99,6 @@ const DEFAULT_CONFIG = {
     serverPort: 25565,
     customJvmArgs: '-XX:+UseZGC -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC',
     enableGameMode: true,
-    enableMangoHud: false,
     enableDiscreteGpu: true,
     enableZink: false,
     disableVsync: false,

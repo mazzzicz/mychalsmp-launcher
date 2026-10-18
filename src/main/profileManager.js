@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { loadConfig, saveConfig } = require('./config');
+const nativeLoader = require('./nativeLoader');
 
 /**
  * Copies a directory recursively.
@@ -331,6 +332,12 @@ async function findModrinthVersionForTarget(slug, targetVersion, loader = 'fabri
  * Downloads a file from URL to destination path.
  */
 async function downloadFile(url, destPath) {
+    if (nativeLoader.isNativeActive()) {
+        try {
+            await nativeLoader.fastDownloadFile(url, destPath);
+            return;
+        } catch (_) {}
+    }
     const res = await fetch(url, { headers: { 'User-Agent': 'mychalVidea/mychalsmp-launcher' } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const buffer = await res.arrayBuffer();

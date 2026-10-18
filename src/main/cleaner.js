@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const nativeLoader = require('./nativeLoader');
 
 /**
  * Cache and Storage Cleaner for MYCHAL SMP Launcher
@@ -69,63 +70,102 @@ function scanLauncherCache(baseDir, profiles = []) {
         oldJars: { count: 0, bytes: 0 }
     };
 
-    // 1. Scan logs/*.log.gz and old *.log (> 30 days)
-    for (const dir of directoriesToScan) {
-        const logsDir = path.join(dir, 'logs');
-        if (fs.existsSync(logsDir)) {
-            const logFiles = scanDir(logsDir, (fPath, name, stat) => {
-                if (name === 'latest.log') return false;
-                // .log.gz files or old .log older than 30 days
-                if (name.endsWith('.log.gz')) {
-                    return (now - stat.mtimeMs) > THIRTY_DAYS_MS;
+    // ⚡ 1–3: Pokud je přítomen nativní Rust modul, provedeme paralelní multithreaded sken
+    let usedNative = false;
+    if (nativeLoader.isNativeActive()) {
+        try {
+            const scanDirs = Array.from(directoriesToScan);
+            scanDirs.push(
+                path.join(baseDir, 'temp'),
+                path.join(baseDir, 'cache'),
+                path.join(baseDir, 'natives'),
+                path.join(baseDir, 'webcache')
+            );
+            const nativeScan = nativeLoader.fastScanCleanerCache(scanDirs, 30);
+            if (nativeScan && Array.isArray(nativeScan.items)) {
+                usedNative = true;
+                for (const item of nativeScan.items) {
+                    const formatted = {
+                        path: item.path,
+                        size: item.size_bytes,
+                        mtime: item.mtime_ms
+                    };
+                    itemsToDelete.push(formatted);
+                    if (item.category === 'logs') {
+                        breakdown.logs.count++;
+                        breakdown.logs.bytes += item.size_bytes;
+                    } else if (item.category === 'crashes') {
+                        breakdown.crashes.count++;
+                        breakdown.crashes.bytes += item.size_bytes;
+                    } else {
+                        breakdown.temps.count++;
+                        breakdown.temps.bytes += item.size_bytes;
+                    }
                 }
-                if (name.endsWith('.log')) {
-                    return (now - stat.mtimeMs) > THIRTY_DAYS_MS;
-                }
-                return false;
-            }, 1);
-
-            for (const f of logFiles) {
-                itemsToDelete.push(f);
-                breakdown.logs.count++;
-                breakdown.logs.bytes += f.size;
             }
-        }
-
-        // 2. Scan crash-reports/*.txt (> 30 days)
-        const crashDir = path.join(dir, 'crash-reports');
-        if (fs.existsSync(crashDir)) {
-            const crashFiles = scanDir(crashDir, (fPath, name, stat) => {
-                return name.endsWith('.txt') && (now - stat.mtimeMs) > THIRTY_DAYS_MS;
-            }, 1);
-
-            for (const f of crashFiles) {
-                itemsToDelete.push(f);
-                breakdown.crashes.count++;
-                breakdown.crashes.bytes += f.size;
-            }
+        } catch (e) {
+            console.warn('[CLEANER] Rust cache scan selhal, přepínám na JS fallback:', e);
+            usedNative = false;
         }
     }
 
-    // 3. Scan temp files (*.tmp, *.part, *.download, natives cache)
-    const tempDirs = [
-        path.join(baseDir, 'temp'),
-        path.join(baseDir, 'cache'),
-        path.join(baseDir, 'natives'),
-        path.join(baseDir, 'webcache')
-    ];
+    if (!usedNative) {
+        // 1. Scan logs/*.log.gz and old *.log (> 30 days)
+        for (const dir of directoriesToScan) {
+            const logsDir = path.join(dir, 'logs');
+            if (fs.existsSync(logsDir)) {
+                const logFiles = scanDir(logsDir, (fPath, name, stat) => {
+                    if (name === 'latest.log') return false;
+                    if (name.endsWith('.log.gz')) {
+                        return (now - stat.mtimeMs) > THIRTY_DAYS_MS;
+                    }
+                    if (name.endsWith('.log')) {
+                        return (now - stat.mtimeMs) > THIRTY_DAYS_MS;
+                    }
+                    return false;
+                }, 1);
 
-    for (const tDir of tempDirs) {
-        if (fs.existsSync(tDir)) {
-            const tempFiles = scanDir(tDir, (fPath, name, stat) => {
-                // All temporary files or natives older than 7 days
-                return true;
-            }, 3);
+                for (const f of logFiles) {
+                    itemsToDelete.push(f);
+                    breakdown.logs.count++;
+                    breakdown.logs.bytes += f.size;
+                }
+            }
 
-            for (const f of tempFiles) {
-                itemsToDelete.push(f);
-                breakdown.temps.count++;
-                breakdown.temps.bytes += f.size;
+            // 2. Scan crash-reports/*.txt (> 30 days)
+            const crashDir = path.join(dir, 'crash-reports');
+            if (fs.existsSync(crashDir)) {
+                const crashFiles = scanDir(crashDir, (fPath, name, stat) => {
+                    return name.endsWith('.txt') && (now - stat.mtimeMs) > THIRTY_DAYS_MS;
+                }, 1);
+
+                for (const f of crashFiles) {
+                    itemsToDelete.push(f);
+                    breakdown.crashes.count++;
+                    breakdown.crashes.bytes += f.size;
+                }
+            }
+        }
+
+        // 3. Scan temp files (*.tmp, *.part, *.download, natives cache)
+        const tempDirs = [
+            path.join(baseDir, 'temp'),
+            path.join(baseDir, 'cache'),
+            path.join(baseDir, 'natives'),
+            path.join(baseDir, 'webcache')
+        ];
+
+        for (const tDir of tempDirs) {
+            if (fs.existsSync(tDir)) {
+                const tempFiles = scanDir(tDir, (fPath, name, stat) => {
+                    return true;
+                }, 3);
+
+                for (const f of tempFiles) {
+                    itemsToDelete.push(f);
+                    breakdown.temps.count++;
+                    breakdown.temps.bytes += f.size;
+                }
             }
         }
     }

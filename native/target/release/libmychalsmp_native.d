@@ -1,0 +1,1 @@
+/home/michal/DiscordBot/Discord\ Bot/mychalsmp-launcher/native/target/release/libmychalsmp_native.so: /home/michal/DiscordBot/Discord\ Bot/mychalsmp-launcher/native/build.rs /home/michal/DiscordBot/Discord\ Bot/mychalsmp-launcher/native/src/lib.rs

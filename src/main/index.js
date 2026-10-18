@@ -86,6 +86,7 @@ const { analyzeCrash, executeCrashFix } = require('./crashAnalyzer');
 const { scanLauncherCache, cleanLauncherCache } = require('./cleaner');
 const { discordRpc } = require('./discordRpc');
 const keybindManager = require('./keybindManager');
+const nativeLoader = require('./nativeLoader');
 
 // ⚡ Povolení V8 Garbage Collection pro úsporný režim v liště (Tray)
 try {
@@ -165,8 +166,19 @@ function cleanupTrayMemory() {
         }
     } catch (_) { }
 
+    // ⚡ Rust Native OS-level memory trim:
+    // Na Linuxu volá libc::malloc_trim(0) – vrátí nepoužívané heap stránky jádru.
+    // Na Windows volá Win32 SetProcessWorkingSetSize(GetCurrentProcess(), -1, -1).
     try {
-        if (process.platform === 'win32' && typeof process.trimWorkingSet === 'function') {
+        if (nativeLoader && typeof nativeLoader.fastTrimMemory === 'function') {
+            nativeLoader.fastTrimMemory();
+            if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
+                const rendererPid = mainWindow.webContents.getOSProcessId();
+                if (rendererPid) {
+                    nativeLoader.fastTrimMemory(rendererPid);
+                }
+            }
+        } else if (process.platform === 'win32' && typeof process.trimWorkingSet === 'function') {
             process.trimWorkingSet();
         }
     } catch (_) { }
@@ -1795,6 +1807,16 @@ function startSessionTracking(pid, profileId, profileName, instanceDir, serverIp
     }
     updateTrayMenu();
 
+    // ⚡ Nativní Zero-CPU kernelový procesní monitor (Linux pidfd / Windows WaitForSingleObject)
+    if (nativeLoader && typeof nativeLoader.fastWaitForProcessExit === 'function') {
+        nativeLoader.fastWaitForProcessExit(pid).then((exitCode) => {
+            if (activeSessionData && activeSessionData.pid === pid) {
+                console.log(`[ZERO-CPU WAITER] Minecraft proces ${pid} byl okamžitě detekován jako ukončený (kód: ${exitCode}). Probouzím launcher.`);
+                endSessionTracking(exitCode || 0);
+            }
+        }).catch(() => {});
+    }
+
     activeHeartbeatInterval = setInterval(() => {
         if (!activeSessionData) return;
         if (!isProcessAlive(activeSessionData.pid)) {
@@ -1863,6 +1885,16 @@ function checkAndResumeActiveSession() {
             activeSessionData = session;
             lastSessionDiskFlushTime = Date.now();
             saveSessionTick(activeSessionData, true);
+
+            // ⚡ Nativní Zero-CPU kernelový procesní monitor i pro obnovenou relaci
+            if (nativeLoader && typeof nativeLoader.fastWaitForProcessExit === 'function') {
+                nativeLoader.fastWaitForProcessExit(session.pid).then((exitCode) => {
+                    if (activeSessionData && activeSessionData.pid === session.pid) {
+                        console.log(`[ZERO-CPU WAITER] Obnovený Minecraft proces ${session.pid} byl okamžitě detekován jako ukončený.`);
+                        endSessionTracking(exitCode || 0);
+                    }
+                }).catch(() => {});
+            }
 
             activeHeartbeatInterval = setInterval(() => {
                 if (!activeSessionData) return;
@@ -2206,17 +2238,18 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
                     resolveFn();
                 }
 
-                // Ignorujeme logy z doplňkových služeb (hlasový chat Simple Voice Chat, Plasmo Voice, audio, telemetry, auth apod.)
-                const isAuxiliaryLog = /\[(?:.*VoiceChat.*|.*PlasmoVoice.*|.*Voice.*|.*Audio.*)\]/i.test(logLine) ||
-                    /(?:voicechat|plasmovoice|simple\s*voice|voice\s*(?:chat|server|proxy)|audioplayer|essential|telemetry|skin\s*server|auth\s*server|session\s*server|ice\s*server|stun:|turn:)/i.test(logLine);
+                // ⚡ Blesková detekce stavu z herního logu přes nativní Rust parser (sub-microsecond bez alokací v JS)
+                const logEvent = nativeLoader.fastParseGameLogLine(logLine);
+
+                // Ignorujeme logy z doplňkových služeb (hlasový chat, audio, telemetry, auth apod.)
+                if (logEvent.event_type === 'ignored_auxiliary') {
+                    return;
+                }
 
                 // Detekce připojení na herní server z konzole Minecraftu
-                // Vanilla Minecraft ConnectScreen loguje: "Connecting to <host>, <port>"
-                // Modifikované klienty/proxy mohou logovat: "Connecting to <host>:<port>" nebo "[<host>]:<port>"
-                const connMatch = !isAuxiliaryLog ? logLine.match(/Connecting to\s+(?:server\s+)?\[?([a-zA-Z0-9_.-]+)\]?(?:(?:,\s*|\:)(\d+))?/i) : null;
-                if (connMatch && connMatch[1]) {
-                    const detectedHost = connMatch[1].trim();
-                    const detectedPort = connMatch[2] ? parseInt(connMatch[2], 10) : 25565;
+                if (logEvent.event_type === 'connecting' && logEvent.host) {
+                    const detectedHost = logEvent.host.trim();
+                    const detectedPort = logEvent.port || 25565;
 
                     // Ověření, že se jedná o skutečný Minecraft server a ne o port/subdoménu voice chatu ani obecné slovo
                     if (isValidServerHost(detectedHost) && detectedPort !== 24454 && detectedPort !== 9050 && !detectedHost.toLowerCase().startsWith('voice.')) {
@@ -2272,9 +2305,7 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
                 }
 
                 // Detekce spuštění Singleplayer světa
-                if (logLine.includes('Starting integrated minecraft server') ||
-                    logLine.includes('[Integrated server/INFO]') ||
-                    /Preparing start region for dimension/i.test(logLine)) {
+                if (logEvent.event_type === 'singleplayer') {
                     if (activeSessionData && activeSessionData.currentServerIp !== 'Singleplayer') {
                         activeSessionData.currentServerIp = 'Singleplayer';
                         try {
@@ -2293,8 +2324,7 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
                 }
 
                 // Detekce odpojení / návratu do hlavního menu hry
-                if (logLine.includes('Stopping integrated server') ||
-                    /Lost connection to server|Client disconnected with reason|Disconnected from server/i.test(logLine)) {
+                if (logEvent.event_type === 'menu') {
                     if (activeSessionData && activeSessionData.currentServerIp && activeSessionData.currentServerIp !== 'menu') {
                         activeSessionData.currentServerIp = 'menu';
                         try {

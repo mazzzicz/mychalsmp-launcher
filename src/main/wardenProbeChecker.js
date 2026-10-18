@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const nativeLoader = require('./nativeLoader');
 
 /**
  * Mod Safety Checker for MYCHAL SMP Launcher
@@ -265,21 +266,47 @@ function scanProfileForBlacklistedMods(profileDir) {
     }
 
     const illegalMods = [];
-    try {
-        const files = fs.readdirSync(modsDir);
-        for (const file of files) {
-            // Only inspect active jar files (ignore .disabled)
-            if (file.toLowerCase().endsWith('.jar')) {
-                const fullPath = path.join(modsDir, file);
-                const meta = metaMap[file] || null;
-                const match = evaluateMod(file, fullPath, meta);
-                if (match) {
-                    illegalMods.push(match);
+
+    // 1. Rust Native High-Speed Parallel Scan
+    if (nativeLoader.isNativeActive()) {
+        try {
+            const nativeScan = nativeLoader.fastVerifyModsDir(modsDir);
+            if (nativeScan && nativeScan.prohibited_mods > 0) {
+                for (const m of nativeScan.mods) {
+                    if (m.is_prohibited) {
+                        illegalMods.push({
+                            filename: m.file_name,
+                            name: m.file_name,
+                            category: 'PROHIBITED',
+                            categoryLabel: 'Nepovolený mód',
+                            reason: m.detection_reason || 'Tento mód není povolený'
+                        });
+                    }
                 }
             }
+        } catch (nativeErr) {
+            console.warn('[WARDEN] Rust native scan selhal, použiji JS fallback:', nativeErr);
         }
-    } catch (e) {
-        // Silently ignore
+    }
+
+    // 2. JS Fallback & Deep Descriptor Inspection (if no prohibited mods found yet)
+    if (illegalMods.length === 0) {
+        try {
+            const files = fs.readdirSync(modsDir);
+            for (const file of files) {
+                // Only inspect active jar files (ignore .disabled)
+                if (file.toLowerCase().endsWith('.jar')) {
+                    const fullPath = path.join(modsDir, file);
+                    const meta = metaMap[file] || null;
+                    const match = evaluateMod(file, fullPath, meta);
+                    if (match) {
+                        illegalMods.push(match);
+                    }
+                }
+            }
+        } catch (e) {
+            // Silently ignore
+        }
     }
 
     const result = {

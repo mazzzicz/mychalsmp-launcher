@@ -1,6 +1,7 @@
 /**
  * Modrinth Catalog Integration for MYCHAL SMP Launcher
  */
+const nativeLoader = require('./nativeLoader');
 
 const CURATED_MODS = [
     {
@@ -263,6 +264,12 @@ async function searchModrinth(query = '', version = '26.2', loader = 'fabric', c
 }
 
 async function downloadToFileWithProgress(url, destPath, onProgress) {
+    if (!onProgress && nativeLoader.isNativeActive()) {
+        try {
+            await nativeLoader.fastDownloadFile(url, destPath);
+            return;
+        } catch (_) {}
+    }
     const dlRes = await fetch(url, {
         headers: { 'User-Agent': 'mychalVidea/mychalsmp-launcher' }
     });

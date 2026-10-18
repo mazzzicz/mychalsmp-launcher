@@ -12,6 +12,7 @@ const { execSync, execFileSync } = require('child_process');
 const { Readable } = require('stream');
 const { pipeline } = require('stream/promises');
 const { BASE_DIR, loadConfig } = require('./config');
+const nativeLoader = require('./nativeLoader');
 
 let activeMinecraftProcess = null;
 let activeLauncherClient = null;
@@ -21,8 +22,13 @@ function verifyFileSha1(filePath, expectedSha1) {
     if (!expectedSha1) return true;
     try {
         if (!fs.existsSync(filePath)) return false;
-        const data = fs.readFileSync(filePath);
-        const actualSha1 = crypto.createHash('sha1').update(data).digest('hex');
+        let actualSha1;
+        if (nativeLoader.isNativeActive()) {
+            actualSha1 = nativeLoader.fastHashFileSha1(filePath);
+        } else {
+            const data = fs.readFileSync(filePath);
+            actualSha1 = crypto.createHash('sha1').update(data).digest('hex');
+        }
         return actualSha1.toLowerCase() === expectedSha1.toLowerCase();
     } catch (e) {
         return false;
@@ -746,6 +752,15 @@ Handler.prototype.downloadToDirectory = async function (directory, libraries, ev
 };
 
 function downloadFileWithHttps(targetUrl, destPath, timeoutMs = 15000) {
+    if (nativeLoader.isNativeActive()) {
+        return nativeLoader.fastDownloadFile(targetUrl, destPath)
+            .then(() => true)
+            .catch(() => downloadFileWithHttpsFallback(targetUrl, destPath, timeoutMs));
+    }
+    return downloadFileWithHttpsFallback(targetUrl, destPath, timeoutMs);
+}
+
+function downloadFileWithHttpsFallback(targetUrl, destPath, timeoutMs = 15000) {
     return new Promise((resolve, reject) => {
         const https = require('https');
         const http = require('http');
@@ -759,7 +774,7 @@ function downloadFileWithHttps(targetUrl, destPath, timeoutMs = 15000) {
             timeout: timeoutMs
         }, (res) => {
             if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-                return downloadFileWithHttps(res.headers.location, destPath, timeoutMs).then(resolve).catch(reject);
+                return downloadFileWithHttpsFallback(res.headers.location, destPath, timeoutMs).then(resolve).catch(reject);
             }
             if (res.statusCode !== 200) {
                 return reject(new Error(`HTTP ${res.statusCode}`));
@@ -1065,31 +1080,65 @@ Handler.prototype.getAssets = async function () {
     const missingAssetKeys = [];
     let reusedCount = 0;
 
-    for (const assetKey of filteredAssetKeys) {
-        const hash = index.objects[assetKey].hash;
-        const subhash = hash.substring(0, 2);
-        const subAssetDir = path.join(assetDirectory, 'objects', subhash);
-        const targetFilePath = path.join(subAssetDir, hash);
-
-        if (fs.existsSync(targetFilePath)) {
-            reusedCount++;
-        } else {
-            // Zkusit okamžitě převzít z .minecraft nebo jiných launcherů na disku
-            let copiedFromDisk = false;
-            for (const candDir of existingCandidates) {
-                const srcPath = path.join(candDir, subhash, hash);
-                if (fs.existsSync(srcPath)) {
-                    try {
-                        fs.mkdirSync(subAssetDir, { recursive: true });
-                        fs.copyFileSync(srcPath, targetFilePath);
-                        copiedFromDisk = true;
+    let nativeVerified = false;
+    if (nativeLoader.isNativeActive()) {
+        try {
+            const verifyItems = filteredAssetKeys.map(k => {
+                const h = index.objects[k].hash;
+                const sub = h.substring(0, 2);
+                return {
+                    path: path.join(assetDirectory, 'objects', sub, h),
+                    expected_sha1: h,
+                    expected_size: index.objects[k].size
+                };
+            });
+            const batchRes = nativeLoader.fastVerifyFileHashesBatch(verifyItems);
+            if (batchRes && Array.isArray(batchRes.invalid_files)) {
+                nativeVerified = true;
+                const invalidSet = new Set(batchRes.invalid_files);
+                for (const assetKey of filteredAssetKeys) {
+                    const h = index.objects[assetKey].hash;
+                    const sub = h.substring(0, 2);
+                    const targetFilePath = path.join(assetDirectory, 'objects', sub, h);
+                    if (invalidSet.has(targetFilePath)) {
+                        missingAssetKeys.push(assetKey);
+                    } else {
                         reusedCount++;
-                        break;
-                    } catch (e) { }
+                    }
                 }
+                this.client.emit('debug', `[RUST NATIVE]: ⚡ Paralelně ověřeno ${verifyItems.length} assetů za ${batchRes.elapsed_ms.toFixed(1)} ms (${batchRes.valid} platných, ${batchRes.missing} chybí, ${batchRes.corrupted} poškozeno).`);
             }
-            if (!copiedFromDisk) {
-                missingAssetKeys.push(assetKey);
+        } catch (e) {
+            nativeVerified = false;
+        }
+    }
+
+    if (!nativeVerified) {
+        for (const assetKey of filteredAssetKeys) {
+            const hash = index.objects[assetKey].hash;
+            const subhash = hash.substring(0, 2);
+            const subAssetDir = path.join(assetDirectory, 'objects', subhash);
+            const targetFilePath = path.join(subAssetDir, hash);
+
+            if (fs.existsSync(targetFilePath)) {
+                reusedCount++;
+            } else {
+                let copiedFromDisk = false;
+                for (const candDir of existingCandidates) {
+                    const srcPath = path.join(candDir, subhash, hash);
+                    if (fs.existsSync(srcPath)) {
+                        try {
+                            fs.mkdirSync(subAssetDir, { recursive: true });
+                            fs.copyFileSync(srcPath, targetFilePath);
+                            copiedFromDisk = true;
+                            reusedCount++;
+                            break;
+                        } catch (e) { }
+                    }
+                }
+                if (!copiedFromDisk) {
+                    missingAssetKeys.push(assetKey);
+                }
             }
         }
     }
@@ -1114,6 +1163,33 @@ Handler.prototype.getAssets = async function () {
         total: missingAssetKeys.length
     });
 
+    // 1. Rust Native High-Speed Parallel Batch Download
+    if (nativeLoader.isNativeActive()) {
+        const batchItems = missingAssetKeys.map(k => {
+            const h = index.objects[k].hash;
+            const sub = h.substring(0, 2);
+            return {
+                url: `${this.options.overrides.url.resource}/${sub}/${h}`,
+                dest_path: path.join(assetDirectory, 'objects', sub, h)
+            };
+        });
+        this.client.emit('debug', `[RUST NATIVE]: Spouštím nativní paralelní stahování ${batchItems.length} assetů Minecraftu...`);
+        try {
+            await nativeLoader.fastDownloadBatch(batchItems);
+            verifiedAssetIndexes.add(assetIndexCacheKey);
+            this.client.emit('progress', {
+                type: 'assets',
+                task: missingAssetKeys.length,
+                total: missingAssetKeys.length
+            });
+            this.client.emit('debug', `[OPTIMALIZACE]: Bleskově staženo ${batchItems.length} assetů přes vícevláknový Rust engine.`);
+            return;
+        } catch (nativeErr) {
+            this.client.emit('debug', `[RUST NATIVE] Chyba batch stahování, fallback na JS: ${nativeErr.message}`);
+        }
+    }
+
+    // 2. JS Fallback worker pool
     // Paralelní zpracování po dávkách pro maximální rychlost přes HTTP/2 multiplexing
     const concurrency = 45;
     let idx = 0;
@@ -1314,9 +1390,13 @@ async function downloadAndInstallJava(targetVersion = 25, onLog = console.log, o
     }
 
     if (isWin) {
-        const AdmZip = require('adm-zip');
-        const zip = new AdmZip(archivePath);
-        zip.extractAllTo(tempExtract, true);
+        if (nativeLoader.isNativeActive()) {
+            nativeLoader.fastExtractArchive(archivePath, tempExtract);
+        } else {
+            const AdmZip = require('adm-zip');
+            const zip = new AdmZip(archivePath);
+            zip.extractAllTo(tempExtract, true);
+        }
 
         const entries = fs.readdirSync(tempExtract);
         let sourceFolder = tempExtract;

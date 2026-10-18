@@ -4,6 +4,7 @@ const https = require('https');
 const { shell } = require('electron');
 const { downloadModOrPack, resolveModrinthProject, isModInstalledInDir } = require('./modrinth');
 const { isJarFileValid } = require('./launcher');
+const nativeLoader = require('./nativeLoader');
 
 /**
  * Intelligent Crash Analyzer for MYCHAL SMP Launcher
@@ -721,6 +722,13 @@ async function analyzeCrash(gameDir, exitCode = 1, recentMemoryLogs = [], launch
         } catch (e) {}
     }
 
+    let nativeScan = null;
+    if (reportPath && nativeLoader.isNativeActive()) {
+        try {
+            nativeScan = nativeLoader.fastScanLogForCrashes(reportPath);
+        } catch (_) {}
+    }
+
     const logTail = readLatestLogTail(gameDir);
     const memoryLogText = Array.isArray(recentMemoryLogs) ? recentMemoryLogs.join('\n') : (typeof recentMemoryLogs === 'string' ? recentMemoryLogs : '');
 
@@ -929,6 +937,7 @@ async function analyzeCrash(gameDir, exitCode = 1, recentMemoryLogs = [], launch
 
     // ── Diagnostic Rule 1: Out of Memory / Insufficient RAM ──────────────────
     if (
+        (nativeScan && nativeScan.crash_type === 'OUT_OF_MEMORY') ||
         /OutOfMemoryError/i.test(combinedText) ||
         /Java heap space/i.test(combinedText) ||
         /GC overhead limit exceeded/i.test(combinedText) ||
