@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css?v=1.2.0">
+    <link rel="stylesheet" href="css/style.css?v=1.2.1">
 </head>
 
 <body>
@@ -1271,16 +1271,47 @@
                         </div>
                     </div>
 
-                    <!-- Sekce 4: Herní funkce a optimalizace -->
-                    <div class="form-group" id="linuxPerfGroup">
-                        <label class="setting-section-label">Herní funkce & Optimalizace</label>
+                    <!-- Grafický backend (Render API) -->
+                    <div class="form-group" id="graphicsBackendGroup">
+                        <div class="setting-section-header">
+                            <label class="setting-section-label">Grafický backend (Render API)</label>
+                            <span class="setting-section-hint">Minecraft 26.x</span>
+                        </div>
+                        <div class="backend-options">
+                            <label class="radio-label">
+                                <input type="radio" name="graphicsBackend" value="default" checked>
+                                <span>Výchozí (Doporučeno)</span>
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="graphicsBackend" value="vulkan">
+                                <span class="backend-vulkan-label">
+                                    <svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--blue" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                        <polygon points="12 2 2 7 12 12 22 7 12 2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        <polyline points="2 17 12 22 22 17" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        <polyline points="2 12 12 17 22 12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                    Vulkan (Nové v 26.x / Výchozí v 26.4)
+                                </span>
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="graphicsBackend" value="opengl">
+                                <span>OpenGL (Tradiční)</span>
+                            </label>
+                        </div>
+                        <div class="setting-subtext">
+                            Vulkan odstraňuje CPU bottleneck, zrychluje renderování chunků a od verze 26.4 se stává výchozím vykreslovačem.
+                        </div>
+                    </div>
+
+                    <!-- Univerzální herní funkce -->
+                    <div class="form-group" id="universalPerfGroup">
+                        <label class="setting-section-label">Herní funkce</label>
                         <div class="perf-settings-grid">
                             <label class="perf-toggle-card">
                                 <input type="checkbox" id="checkAutoUpdateMods" checked>
                                 <div class="perf-toggle-info">
                                     <span class="perf-toggle-title">Automatická aktualizace módů</span>
-                                    <span class="perf-toggle-desc">Při spuštění hry zkontrolovat a stáhnout novější
-                                        verze módů.</span>
+                                    <span class="perf-toggle-desc">Při spuštění hry zkontrolovat a stáhnout novější verze módů.</span>
                                 </div>
                             </label>
 
@@ -1292,30 +1323,6 @@
                                 </div>
                             </label>
 
-                            <label class="perf-toggle-card">
-                                <input type="checkbox" id="checkGameMode" checked>
-                                <div class="perf-toggle-info">
-                                    <span class="perf-toggle-title">Herní režim (GameMode)</span>
-                                    <span class="perf-toggle-desc">Aktivuje herní prioritu jader CPU a GPU pro maximální
-                                        FPS.</span>
-                                </div>
-                            </label>
-
-                            <label class="perf-toggle-card">
-                                <input type="checkbox" id="checkDiscreteGpu" checked>
-                                <div class="perf-toggle-info">
-                                    <span class="perf-toggle-title">Dedikovaná GPU</span>
-                                    <span class="perf-toggle-desc">Vynutí spuštění hry na výkonné grafické kartě.</span>
-                                </div>
-                            </label>
-
-                            <label class="perf-toggle-card">
-                                <input type="checkbox" id="checkDisableVsync">
-                                <div class="perf-toggle-info">
-                                    <span class="perf-toggle-title">Nízká odezva (V-Sync)</span>
-                                    <span class="perf-toggle-desc">Vypne V-Sync ovladače pro nejnižší input lag.</span>
-                                </div>
-                            </label>
                             <label class="perf-toggle-card">
                                 <input type="checkbox" id="checkScreenshotClipboard" checked>
                                 <div class="perf-toggle-info">
@@ -1334,6 +1341,158 @@
                         </div>
                     </div>
 
+                    <!-- Sekce OS Optimalizace: Windows & Linux rozdělení -->
+                    <div class="settings-os-section">
+                        <label class="setting-section-label">Optimalizace systému (OS Tweaks)</label>
+
+                        <!-- Windows Sekce -->
+                        <details class="settings-os-details" id="detailsWindowsSettings">
+                            <summary class="settings-os-summary">
+                                <div class="settings-os-summary-left">
+                                    <svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--blue" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.401H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.949-1.801"/>
+                                    </svg>
+                                    <span class="settings-os-title">Optimalizace pro Windows</span>
+                                </div>
+                                <div class="settings-os-summary-right">
+                                    <span class="badge-os" id="badgeOsWindows">Windows</span>
+                                    <svg class="settings-os-chevron ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg>
+                                </div>
+                            </summary>
+                            <div class="settings-os-body">
+                                <div class="os-inactive-notice" id="noticeOsWindows" style="display: none;">
+                                    <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <circle cx="12" cy="12" r="10"></circle>
+                                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                                    </svg>
+                                    <span>Tato nastavení jsou dostupná pouze na operačním systému Windows.</span>
+                                </div>
+                                <div class="perf-settings-grid">
+                                    <label class="perf-toggle-card">
+                                        <input type="checkbox" id="checkWinHighPriority" checked>
+                                        <div class="perf-toggle-info">
+                                            <span class="perf-toggle-title">Vysoká priorita procesu</span>
+                                            <span class="perf-toggle-desc">Přiřadí Minecraftu vysokou prioritu (HIGH_PRIORITY_CLASS) pro stabilní FPS při zátěži.</span>
+                                        </div>
+                                    </label>
+
+                                    <label class="perf-toggle-card">
+                                        <input type="checkbox" id="checkWinDedicatedGpu" checked>
+                                        <div class="perf-toggle-info">
+                                            <span class="perf-toggle-title">Vynucení dedikované GPU</span>
+                                            <span class="perf-toggle-desc">Aktivuje SHIM_MCCOMPAT (0xD4000000) pro automatický běh na výkonné NVIDIA/AMD grafice.</span>
+                                        </div>
+                                    </label>
+
+                                    <label class="perf-toggle-card">
+                                        <input type="checkbox" id="checkWinWindowedOptimization" checked>
+                                        <div class="perf-toggle-info">
+                                            <span class="perf-toggle-title">Optimalizace oken (DWM Flip)</span>
+                                            <span class="perf-toggle-desc">Aktivuje moderní Flip Model prezentaci DWM snižující latenci a input lag v okně.</span>
+                                        </div>
+                                    </label>
+
+                                    <label class="perf-toggle-card">
+                                        <input type="checkbox" id="checkWinDisableStickyKeys" checked>
+                                        <div class="perf-toggle-info">
+                                            <span class="perf-toggle-title">Potlačení dialogu StickyKeys</span>
+                                            <span class="perf-toggle-desc">Zabrání vyskakování otravného okna při 5x stisku Shiftu (pro crouching a PvP).</span>
+                                        </div>
+                                    </label>
+
+                                    <label class="perf-toggle-card">
+                                        <input type="checkbox" id="checkWinTrimMemory" checked>
+                                        <div class="perf-toggle-info">
+                                            <span class="perf-toggle-title">Uvolnění RAM launcheru</span>
+                                            <span class="perf-toggle-desc">Po startu hry uvolní paměť launcheru na ~15 MB pro maximální volnou RAM pro Minecraft.</span>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                        </details>
+
+                        <!-- Linux Sekce -->
+                        <details class="settings-os-details" id="detailsLinuxSettings">
+                            <summary class="settings-os-summary">
+                                <div class="settings-os-summary-left">
+                                    <svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <polyline points="4 17 10 11 4 5"></polyline>
+                                        <line x1="12" y1="19" x2="20" y2="19"></line>
+                                    </svg>
+                                    <span class="settings-os-title">Optimalizace pro Linux</span>
+                                </div>
+                                <div class="settings-os-summary-right">
+                                    <span class="badge-os" id="badgeOsLinux">Linux</span>
+                                    <svg class="settings-os-chevron ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg>
+                                </div>
+                            </summary>
+                            <div class="settings-os-body">
+                                <div class="os-inactive-notice" id="noticeOsLinux" style="display: none;">
+                                    <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <circle cx="12" cy="12" r="10"></circle>
+                                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                                    </svg>
+                                    <span>Tato nastavení jsou dostupná pouze na operačním systému Linux.</span>
+                                </div>
+                                <div class="perf-settings-grid">
+                                    <label class="perf-toggle-card">
+                                        <input type="checkbox" id="checkGameMode" checked>
+                                        <div class="perf-toggle-info">
+                                            <span class="perf-toggle-title">Herní režim (GameMode)</span>
+                                            <span class="perf-toggle-desc">Aktivuje herní prioritu jader CPU a GPU pro maximální FPS (Feral GameMode).</span>
+                                        </div>
+                                    </label>
+
+                                    <label class="perf-toggle-card">
+                                        <input type="checkbox" id="checkDiscreteGpu" checked>
+                                        <div class="perf-toggle-info">
+                                            <span class="perf-toggle-title">Dedikovaná GPU (DRI_PRIME)</span>
+                                            <span class="perf-toggle-desc">Vynutí spuštění hry na diskrétní grafické kartě.</span>
+                                        </div>
+                                    </label>
+
+                                    <label class="perf-toggle-card">
+                                        <input type="checkbox" id="checkDisableVsync">
+                                        <div class="perf-toggle-info">
+                                            <span class="perf-toggle-title">Nízká odezva (V-Sync)</span>
+                                            <span class="perf-toggle-desc">Vypne V-Sync ovladače pro nejnižší input lag.</span>
+                                        </div>
+                                    </label>
+
+                                    <label class="perf-toggle-card">
+                                        <input type="checkbox" id="checkNativeWayland">
+                                        <div class="perf-toggle-info">
+                                            <span class="perf-toggle-title">Nativní Wayland okno (GLFW)</span>
+                                            <span class="perf-toggle-desc">Vynutí čisté Wayland okno bez XWayland.</span>
+                                        </div>
+                                    </label>
+
+                                    <label class="perf-toggle-card">
+                                        <input type="checkbox" id="checkZink">
+                                        <div class="perf-toggle-info">
+                                            <span class="perf-toggle-title">Zink (OpenGL přes Vulkan)</span>
+                                            <span class="perf-toggle-desc">Mesa ovladač převádějící OpenGL do Vulkan API.</span>
+                                        </div>
+                                    </label>
+
+                                    <label class="perf-toggle-card">
+                                        <input type="checkbox" id="checkMangoHud">
+                                        <div class="perf-toggle-info">
+                                            <span class="perf-toggle-title">MangoHud Overlay</span>
+                                            <span class="perf-toggle-desc">Zobrazí detailní FPS, latenci a zatížení hardwaru.</span>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+
                     <!-- Sekce 5: Pokročilá nastavení -->
                     <details class="settings-advanced-details">
                         <summary class="settings-advanced-summary">
@@ -1344,24 +1503,6 @@
                         </summary>
 
                         <div class="settings-advanced-body">
-                            <div class="perf-settings-grid" style="margin-bottom: 10px;">
-                                <label class="perf-toggle-card">
-                                    <input type="checkbox" id="checkNativeWayland">
-                                    <div class="perf-toggle-info">
-                                        <span class="perf-toggle-title">Nativní Wayland okno (GLFW)</span>
-                                        <span class="perf-toggle-desc">Vynutí čisté Wayland okno bez XWayland.</span>
-                                    </div>
-                                </label>
-
-                                <label class="perf-toggle-card">
-                                    <input type="checkbox" id="checkZink">
-                                    <div class="perf-toggle-info">
-                                        <span class="perf-toggle-title">Zink (OpenGL přes Vulkan)</span>
-                                        <span class="perf-toggle-desc">Mesa ovladač převádějící OpenGL do Vulkan
-                                            API.</span>
-                                    </div>
-                                </label>
-                            </div>
 
                             <div class="form-group">
                                 <label for="jvmArgsInput" class="setting-section-label">Argumenty Javy</label>
@@ -1585,14 +1726,17 @@
 
                 <div class="keybind-category-chips" id="keybindCategoryChips">
                     <button type="button" class="cat-chip active" data-category="all">Vše</button>
-                    <button type="button" class="cat-chip" data-category="movement">🏃 Pohyb</button>
-                    <button type="button" class="cat-chip" data-category="gameplay">⚔️ Hratelnost</button>
-                    <button type="button" class="cat-chip" data-category="inventory">🎒 Inventář</button>
-                    <button type="button" class="cat-chip" data-category="multiplayer">💬 Multiplayer</button>
-                    <button type="button" class="cat-chip" data-category="misc">⚙️ Různé</button>
-                    <button type="button" class="cat-chip" data-category="mods">🧩 Módy</button>
+                    <button type="button" class="cat-chip" data-category="movement">Pohyb</button>
+                    <button type="button" class="cat-chip" data-category="gameplay">Hratelnost</button>
+                    <button type="button" class="cat-chip" data-category="inventory">Inventář</button>
+                    <button type="button" class="cat-chip" data-category="multiplayer">Multiplayer</button>
+                    <button type="button" class="cat-chip" data-category="misc">Různé</button>
+                    <button type="button" class="cat-chip" data-category="mods">Módy</button>
                     <button type="button" class="cat-chip chip-conflicts" data-category="conflicts"
-                        id="chipOnlyConflicts" style="display: none;">⚠️ Jen konflikty</button>
+                        id="chipOnlyConflicts" style="display: none;">
+                        <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                        <span>Jen konflikty</span>
+                    </button>
                 </div>
             </div>
 
@@ -1605,7 +1749,13 @@
                         </div>
                         <!-- Dedikovaný panel myši -->
                         <div class="mouse-stage" id="mouseStage">
-                            <div class="mouse-panel-header">🖱️ Tlačítka myši</div>
+                            <div class="mouse-panel-header">
+                                <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
+                                    <rect x="6" y="3" width="12" height="18" rx="6"></rect>
+                                    <line x1="12" y1="7" x2="12" y2="11"></line>
+                                </svg>
+                                <span>Tlačítka myši</span>
+                            </div>
                             <div class="mouse-buttons-row" id="mouseButtonsRow">
                                 <!-- Levé tl, Pravé tl, Kolečko, Myš 4, Myš 5 -->
                             </div>
@@ -1615,8 +1765,7 @@
                     <!-- Inspector bar: Informace o vybrané klávese -->
                     <div class="keybind-inspector-card" id="keybindInspectorCard">
                         <div class="inspector-empty" id="inspectorEmptyState">
-                            <span>💡 Klikni na libovolnou klávesu na klávesnici pro zobrazení přiřazených akcí nebo
-                                změnu bindu.</span>
+                            <span>Klikni na libovolnou klávesu na klávesnici pro zobrazení přiřazených akcí nebo změnu bindu.</span>
                         </div>
                         <div class="inspector-active" id="inspectorActiveContent" style="display: none;">
                             <div class="inspector-header">
@@ -1628,7 +1777,11 @@
                                 <div class="inspector-actions-btn-group">
                                     <button type="button" class="mc-btn mc-btn-primary btn-sm"
                                         id="btnInspectorAssignNew">
-                                        ➕ Přiřadit novou akci
+                                        <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
+                                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                        </svg>
+                                        <span>Přiřadit novou akci</span>
                                     </button>
                                 </div>
                             </div>
@@ -1651,12 +1804,13 @@
             <div class="modal-footer keybind-modal-footer">
                 <div class="keybind-footer-info">
                     <span class="footer-legend-item"><span class="legend-dot dot-bound"></span> Přiřazená klávesa</span>
-                    <span class="footer-legend-item"><span class="legend-dot dot-conflict"></span> Konflikt (více
-                        akcí)</span>
+                    <span class="footer-legend-item"><span class="legend-dot dot-conflict"></span> Konflikt (více akcí)</span>
                     <span class="footer-legend-item"><span class="legend-dot dot-free"></span> Volná klávesa</span>
                 </div>
                 <div class="keybind-save-status" id="keybindAutoSaveIndicator">
-                    <span class="save-check">✓</span>
+                    <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
                     <span id="keybindAutoSaveText">Všechny bindy uloženy globálně</span>
                 </div>
             </div>
@@ -2892,7 +3046,7 @@
     <div class="toast-container" id="toastContainer"></div>
 
     <script src="js/lib/skinview3d.bundle.js"></script>
-    <script src="js/app.js?v=1.1.7"></script>
+    <script src="js/app.js?v=1.1.8"></script>
 </body>
 
 </html>

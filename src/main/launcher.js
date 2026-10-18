@@ -2522,8 +2522,48 @@ function getBundledSelfNametagPath() {
 // In-memory cache pro synchronizaci Self Nametag módu (vyhne se opakovanému čtení a počítání SHA-256)
 const selfNametagSyncedDirs = new Map();
 
+function syncSelfNametagConfigToDirs(dirs) {
+    try {
+        const launcherCfg = loadConfig();
+        const currentModCfg = {
+            screenshotToClipboard: launcherCfg.screenshotToClipboard !== false,
+            borderlessFullscreen: launcherCfg.borderlessFullscreen === true
+        };
+        const cfgJson = JSON.stringify(currentModCfg, null, 2);
+        for (const d of dirs) {
+            try {
+                const cfgDir = path.join(d, 'config');
+                if (!fs.existsSync(cfgDir)) fs.mkdirSync(cfgDir, { recursive: true });
+                fs.writeFileSync(path.join(cfgDir, 'selfnametag.json'), cfgJson, 'utf-8');
+            } catch (_) { }
+        }
+    } catch (_) { }
+}
+
 function ensureSelfNametagModInstalled(targetDir, onLog = console.log, forceOverwrite = false) {
     const targetKey = targetDir || BASE_DIR;
+
+    const checkDirs = new Set();
+    if (targetDir) checkDirs.add(targetDir);
+    checkDirs.add(BASE_DIR);
+
+    // Také automatická kontrola všech profilů ve složce profiles
+    const profilesDir = path.join(BASE_DIR, 'profiles');
+    if (fs.existsSync(profilesDir)) {
+        try {
+            const subEntries = fs.readdirSync(profilesDir);
+            for (const sub of subEntries) {
+                const pPath = path.join(profilesDir, sub);
+                if (fs.statSync(pPath).isDirectory()) {
+                    checkDirs.add(pPath);
+                }
+            }
+        } catch (_) { }
+    }
+
+    // Vždy synchronizujeme konfiguraci doplňku (selfnametag.json) pro aktuální nastavení launcheru
+    syncSelfNametagConfigToDirs(checkDirs);
+
     if (!forceOverwrite && selfNametagSyncedDirs.has(targetKey)) {
         const lastSync = selfNametagSyncedDirs.get(targetKey) || 0;
         if (Date.now() - lastSync < 5 * 60 * 1000) {
@@ -2547,24 +2587,6 @@ function ensureSelfNametagModInstalled(targetDir, onLog = console.log, forceOver
     } catch (e) {
         console.warn('[LAUNCHER] Nelze načíst selfnametag jar:', e.message);
         return false;
-    }
-
-    const checkDirs = new Set();
-    if (targetDir) checkDirs.add(targetDir);
-    checkDirs.add(BASE_DIR);
-
-    // Také automatická kontrola všech profilů ve složce profiles
-    const profilesDir = path.join(BASE_DIR, 'profiles');
-    if (fs.existsSync(profilesDir)) {
-        try {
-            const subEntries = fs.readdirSync(profilesDir);
-            for (const sub of subEntries) {
-                const pPath = path.join(profilesDir, sub);
-                if (fs.statSync(pPath).isDirectory()) {
-                    checkDirs.add(pPath);
-                }
-            }
-        } catch (_) { }
     }
 
     // Také automatická kontrola všech instancí ve složce instances (včetně imported-*)
@@ -3176,7 +3198,7 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
         window: {
             width: config.resolution ? config.resolution.width : 1280,
             height: config.resolution ? config.resolution.height : 720,
-            fullscreen: config.resolution ? config.resolution.fullscreen : false
+            fullscreen: (config.borderlessFullscreen === true) || (config.resolution ? config.resolution.fullscreen === true : false)
         },
         quickPlay: quickPlay,
         downloadAudioDlc: true,
@@ -3203,19 +3225,48 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
         }
     }
 
-    // Odstranění zablokovaného pádu z options.txt (pokud Minecraft po předchozím pádu vnutil opengl)
+    // Odstranění zablokovaného pádu z options.txt a synchronizace fullscreen / borderless nastavení
     try {
+        const isBorderless = (config.borderlessFullscreen === true);
+        const shouldFullscreen = isBorderless || (config.resolution && config.resolution.fullscreen === true);
         const optPaths = [
             path.join(gameInstanceDir, 'options.txt'),
             path.join(BASE_DIR, 'options.txt')
         ];
         for (const optPath of optPaths) {
             if (fs.existsSync(optPath)) {
-                let optText = fs.readFileSync(optPath, 'utf8');
-                if (optText.includes('preferredGraphicsBackend:"opengl"')) {
-                    optText = optText.replace(/preferredGraphicsBackend:"opengl"/g, 'preferredGraphicsBackend:"default"');
+                const targetBackend = config.graphicsBackend || 'default';
+                if (optText.includes('preferredGraphicsBackend:')) {
+                    optText = optText.replace(/preferredGraphicsBackend:"[^"]*"/g, `preferredGraphicsBackend:"${targetBackend}"`);
+                    changed = true;
+                } else {
+                    optText += `\npreferredGraphicsBackend:"${targetBackend}"\n`;
+                    changed = true;
+                }
+                if (targetBackend === 'vulkan') {
+                    onLog('[GRAFIKA] 🌋 Nastaven nativní Vulkan backend (preferredGraphicsBackend:"vulkan")');
+                } else if (targetBackend === 'opengl') {
+                    onLog('[GRAFIKA] 🖌️ Nastaven OpenGL backend (preferredGraphicsBackend:"opengl")');
+                }
+                if (shouldFullscreen) {
+                    if (optText.includes('fullscreen:false')) {
+                        optText = optText.replace(/fullscreen:false/g, 'fullscreen:true');
+                        changed = true;
+                    } else if (!optText.includes('fullscreen:')) {
+                        optText += '\nfullscreen:true\n';
+                        changed = true;
+                    }
+                } else if (config.resolution && config.resolution.fullscreen === false) {
+                    if (optText.includes('fullscreen:true')) {
+                        optText = optText.replace(/fullscreen:true/g, 'fullscreen:false');
+                        changed = true;
+                    }
+                }
+                if (changed) {
                     fs.writeFileSync(optPath, optText, 'utf8');
                 }
+            } else if (shouldFullscreen) {
+                fs.writeFileSync(optPath, 'fullscreen:true\n', 'utf8');
             }
         }
     } catch (_) { }
@@ -3403,20 +3454,51 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
             jvmArgs.push('-Dawt.useSystemAAFontSettings=on');
             onLog('[WAYLAND] Vynuceno nativní Wayland okno (GLFW_PLATFORM=wayland, minimální input lag myši)');
         }
+    } else if (process.platform === 'win32') {
+        // Windows specifické optimalizace
+        if (config.winDedicatedGpu !== false) {
+            setGameEnv('SHIM_MCCOMPAT', '0xD4000000');
+            setGameEnv('__NV_PRIME_RENDER_OFFLOAD', '1');
+            setGameEnv('__GLX_VENDOR_LIBRARY_NAME', 'nvidia');
+            onLog('[WINDOWS] Vynuceno spuštění na dedikované grafické kartě (NVIDIA / AMD)');
+        }
 
-        // Custom environment variables defined by user (KEY=VAL per line)
-        if (config.customEnvVars) {
-            const lines = config.customEnvVars.split('\n');
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
-                    const eqIdx = trimmed.indexOf('=');
-                    const k = trimmed.slice(0, eqIdx).trim();
-                    const v = trimmed.slice(eqIdx + 1).trim();
-                    if (k) {
-                        setGameEnv(k, v);
-                        onLog(`[PROSTŘEDÍ] Proměnná: ${k}=${v}`);
-                    }
+        if (config.winWindowedOptimization !== false) {
+            setGameEnv('DWM_WINDOW_PRESENTATION_MODE', '1');
+            jvmArgs.push('-Dsun.java2d.d3d=true');
+            onLog('[WINDOWS] Aktivována DWM Flip Model optimalizace pro okna bez okrajů');
+        }
+
+        if (config.winTrimMemory !== false) {
+            try {
+                if (typeof process.trimWorkingSet === 'function') {
+                    process.trimWorkingSet();
+                    onLog('[WINDOWS] Vyčištěna pohotovostní paměť RAM před startem');
+                }
+            } catch (_) {}
+        }
+
+        if (config.winDisableStickyKeys !== false) {
+            try {
+                const { exec } = require('child_process');
+                exec('reg add "HKCU\\Control Panel\\Accessibility\\StickyKeys" /v Flags /t REG_SZ /d 506 /f', { timeout: 1500 }, () => {});
+                onLog('[WINDOWS] Ochrana před vyskakovacím oknem Sticky Keys (Shift sneak) aktivní');
+            } catch (_) {}
+        }
+    }
+
+    // Custom environment variables defined by user (KEY=VAL per line - pro všechny OS)
+    if (config.customEnvVars) {
+        const lines = config.customEnvVars.split('\n');
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
+                const eqIdx = trimmed.indexOf('=');
+                const k = trimmed.slice(0, eqIdx).trim();
+                const v = trimmed.slice(eqIdx + 1).trim();
+                if (k) {
+                    setGameEnv(k, v);
+                    onLog(`[PROSTŘEDÍ] Proměnná: ${k}=${v}`);
                 }
             }
         }
@@ -3517,6 +3599,18 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
             throw new Error(lastMclcError || 'Minecraft proces se nepodařilo nastartovat (MCLC selhalo při inicializaci).');
         }
         activeMinecraftProcess = proc;
+        if (process.platform === 'win32' && config.winHighPriority !== false && proc && proc.pid) {
+            try {
+                const os = require('os');
+                os.setPriority(proc.pid, os.constants.priority.PRIORITY_HIGH);
+                onLog(`[WINDOWS] Procesu Minecraftu (PID ${proc.pid}) byla přidělena VYSOKÁ priorita procesoru.`);
+            } catch (_) {
+                try {
+                    const { exec } = require('child_process');
+                    exec(`wmic process where processid=${proc.pid} CALL setpriority "High Priority"`, () => {});
+                } catch (_) {}
+            }
+        }
         if (onProgress) {
             onProgress({
                 percent: 100,

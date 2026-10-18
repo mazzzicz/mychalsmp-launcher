@@ -676,12 +676,82 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // Resolution
             if (currentConfig.resolution) {
-                const resVal = currentConfig.resolution.fullscreen
+                const resVal = (currentConfig.borderlessFullscreen === true || currentConfig.resolution.fullscreen)
                     ? 'fullscreen'
                     : `${currentConfig.resolution.width}x${currentConfig.resolution.height}`;
                 const radio = document.querySelector(`input[name="res"][value="${resVal}"]`);
                 if (radio) radio.checked = true;
             }
+
+            // Render API (Vulkan / OpenGL / Default)
+            const currentBackend = currentConfig.graphicsBackend || 'default';
+            const backendRadio = document.querySelector(`input[name="graphicsBackend"][value="${currentBackend}"]`);
+            if (backendRadio) backendRadio.checked = true;
+
+            // Platform detection & OS Accordion setup
+            const currentPlatform = (window.api && window.api.platform) ? window.api.platform : 'linux';
+            const isWindows = currentPlatform === 'win32';
+
+            const detailsWin = document.getElementById('detailsWindowsSettings');
+            const detailsLin = document.getElementById('detailsLinuxSettings');
+            const badgeWin = document.getElementById('badgeOsWindows');
+            const badgeLin = document.getElementById('badgeOsLinux');
+            const noticeWin = document.getElementById('noticeOsWindows');
+            const noticeLin = document.getElementById('noticeOsLinux');
+
+            if (isWindows) {
+                if (detailsWin) detailsWin.open = true;
+                if (detailsLin) {
+                    detailsLin.open = false;
+                    detailsLin.classList.add('is-inactive');
+                }
+                if (badgeWin) {
+                    badgeWin.className = 'badge-os badge-os-active';
+                    badgeWin.innerHTML = '<span class="os-status-dot"></span>Aktivní systém';
+                }
+                if (badgeLin) {
+                    badgeLin.className = 'badge-os badge-os-inactive';
+                    badgeLin.textContent = 'Dostupné pouze na Linuxu';
+                }
+                if (noticeLin) noticeLin.style.display = 'flex';
+                if (detailsLin) {
+                    detailsLin.querySelectorAll('input').forEach(inp => inp.disabled = true);
+                }
+            } else {
+                if (detailsLin) detailsLin.open = true;
+                if (detailsWin) {
+                    detailsWin.open = false;
+                    detailsWin.classList.add('is-inactive');
+                }
+                if (badgeLin) {
+                    badgeLin.className = 'badge-os badge-os-active';
+                    badgeLin.innerHTML = '<span class="os-status-dot"></span>Aktivní systém';
+                }
+                if (badgeWin) {
+                    badgeWin.className = 'badge-os badge-os-inactive';
+                    badgeWin.textContent = 'Dostupné pouze na Windows';
+                }
+                if (noticeWin) noticeWin.style.display = 'flex';
+                if (detailsWin) {
+                    detailsWin.querySelectorAll('input').forEach(inp => inp.disabled = true);
+                }
+            }
+
+            // Windows Specific Settings
+            const checkWinHighPriority = document.getElementById('checkWinHighPriority');
+            if (checkWinHighPriority) checkWinHighPriority.checked = currentConfig.winHighPriority !== false;
+
+            const checkWinDedicatedGpu = document.getElementById('checkWinDedicatedGpu');
+            if (checkWinDedicatedGpu) checkWinDedicatedGpu.checked = currentConfig.winDedicatedGpu !== false;
+
+            const checkWinWindowedOptimization = document.getElementById('checkWinWindowedOptimization');
+            if (checkWinWindowedOptimization) checkWinWindowedOptimization.checked = currentConfig.winWindowedOptimization !== false;
+
+            const checkWinDisableStickyKeys = document.getElementById('checkWinDisableStickyKeys');
+            if (checkWinDisableStickyKeys) checkWinDisableStickyKeys.checked = currentConfig.winDisableStickyKeys !== false;
+
+            const checkWinTrimMemory = document.getElementById('checkWinTrimMemory');
+            if (checkWinTrimMemory) checkWinTrimMemory.checked = currentConfig.winTrimMemory !== false;
 
             // Linux & Wayland Performance Settings
             const checkGameMode = document.getElementById('checkGameMode');
@@ -702,6 +772,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const checkNativeWayland = document.getElementById('checkNativeWayland');
             if (checkNativeWayland) checkNativeWayland.checked = !!currentConfig.enableNativeWayland;
 
+            // Universal Settings
             const checkDiscordRpc = document.getElementById('checkDiscordRpc');
             if (checkDiscordRpc) checkDiscordRpc.checked = currentConfig.enableDiscordRpc !== false;
 
@@ -712,7 +783,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (checkScreenshotClipboard) checkScreenshotClipboard.checked = currentConfig.screenshotToClipboard !== false;
 
             const checkBorderlessFullscreen = document.getElementById('checkBorderlessFullscreen');
-            if (checkBorderlessFullscreen) checkBorderlessFullscreen.checked = currentConfig.borderlessFullscreen === true;
+            if (checkBorderlessFullscreen) {
+                checkBorderlessFullscreen.checked = currentConfig.borderlessFullscreen === true;
+                if (checkBorderlessFullscreen.checked) {
+                    const fullRadio = document.querySelector('input[name="res"][value="fullscreen"]');
+                    if (fullRadio) fullRadio.checked = true;
+                }
+            }
 
             const jvmArgsInput = document.getElementById('jvmArgsInput');
             if (jvmArgsInput) jvmArgsInput.value = (currentConfig.customJvmArgs || '-XX:+UseZGC -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC').replace(/-XX:\+ZGenerational\s*/g, '').replace(/-XX:\+AlwaysPreTouch\s*/g, '').trim();
@@ -6682,10 +6759,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── Settings Auto-Save & Collection ─────────────────────────────────────
     function collectCurrentSettings() {
+        const checkBorderlessFullscreen = document.getElementById('checkBorderlessFullscreen');
+        const isBorderless = checkBorderlessFullscreen ? checkBorderlessFullscreen.checked : false;
         const selectedRes = document.querySelector('input[name="res"]:checked')?.value || '1280x720';
         let resObj = { width: 1280, height: 720, fullscreen: false };
 
-        if (selectedRes === 'fullscreen') {
+        if (isBorderless || selectedRes === 'fullscreen') {
             resObj.fullscreen = true;
         } else {
             const parts = selectedRes.split('x');
@@ -6693,16 +6772,28 @@ document.addEventListener('DOMContentLoaded', async () => {
             resObj.height = parseInt(parts[1], 10) || 720;
         }
 
+        const graphicsBackendRadio = document.querySelector('input[name="graphicsBackend"]:checked');
+        const graphicsBackend = graphicsBackendRadio ? graphicsBackendRadio.value : 'default';
+
+        // Windows settings
+        const checkWinHighPriority = document.getElementById('checkWinHighPriority');
+        const checkWinDedicatedGpu = document.getElementById('checkWinDedicatedGpu');
+        const checkWinWindowedOptimization = document.getElementById('checkWinWindowedOptimization');
+        const checkWinDisableStickyKeys = document.getElementById('checkWinDisableStickyKeys');
+        const checkWinTrimMemory = document.getElementById('checkWinTrimMemory');
+
+        // Linux settings
         const checkGameMode = document.getElementById('checkGameMode');
         const checkDiscreteGpu = document.getElementById('checkDiscreteGpu');
         const checkMangoHud = document.getElementById('checkMangoHud');
         const checkZink = document.getElementById('checkZink');
         const checkDisableVsync = document.getElementById('checkDisableVsync');
         const checkNativeWayland = document.getElementById('checkNativeWayland');
+
+        // Universal settings
         const checkDiscordRpc = document.getElementById('checkDiscordRpc');
         const checkAutoUpdateMods = document.getElementById('checkAutoUpdateMods');
         const checkScreenshotClipboard = document.getElementById('checkScreenshotClipboard');
-        const checkBorderlessFullscreen = document.getElementById('checkBorderlessFullscreen');
         const jvmArgsInput = document.getElementById('jvmArgsInput');
         const customEnvVarsInput = document.getElementById('customEnvVarsInput');
 
@@ -6711,6 +6802,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             javaPath: javaPathInput?.value.trim() || null,
             autoConnectServer: false,
             resolution: resObj,
+            graphicsBackend: graphicsBackend || 'default',
+            winHighPriority: checkWinHighPriority ? checkWinHighPriority.checked : true,
+            winDedicatedGpu: checkWinDedicatedGpu ? checkWinDedicatedGpu.checked : true,
+            winWindowedOptimization: checkWinWindowedOptimization ? checkWinWindowedOptimization.checked : true,
+            winDisableStickyKeys: checkWinDisableStickyKeys ? checkWinDisableStickyKeys.checked : true,
+            winTrimMemory: checkWinTrimMemory ? checkWinTrimMemory.checked : true,
             enableGameMode: checkGameMode ? checkGameMode.checked : true,
             enableDiscreteGpu: checkDiscreteGpu ? checkDiscreteGpu.checked : true,
             enableMangoHud: checkMangoHud ? checkMangoHud.checked : false,
@@ -6720,7 +6817,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             enableDiscordRpc: checkDiscordRpc ? checkDiscordRpc.checked : true,
             autoUpdateMods: checkAutoUpdateMods ? checkAutoUpdateMods.checked : true,
             screenshotToClipboard: checkScreenshotClipboard ? checkScreenshotClipboard.checked : true,
-            borderlessFullscreen: checkBorderlessFullscreen ? checkBorderlessFullscreen.checked : false,
+            borderlessFullscreen: isBorderless,
             customJvmArgs: jvmArgsInput ? jvmArgsInput.value.trim() : null,
             customEnvVars: customEnvVarsInput ? customEnvVarsInput.value.trim() : ''
         };
@@ -6825,6 +6922,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Auto-save listeners on all checkboxes & controls
+    document.querySelectorAll('input[name="graphicsBackend"]').forEach(radio => {
+        radio.addEventListener('change', () => autoSaveSettings(true));
+    });
+
+    const winSettingCheckboxes = [
+        'checkWinHighPriority',
+        'checkWinDedicatedGpu',
+        'checkWinWindowedOptimization',
+        'checkWinDisableStickyKeys',
+        'checkWinTrimMemory'
+    ];
+    winSettingCheckboxes.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', () => autoSaveSettings(true));
+    });
+
     const checkGameModeEl = document.getElementById('checkGameMode');
     if (checkGameModeEl) checkGameModeEl.addEventListener('change', () => autoSaveSettings(true));
 
@@ -6853,11 +6966,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (checkScreenshotClipboardEl) checkScreenshotClipboardEl.addEventListener('change', () => autoSaveSettings(true));
 
     const checkBorderlessFullscreenEl = document.getElementById('checkBorderlessFullscreen');
-    if (checkBorderlessFullscreenEl) checkBorderlessFullscreenEl.addEventListener('change', () => autoSaveSettings(true));
-
+    if (checkBorderlessFullscreenEl) {
+        checkBorderlessFullscreenEl.addEventListener('change', () => {
+            if (checkBorderlessFullscreenEl.checked) {
+                const fullRadio = document.querySelector('input[name="res"][value="fullscreen"]');
+                if (fullRadio) fullRadio.checked = true;
+            }
+            autoSaveSettings(true);
+        });
+    }
 
     document.querySelectorAll('input[name="res"]').forEach(radio => {
-        radio.addEventListener('change', () => autoSaveSettings(true));
+        radio.addEventListener('change', () => {
+            if (radio.value !== 'fullscreen' && checkBorderlessFullscreenEl && checkBorderlessFullscreenEl.checked) {
+                checkBorderlessFullscreenEl.checked = false;
+            }
+            autoSaveSettings(true);
+        });
     });
 
     if (javaPathInput) {
@@ -7648,7 +7773,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 let subText = '';
                 if (isConflict) {
                     const conflictCount = (normalBound.length > 1 ? normalBound.length : 0) + (debugBound.length > 1 ? debugBound.length : 0);
-                    subText = `⚠️ ${conflictCount}x`;
+                    subText = `${conflictCount} akce`;
                 } else if (isBound) {
                     subText = normalBound.length > 0 ? normalBound[0].label : debugBound[0].label;
                 }
@@ -7696,7 +7821,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             let subText = btn.defaultDesc;
             if (isConflict) {
-                subText = `⚠️ Konflikt`;
+                subText = 'Konflikt';
             } else if (isBound) {
                 subText = boundActions.map(a => a.label).join(', ');
             }
@@ -7758,7 +7883,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             inspectorKeySubtitle.textContent = 'Volná klávesa (žádná přiřazená akce)';
             inspectorKeySubtitle.style.color = 'var(--text-muted)';
         } else if (hasConflict) {
-            inspectorKeySubtitle.textContent = `⚠️ Konflikt: více akcí používá tuto klávesu současně`;
+            inspectorKeySubtitle.textContent = 'Konflikt: více akcí používá tuto klávesu současně';
             inspectorKeySubtitle.style.color = 'var(--brand-red)';
         } else if (normalBound.length === 1 && debugBound.length === 1) {
             inspectorKeySubtitle.textContent = `1 herní akce + 1 F3 debug zkratka (bez konfliktu)`;
@@ -7918,12 +8043,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         keybindCategoriesContainer.innerHTML = '';
 
         const CATEGORY_NAMES = {
-            'movement': '🏃 Pohyb',
-            'gameplay': '⚔️ Hratelnost & Boj',
-            'inventory': '🎒 Inventář & Rychlá lišta',
-            'multiplayer': '💬 Multiplayer & Komunikace',
-            'misc': '⚙️ Různé & Rozhraní',
-            'mods': '🧩 Módy & Doplňky'
+            'movement': 'Pohyb',
+            'gameplay': 'Hratelnost & Boj',
+            'inventory': 'Inventář & Rychlá lišta',
+            'multiplayer': 'Multiplayer & Komunikace',
+            'misc': 'Různé & Rozhraní',
+            'mods': 'Módy & Doplňky'
         };
 
         const categories = ['movement', 'gameplay', 'inventory', 'multiplayer', 'misc', 'mods'];
@@ -7973,7 +8098,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (action.isConflict) {
                     const others = keybindState.binds.filter(b => b.key === action.key && b.id !== action.id);
                     const names = others.map(o => o.label).join(', ');
-                    conflictNotice = `<div class="action-conflict-warn">⚠️ Konflikt s: ${escapeHtml(names)}</div>`;
+                    conflictNotice = `<div class="action-conflict-warn"><svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg> Konflikt s: ${escapeHtml(names)}</div>`;
                 }
 
                 row.innerHTML = `

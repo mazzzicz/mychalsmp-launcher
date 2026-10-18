@@ -110,6 +110,13 @@ const DEFAULT_CONFIG = {
     autoUpdateMods: true,
     screenshotToClipboard: true,
     borderlessFullscreen: false,
+    graphicsBackend: 'default', // 'default' | 'vulkan' | 'opengl'
+    // Windows specifické optimalizace
+    winHighPriority: true,
+    winDedicatedGpu: true,
+    winWindowedOptimization: true,
+    winDisableStickyKeys: true,
+    winTrimMemory: true,
     customSkinPath: null,
     customSkinVariant: 'classic',
     customCapePath: null
