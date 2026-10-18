@@ -44,7 +44,3 @@ linux:
         - x64
   category: Game
   icon: build/icon.png
-  desktop:
-    Name: SMPClient
-    Comment: Oficiální herní klient pro síť MYCHAL SMP
-    Categories: Game;ActionGame;AdventureGame;
