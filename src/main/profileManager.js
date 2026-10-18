@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { loadConfig, saveConfig } = require('./config');
 
 /**
@@ -508,9 +509,374 @@ async function upgradeProfile(sourceProfileId, targetVersion, baseDir, onProgres
     };
 }
 
+/**
+ * Formats a timestamp into user-friendly Czech string.
+ */
+function formatDiscoveredLastPlayed(timestamp) {
+    if (!timestamp || isNaN(timestamp) || timestamp <= 0) return 'Dříve';
+    const d = new Date(timestamp);
+    if (isNaN(d.getTime())) return 'Dříve';
+
+    const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const today = new Date();
+    const isToday = d.getDate() === today.getDate() &&
+                    d.getMonth() === today.getMonth() &&
+                    d.getFullYear() === today.getFullYear();
+
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const isYesterday = d.getDate() === yesterday.getDate() &&
+                        d.getMonth() === yesterday.getMonth() &&
+                        d.getFullYear() === yesterday.getFullYear();
+
+    if (isToday) return `Dnes v ${timeStr}`;
+    if (isYesterday) return `Včera v ${timeStr}`;
+    return `${d.getDate()}. ${d.getMonth() + 1}. ${d.getFullYear()}`;
+}
+
+/**
+ * Automatically discovers profiles and instances from installed launchers
+ * across Windows, Linux, and macOS (.minecraft, Lunar Client, Prism, MultiMC, Modrinth, CurseForge).
+ * Returns the top 10 most recently played or modified profiles.
+ */
+function discoverInstalledProfiles() {
+    const candidates = [];
+    const home = os.homedir();
+    const isWin = process.platform === 'win32';
+    const isMac = process.platform === 'darwin';
+    const seenDirs = new Set();
+
+    function addCandidate(cand) {
+        if (!cand || !cand.gameDir) return;
+        const normDir = path.normalize(cand.gameDir).toLowerCase();
+        if (seenDirs.has(normDir)) return;
+        seenDirs.add(normDir);
+        candidates.push(cand);
+    }
+
+    // ── 1. Vanilla Minecraft (.minecraft) ──────────────────────────────────
+    const dotMinecraftPaths = [];
+    if (isWin) {
+        if (process.env.APPDATA) dotMinecraftPaths.push(path.join(process.env.APPDATA, '.minecraft'));
+        dotMinecraftPaths.push(path.join(home, '.minecraft'));
+    } else if (isMac) {
+        dotMinecraftPaths.push(path.join(home, 'Library', 'Application Support', 'minecraft'));
+    } else {
+        dotMinecraftPaths.push(path.join(home, '.minecraft'));
+        dotMinecraftPaths.push(path.join(home, '.var', 'app', 'com.mojang.Minecraft', '.minecraft'));
+    }
+
+    for (const mcDir of dotMinecraftPaths) {
+        if (!fs.existsSync(mcDir)) continue;
+
+        // A) Read launcher_profiles.json
+        const profilesFiles = [
+            path.join(mcDir, 'launcher_profiles.json'),
+            path.join(mcDir, 'launcher_profiles_microsoft_store.json')
+        ];
+
+        for (const pf of profilesFiles) {
+            if (!fs.existsSync(pf)) continue;
+            try {
+                const data = JSON.parse(fs.readFileSync(pf, 'utf-8'));
+                const profs = data.profiles || {};
+                for (const [profKey, prof] of Object.entries(profs)) {
+                    if (!prof) continue;
+                    const pName = prof.name || profKey;
+                    const vId = String(prof.lastVersionId || '');
+
+                    let detectedLoader = 'vanilla';
+                    const vLower = vId.toLowerCase();
+                    if (vLower.includes('fabric')) detectedLoader = 'fabric';
+                    else if (vLower.includes('neoforge')) detectedLoader = 'neoforge';
+                    else if (vLower.includes('forge')) detectedLoader = 'forge';
+                    else if (vLower.includes('quilt')) detectedLoader = 'fabric';
+
+                    const vMatch = vId.match(/(\d+\.\d+(\.\d+)?)/);
+                    const detectedVersion = vMatch ? vMatch[1] : (vId || '26.2');
+
+                    const effectiveDir = prof.gameDir ? path.resolve(prof.gameDir) : mcDir;
+                    if (!fs.existsSync(effectiveDir)) continue;
+
+                    let modCount = 0;
+                    const modsPath = path.join(effectiveDir, 'mods');
+                    if (fs.existsSync(modsPath)) {
+                        try {
+                            modCount = fs.readdirSync(modsPath).filter(f => f.toLowerCase().endsWith('.jar')).length;
+                        } catch (_) {}
+                    }
+                    if (modCount > 0 && detectedLoader === 'vanilla') {
+                        detectedLoader = 'fabric';
+                    }
+
+                    let ts = 0;
+                    if (prof.lastUsed) ts = new Date(prof.lastUsed).getTime();
+                    else if (prof.created) ts = new Date(prof.created).getTime();
+                    if (!ts || isNaN(ts)) {
+                        try {
+                            const optStat = fs.statSync(path.join(effectiveDir, 'options.txt'));
+                            ts = optStat.mtimeMs;
+                        } catch (_) {
+                            try {
+                                ts = fs.statSync(effectiveDir).mtimeMs;
+                            } catch (_) { ts = 0; }
+                        }
+                    }
+
+                    addCandidate({
+                        id: `vanilla-${profKey}`,
+                        source: 'Minecraft Launcher',
+                        sourceIcon: 'minecraft',
+                        name: pName,
+                        version: detectedVersion,
+                        loader: detectedLoader,
+                        gameDir: effectiveDir,
+                        modCount,
+                        lastPlayedTimestamp: ts || 0,
+                        lastPlayedFormatted: formatDiscoveredLastPlayed(ts)
+                    });
+                }
+            } catch (_) {}
+        }
+
+        // B) Scan .minecraft/versions directories
+        const versionsDir = path.join(mcDir, 'versions');
+        if (fs.existsSync(versionsDir)) {
+            try {
+                const subdirs = fs.readdirSync(versionsDir, { withFileTypes: true });
+                for (const sub of subdirs) {
+                    if (!sub.isDirectory()) continue;
+                    const vPath = path.join(versionsDir, sub.name);
+                    const jsonPath = path.join(vPath, `${sub.name}.json`);
+                    if (!fs.existsSync(jsonPath)) continue;
+
+                    let detectedLoader = 'vanilla';
+                    const nLower = sub.name.toLowerCase();
+                    if (nLower.includes('fabric')) detectedLoader = 'fabric';
+                    else if (nLower.includes('neoforge')) detectedLoader = 'neoforge';
+                    else if (nLower.includes('forge')) detectedLoader = 'forge';
+                    else if (nLower.includes('quilt')) detectedLoader = 'fabric';
+
+                    const vMatch = sub.name.match(/(\d+\.\d+(\.\d+)?)/);
+                    const detectedVersion = vMatch ? vMatch[1] : sub.name;
+
+                    let ts = 0;
+                    try {
+                        ts = fs.statSync(jsonPath).mtimeMs;
+                    } catch (_) {}
+
+                    addCandidate({
+                        id: `mcver-${sub.name}`,
+                        source: 'Minecraft Launcher',
+                        sourceIcon: 'minecraft',
+                        name: sub.name,
+                        version: detectedVersion,
+                        loader: detectedLoader,
+                        gameDir: mcDir,
+                        modCount: 0,
+                        lastPlayedTimestamp: ts || 0,
+                        lastPlayedFormatted: formatDiscoveredLastPlayed(ts)
+                    });
+                }
+            } catch (_) {}
+        }
+    }
+
+    // ── 2. Lunar Client (.lunarclient) ─────────────────────────────────────
+    const lunarRoots = [
+        path.join(home, '.lunarclient'),
+        ...(process.env.USERPROFILE ? [path.join(process.env.USERPROFILE, '.lunarclient')] : []),
+        ...(process.env.APPDATA ? [path.join(process.env.APPDATA, '.lunarclient')] : [])
+    ];
+
+    for (const lRoot of lunarRoots) {
+        if (!fs.existsSync(lRoot)) continue;
+        const multiverDir = path.join(lRoot, 'offline', 'multiver');
+        if (fs.existsSync(multiverDir)) {
+            try {
+                const subs = fs.readdirSync(multiverDir, { withFileTypes: true });
+                for (const sub of subs) {
+                    if (!sub.isDirectory()) continue;
+                    const vDir = path.join(multiverDir, sub.name);
+
+                    const vClean = sub.name.replace(/^v/i, '').replace(/_/g, '.');
+                    const vMatch = vClean.match(/(\d+\.\d+(\.\d+)?)/);
+                    const detectedVersion = vMatch ? vMatch[1] : vClean;
+
+                    let modCount = 0;
+                    const modsPath = path.join(vDir, 'mods');
+                    if (fs.existsSync(modsPath)) {
+                        try {
+                            modCount = fs.readdirSync(modsPath).filter(f => f.toLowerCase().endsWith('.jar')).length;
+                        } catch (_) {}
+                    }
+
+                    let ts = 0;
+                    try {
+                        const opt = path.join(vDir, 'options.txt');
+                        if (fs.existsSync(opt)) ts = fs.statSync(opt).mtimeMs;
+                        else ts = fs.statSync(vDir).mtimeMs;
+                    } catch (_) {}
+
+                    addCandidate({
+                        id: `lunar-${sub.name}`,
+                        source: 'Lunar Client',
+                        sourceIcon: 'lunar',
+                        name: `Lunar Client (${sub.name})`,
+                        version: detectedVersion,
+                        loader: 'fabric',
+                        gameDir: vDir,
+                        modCount,
+                        lastPlayedTimestamp: ts || 0,
+                        lastPlayedFormatted: formatDiscoveredLastPlayed(ts)
+                    });
+                }
+            } catch (_) {}
+        }
+    }
+
+    // ── 3. Prism Launcher & MultiMC ────────────────────────────────────────
+    const prismRoots = [
+        path.join(home, '.local', 'share', 'PrismLauncher', 'instances'),
+        path.join(home, '.var', 'app', 'org.prismlauncher.PrismLauncher', 'data', 'PrismLauncher', 'instances'),
+        path.join(home, '.local', 'share', 'multimc', 'instances'),
+        path.join(home, 'MultiMC', 'instances'),
+        path.join(home, 'Library', 'Application Support', 'PrismLauncher', 'instances'),
+        path.join(home, 'Library', 'Application Support', 'MultiMC', 'instances'),
+        ...(process.env.APPDATA ? [
+            path.join(process.env.APPDATA, 'PrismLauncher', 'instances'),
+            path.join(process.env.APPDATA, 'MultiMC', 'instances')
+        ] : [])
+    ];
+
+    for (const pRoot of prismRoots) {
+        if (!fs.existsSync(pRoot)) continue;
+        const isPrism = pRoot.toLowerCase().includes('prism');
+        const sourceName = isPrism ? 'Prism Launcher' : 'MultiMC';
+        try {
+            const subs = fs.readdirSync(pRoot, { withFileTypes: true });
+            for (const sub of subs) {
+                if (!sub.isDirectory() || sub.name.startsWith('.')) continue;
+                const instDir = path.join(pRoot, sub.name);
+                try {
+                    const scan = scanInstanceDirectory(instDir);
+                    let ts = 0;
+                    try {
+                        const opt = path.join(scan.effectiveGameDir, 'options.txt');
+                        if (fs.existsSync(opt)) ts = fs.statSync(opt).mtimeMs;
+                        else ts = fs.statSync(instDir).mtimeMs;
+                    } catch (_) {}
+
+                    addCandidate({
+                        id: `prism-${sub.name}`,
+                        source: sourceName,
+                        sourceIcon: 'prism',
+                        name: scan.name || sub.name,
+                        version: scan.detectedVersion,
+                        loader: scan.detectedLoader,
+                        gameDir: scan.effectiveGameDir || instDir,
+                        modCount: scan.modCount,
+                        lastPlayedTimestamp: ts || 0,
+                        lastPlayedFormatted: formatDiscoveredLastPlayed(ts)
+                    });
+                } catch (_) {}
+            }
+        } catch (_) {}
+    }
+
+    // ── 4. Modrinth App ────────────────────────────────────────────────────
+    const modrinthRoots = [
+        path.join(home, '.local', 'share', 'ModrinthApp', 'profiles'),
+        path.join(home, '.var', 'app', 'com.modrinth.ModrinthApp', 'data', 'ModrinthApp', 'profiles'),
+        path.join(home, '.config', 'ModrinthApp', 'profiles'),
+        path.join(home, 'Library', 'Application Support', 'ModrinthApp', 'profiles'),
+        ...(process.env.APPDATA ? [path.join(process.env.APPDATA, 'ModrinthApp', 'profiles')] : [])
+    ];
+
+    for (const mRoot of modrinthRoots) {
+        if (!fs.existsSync(mRoot)) continue;
+        try {
+            const subs = fs.readdirSync(mRoot, { withFileTypes: true });
+            for (const sub of subs) {
+                if (!sub.isDirectory() || sub.name.startsWith('.')) continue;
+                const profDir = path.join(mRoot, sub.name);
+                try {
+                    const scan = scanInstanceDirectory(profDir);
+                    let ts = 0;
+                    try {
+                        const opt = path.join(scan.effectiveGameDir, 'options.txt');
+                        if (fs.existsSync(opt)) ts = fs.statSync(opt).mtimeMs;
+                        else ts = fs.statSync(profDir).mtimeMs;
+                    } catch (_) {}
+
+                    addCandidate({
+                        id: `modrinth-${sub.name}`,
+                        source: 'Modrinth App',
+                        sourceIcon: 'modrinth',
+                        name: scan.name || sub.name,
+                        version: scan.detectedVersion,
+                        loader: scan.detectedLoader,
+                        gameDir: scan.effectiveGameDir || profDir,
+                        modCount: scan.modCount,
+                        lastPlayedTimestamp: ts || 0,
+                        lastPlayedFormatted: formatDiscoveredLastPlayed(ts)
+                    });
+                } catch (_) {}
+            }
+        } catch (_) {}
+    }
+
+    // ── 5. CurseForge ──────────────────────────────────────────────────────
+    const curseRoots = [
+        path.join(home, 'curseforge', 'minecraft', 'Instances'),
+        path.join(home, '.local', 'share', 'curseforge', 'minecraft', 'Instances'),
+        path.join(home, 'Documents', 'curseforge', 'minecraft', 'Instances'),
+        ...(process.env.USERPROFILE ? [path.join(process.env.USERPROFILE, 'curseforge', 'minecraft', 'Instances')] : [])
+    ];
+
+    for (const cRoot of curseRoots) {
+        if (!fs.existsSync(cRoot)) continue;
+        try {
+            const subs = fs.readdirSync(cRoot, { withFileTypes: true });
+            for (const sub of subs) {
+                if (!sub.isDirectory() || sub.name.startsWith('.')) continue;
+                const instDir = path.join(cRoot, sub.name);
+                try {
+                    const scan = scanInstanceDirectory(instDir);
+                    let ts = 0;
+                    try {
+                        const opt = path.join(scan.effectiveGameDir, 'options.txt');
+                        if (fs.existsSync(opt)) ts = fs.statSync(opt).mtimeMs;
+                        else ts = fs.statSync(instDir).mtimeMs;
+                    } catch (_) {}
+
+                    addCandidate({
+                        id: `curse-${sub.name}`,
+                        source: 'CurseForge',
+                        sourceIcon: 'curseforge',
+                        name: scan.name || sub.name,
+                        version: scan.detectedVersion,
+                        loader: scan.detectedLoader,
+                        gameDir: scan.effectiveGameDir || instDir,
+                        modCount: scan.modCount,
+                        lastPlayedTimestamp: ts || 0,
+                        lastPlayedFormatted: formatDiscoveredLastPlayed(ts)
+                    });
+                } catch (_) {}
+            }
+        } catch (_) {}
+    }
+
+    // ── 6. Seřadit podle času posledního hraní / změny (sestupně) a vybrat TOP 10 ──
+    candidates.sort((a, b) => (b.lastPlayedTimestamp || 0) - (a.lastPlayedTimestamp || 0));
+
+    return candidates.slice(0, 10);
+}
+
 module.exports = {
     scanInstanceDirectory,
     importInstanceProfile,
     upgradeProfile,
-    copyDirRecursiveSync
+    copyDirRecursiveSync,
+    discoverInstalledProfiles
 };

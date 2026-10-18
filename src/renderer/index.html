@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css?v=1.1.7">
+    <link rel="stylesheet" href="css/style.css?v=1.2.0">
 </head>
 
 <body>
@@ -349,16 +349,6 @@
                                         <div class="p-meta">26.2 • Zatím nehráno</div>
                                     </div>
                                     <div class="profile-actions">
-                                        <button class="btn-upgrade-profile" data-profile-id="minecraft-26.2"
-                                            title="Upgradovat tento profil na novou verzi">
-                                            <svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--blue"
-                                                viewBox="0 0 24 24">
-                                                <circle cx="12" cy="12" r="10"></circle>
-                                                <polyline points="16 12 12 8 8 12"></polyline>
-                                                <line x1="12" y1="16" x2="12" y2="8"></line>
-                                            </svg>
-                                            Upgrade
-                                        </button>
                                         <button class="mc-btn mc-btn-primary btn-launch-profile"
                                             data-profile-id="minecraft-26.2">
                                             <span>
@@ -396,16 +386,6 @@
                                         <div class="p-meta">26.1.2 • Zatím nehráno</div>
                                     </div>
                                     <div class="profile-actions">
-                                        <button class="btn-upgrade-profile" data-profile-id="minecraft-26.1.2"
-                                            title="Upgradovat tento profil na novou verzi">
-                                            <svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--blue"
-                                                viewBox="0 0 24 24">
-                                                <circle cx="12" cy="12" r="10"></circle>
-                                                <polyline points="16 12 12 8 8 12"></polyline>
-                                                <line x1="12" y1="16" x2="12" y2="8"></line>
-                                            </svg>
-                                            Upgrade
-                                        </button>
                                         <button class="mc-btn mc-btn-primary btn-launch-profile"
                                             data-profile-id="minecraft-26.1.2">
                                             <span>
@@ -444,16 +424,6 @@
                                         <div class="p-meta">1.21.11 • Zatím nehráno</div>
                                     </div>
                                     <div class="profile-actions">
-                                        <button class="btn-upgrade-profile" data-profile-id="minecraft-1.21.11"
-                                            title="Upgradovat tento profil na novou verzi">
-                                            <svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--blue"
-                                                viewBox="0 0 24 24">
-                                                <circle cx="12" cy="12" r="10"></circle>
-                                                <polyline points="16 12 12 8 8 12"></polyline>
-                                                <line x1="12" y1="16" x2="12" y2="8"></line>
-                                            </svg>
-                                            Upgrade
-                                        </button>
                                         <button class="mc-btn mc-btn-primary btn-launch-profile"
                                             data-profile-id="minecraft-1.21.11">
                                             <span>
@@ -660,14 +630,27 @@
                     <div class="installed-type-tabs">
                         <button type="button" class="installed-type-btn active" data-pack-type="mods"
                             id="tabInstalledMods">
+                            <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="m7.5 4.27 9 5.15M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
+                                <path d="m3.3 7 8.7 5 8.7-5M12 22V12"/>
+                            </svg>
                             <span>Módy (<span id="installedModsCountSub">0</span>)</span>
                         </button>
                         <button type="button" class="installed-type-btn" data-pack-type="resourcepacks"
                             id="tabInstalledResourcePacks">
+                            <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                                <circle cx="8.5" cy="8.5" r="1.5"/>
+                                <polyline points="21 15 16 10 5 21"/>
+                            </svg>
                             <span>Texture Packy (<span id="installedRpCount">0</span>)</span>
                         </button>
                         <button type="button" class="installed-type-btn" data-pack-type="shaderpacks"
                             id="tabInstalledShaders">
+                            <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="4"/>
+                                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+                            </svg>
                             <span>Shadery (<span id="installedShaderCount">0</span>)</span>
                         </button>
                     </div>
@@ -698,9 +681,28 @@
                 <div class="mods-subview" id="viewCatalogMods">
                     <div class="mods-catalog-header">
                         <div class="catalog-subtabs">
-                            <button class="mod-tab-btn active" data-mod-type="mod">Mody</button>
-                            <button class="mod-tab-btn" data-mod-type="resourcepack">Resource Packy</button>
-                            <button class="mod-tab-btn" data-mod-type="shader">Shadery</button>
+                            <button class="mod-tab-btn active" data-mod-type="mod">
+                                <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="m7.5 4.27 9 5.15M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
+                                    <path d="m3.3 7 8.7 5 8.7-5M12 22V12"/>
+                                </svg>
+                                <span>Módy</span>
+                            </button>
+                            <button class="mod-tab-btn" data-mod-type="resourcepack">
+                                <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="3" y="3" width="18" height="18" rx="2"/>
+                                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                                    <polyline points="21 15 16 10 5 21"/>
+                                </svg>
+                                <span>Resource Packy</span>
+                            </button>
+                            <button class="mod-tab-btn" data-mod-type="shader">
+                                <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="4"/>
+                                    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+                                </svg>
+                                <span>Shadery</span>
+                            </button>
                         </div>
 
                         <div class="catalog-header-actions">
@@ -1988,8 +1990,26 @@
             </div>
             <div class="modal-body">
                 <p class="modal-desc">
-                    Vyber složku profilu z libovolného launcheru nebo .minecraft. Přenese módy, nastavení i balíčky.
+                    Přenese módy, nastavení options.txt, resource packy i shadery z libovolného launcheru.
                 </p>
+
+                <!-- Auto-Discovered Profiles Section (Top 10 Recent) -->
+                <div class="discovered-profiles-section" id="discoveredProfilesSection" style="display: none;">
+                    <div class="discovered-profiles-header">
+                        <div class="discovered-profiles-title">
+                            <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                            <span>Nalezené profily na tvém PC</span>
+                        </div>
+                        <div class="discovered-profiles-desc">Vyber profil z Minecraftu, Lunaru nebo jiného launcheru pro okamžitý import:</div>
+                    </div>
+                    <div class="discovered-profiles-list" id="discoveredProfilesList">
+                        <!-- Dynamically filled with top 10 profiles -->
+                    </div>
+                    <div class="discovered-divider" id="discoveredDivider">
+                        <span>Nebo vybrat jinou složku ručně</span>
+                    </div>
+                </div>
+
                 <div class="import-browse-zone" id="importBrowseZone">
                     <button class="mc-btn mc-btn-primary" id="btnSelectImportFolder">
                         <span>
@@ -2191,8 +2211,7 @@
                 </button>
             </div>
             <div class="modal-body">
-                <!-- Upgrade Version Action Banner (Top of Profile Settings) -->
-                <div class="profile-quick-upgrade-banner" id="profileQuickUpgradeBanner" style="display: none; margin-bottom: 16px; padding: 12px 14px; background: #181b28; border: 1px solid rgba(10, 103, 229, 0.35); border-radius: var(--radius-control); align-items: center; justify-content: space-between; gap: 12px;">
+                <div class="profile-quick-upgrade-banner" id="profileQuickUpgradeBanner" style="display: none;">
                     <div>
                         <div style="font-size: 13px; font-weight: 600; color: #f1f5f9; display: flex; align-items: center; gap: 7px;">
                             <svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--blue" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="16 12 12 8 8 12"></polyline><line x1="12" y1="16" x2="12" y2="8"></line></svg>

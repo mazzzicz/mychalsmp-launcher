@@ -2673,26 +2673,77 @@ body.is-maximized {
 }
 
 .catalog-subtabs {
-    display: flex;
-    gap: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(14, 15, 20, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    padding: 4px;
+    border-radius: 9px;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 
 .mod-tab-btn {
-    background: var(--surface);
-    border: 1px solid var(--surface-border);
-    color: var(--brand-gray);
-    padding: 6px 14px;
-    border-radius: var(--radius-sm);
+    background: transparent;
+    border: 1px solid transparent;
+    color: #94a3b8;
+    padding: 7px 16px;
+    border-radius: 6px;
     font-weight: 600;
-    font-size: 12px;
+    font-size: 12.5px;
     cursor: pointer;
-    transition: var(--transition);
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    user-select: none;
+    position: relative;
+    outline: none;
 }
 
-.mod-tab-btn.active, .mod-tab-btn:hover {
-    background: var(--surface2);
-    color: #fff;
-    border-color: rgba(255, 255, 255, 0.2);
+.mod-tab-btn svg {
+    opacity: 0.65;
+    transition: all 0.18s ease;
+}
+
+.mod-tab-btn:hover:not(.active) {
+    color: #f1f5f9;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.mod-tab-btn:hover:not(.active) svg {
+    opacity: 1;
+}
+
+.mod-tab-btn:active {
+    transform: scale(0.975);
+}
+
+.mod-tab-btn.active {
+    background: #1e2336;
+    color: #ffffff;
+    border: 1px solid rgba(10, 103, 229, 0.55);
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.18), 0 2px 10px rgba(10, 103, 229, 0.25);
+    font-weight: 700;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.mod-tab-btn.active svg {
+    opacity: 1;
+    color: #3b82f6;
+    filter: drop-shadow(0 0 6px rgba(10, 103, 229, 0.6));
+}
+
+.mod-tab-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 18%;
+    right: 18%;
+    height: 2px;
+    background: var(--brand-blue, #0a67e5);
+    border-radius: 2px;
+    box-shadow: 0 0 8px rgba(10, 103, 229, 0.85);
 }
 
 .catalog-search-wrapper {
@@ -4586,22 +4637,146 @@ input[type="range"].slider.is-dragging::-webkit-slider-thumb {
     line-height: 1.5;
 }
 
+/* ── Auto-Discovered Profiles (Top 10 Recent) ─────────────────────────── */
+.discovered-profiles-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.discovered-profiles-header {
+    margin-bottom: 2px;
+}
+
+.discovered-profiles-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+}
+
+.discovered-profiles-desc {
+    font-size: 11.5px;
+    color: #64748b;
+    margin-top: 3px;
+}
+
+.discovered-profiles-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 200px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.discovered-profile-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-control);
+    padding: 8px 12px;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.discovered-profile-card:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.16);
+    transform: translateY(-1px);
+}
+
+.discovered-profile-card.active {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--brand-blue, #0a67e5);
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.12), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.discovered-profile-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.discovered-profile-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #ffffff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.discovered-profile-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.07);
+    color: #cbd5e1;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.discovered-profile-meta {
+    font-size: 11px;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.discovered-divider {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    color: #64748b;
+    font-size: 10.5px;
+    margin: 8px 0 4px 0;
+}
+
+.discovered-divider::before,
+.discovered-divider::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.discovered-divider span {
+    padding: 0 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
 .import-browse-zone {
-    background: #0d0f1a;
-    border: 1px dashed rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px dashed rgba(255, 255, 255, 0.14);
     border-radius: 10px;
-    padding: 18px;
+    padding: 14px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     text-align: center;
     transition: var(--transition);
 }
 
 .import-browse-zone:hover {
-    border-color: rgba(10, 103, 229, 0.6);
-    background: #101426;
+    border-color: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.04);
 }
 
 .import-path-label {
@@ -6777,37 +6952,79 @@ input[type="range"].slider.is-dragging::-webkit-slider-thumb {
 
 /* ── Installed Type Tabs (Mods vs Resource Packs vs Shaders) ────────── */
 .installed-type-tabs {
-    display: flex;
-    gap: 6px;
-    margin-bottom: 12px;
-    background: var(--surface);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 14px;
+    background: rgba(14, 15, 20, 0.95);
     padding: 4px;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--surface-border);
+    border-radius: 9px;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
     width: fit-content;
 }
 
 .installed-type-btn {
     background: transparent;
     border: 1px solid transparent;
-    color: var(--text-muted);
-    font-size: 12px;
-    font-weight: 700;
-    padding: 6px 14px;
+    color: #94a3b8;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 7px 16px;
     border-radius: 6px;
     cursor: pointer;
-    transition: var(--transition);
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    user-select: none;
+    position: relative;
+    outline: none;
 }
 
-.installed-type-btn:hover {
-    color: var(--text-primary);
+.installed-type-btn svg {
+    opacity: 0.65;
+    transition: all 0.18s ease;
+}
+
+.installed-type-btn:hover:not(.active) {
+    color: #f1f5f9;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.installed-type-btn:hover:not(.active) svg {
+    opacity: 1;
+}
+
+.installed-type-btn:active {
+    transform: scale(0.975);
 }
 
 .installed-type-btn.active {
-    background: var(--surface2);
-    border-color: rgba(10, 103, 229, 0.4);
-    color: #fff;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    background: #1e2336;
+    color: #ffffff;
+    border: 1px solid rgba(10, 103, 229, 0.55);
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.18), 0 2px 10px rgba(10, 103, 229, 0.25);
+    font-weight: 700;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.installed-type-btn.active svg {
+    opacity: 1;
+    color: #3b82f6;
+    filter: drop-shadow(0 0 6px rgba(10, 103, 229, 0.6));
+}
+
+.installed-type-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 18%;
+    right: 18%;
+    height: 2px;
+    background: var(--brand-blue, #0a67e5);
+    border-radius: 2px;
+    box-shadow: 0 0 8px rgba(10, 103, 229, 0.85);
 }
 
 /* ── Skin Drag & Drop Overlay ────────────────────────────────────────── */
@@ -7024,20 +7241,22 @@ input[type="range"].slider.is-dragging::-webkit-slider-thumb {
 
 /* ── Upgrade Version Action Banner (Profile Settings Top) ─────────────── */
 .profile-quick-upgrade-banner {
-    background: #181b28;
-    border: 1px solid rgba(10, 103, 229, 0.4);
-    border-radius: 10px;
-    padding: 12px 14px;
+    background: var(--surface, #121215);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 4px 14px rgba(0, 0, 0, 0.35);
+    border-radius: var(--radius-control, 10px);
+    padding: 13px 16px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 14px;
     margin-bottom: 16px;
-    box-shadow: none;
+    transition: var(--transition, all 0.2s cubic-bezier(0.16, 1, 0.3, 1));
 }
 
 .profile-quick-upgrade-banner:hover {
-    border-color: rgba(10, 103, 229, 0.6);
+    background: var(--surface2, #18181c);
+    border-color: rgba(10, 103, 229, 0.35);
 }
 
 /* ── 1-Click Optimizer Action Banner ─────────────────────────────────── */

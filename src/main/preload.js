@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('api', {
     deleteProfileMod: (profileId, filename) => ipcRenderer.invoke('delete-profile-mod', profileId, filename),
 
     // Profile Import, Upgrade & Management
+    discoverInstalledProfiles: () => ipcRenderer.invoke('discover-installed-profiles'),
     importProfileDialog: () => ipcRenderer.invoke('import-profile-dialog'),
     confirmImportProfile: (data) => ipcRenderer.invoke('confirm-import-profile', data),
     upgradeProfile: (sourceProfileId, targetVersion) => ipcRenderer.invoke('upgrade-profile', sourceProfileId, targetVersion),

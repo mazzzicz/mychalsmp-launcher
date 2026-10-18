@@ -168,8 +168,44 @@ function parseExistingServersDat(buffer) {
 }
 
 /**
- * Synchronizes servers.dat in gameDir ensuring MYCHAL SMP is first,
- * followed by tracked servers, preserving existing servers.
+ * Normalizes a Minecraft server address (strips default port 25565, trims, lowercases).
+ */
+function normalizeServerIp(rawIp) {
+    if (!rawIp) return '';
+    let ip = String(rawIp).trim().toLowerCase();
+    if (ip.endsWith(':25565')) {
+        ip = ip.slice(0, -6);
+    }
+    if (ip.endsWith('.')) {
+        ip = ip.slice(0, -1);
+    }
+    return ip;
+}
+
+/**
+ * Checks if two server addresses point to the same server,
+ * taking aliases and default Minecraft ports into account.
+ */
+function isSameServerAddress(ipA, ipB) {
+    const a = normalizeServerIp(ipA);
+    const b = normalizeServerIp(ipB);
+    if (!a || !b) return false;
+    if (a === b) return true;
+
+    // Známé síťové aliasy a záložní IP pro MYCHAL SMP
+    const mychalAliases = ['mychalsmp.xyz', 'join.mychalsmp.xyz', '130.61.89.37'];
+    if (mychalAliases.includes(a) && mychalAliases.includes(b)) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Synchronizes servers.dat in gameDir without bloating or re-injecting servers the user removed.
+ * - Deduplicates servers by normalized IP address (eliminates duplicates caused by quick play or :25565).
+ * - For a brand new profile without servers.dat, initializes with MYCHAL SMP so new players can join immediately.
+ * - If the player explicitly removed MYCHAL SMP from their servers.dat, respects their choice and does NOT force it back.
+ * - Preserves custom names, texture settings, and server order.
  */
 function syncServersDat(gameDir, additionalServers = []) {
     try {
@@ -177,41 +213,52 @@ function syncServersDat(gameDir, additionalServers = []) {
             fs.mkdirSync(gameDir, { recursive: true });
         }
         const srvFile = path.join(gameDir, 'servers.dat');
+        const fileExists = fs.existsSync(srvFile);
         let existing = [];
-        if (fs.existsSync(srvFile)) {
+        if (fileExists) {
             existing = parseExistingServersDat(fs.readFileSync(srvFile));
         }
 
-        const map = new Map();
-        // 1. MYCHAL SMP always at top
-        map.set('mychalsmp.xyz', {
-            name: 'MYCHAL SMP',
-            ip: 'mychalsmp.xyz',
-            acceptTextures: 1
-        });
+        // 1. Deduplikace stávajících serverů (oprava duplicit po starých verzích / Quick Play)
+        const deduplicated = [];
+        for (const s of existing) {
+            if (!s || !s.ip) continue;
+            const alreadyExists = deduplicated.some(d => isSameServerAddress(d.ip, s.ip));
+            if (!alreadyExists) {
+                // Zachováme čistou adresu bez zbytečného :25565
+                const cleanIp = normalizeServerIp(s.ip);
+                deduplicated.push({
+                    name: s.name || cleanIp,
+                    ip: cleanIp,
+                    acceptTextures: s.acceptTextures !== undefined ? s.acceptTextures : 1
+                });
+            }
+        }
 
-        // 2. Tracked servers from launcher
+        // 2. Pouze pokud soubor vůbec neexistoval (úplně nový profil), přidáme výchozí MYCHAL SMP
+        if (!fileExists) {
+            deduplicated.unshift({
+                name: 'MYCHAL SMP',
+                ip: 'mychalsmp.xyz',
+                acceptTextures: 1
+            });
+        }
+
+        // 3. Doplníme servery z konfigurace launcheru pouze v případě, že ještě nejsou v seznamu
         for (const s of (additionalServers || [])) {
-            const ip = (s.ip || s.subdomain || '').trim();
-            if (ip && !map.has(ip.toLowerCase())) {
-                map.set(ip.toLowerCase(), {
-                    name: s.name || ip,
-                    ip: ip,
+            const sIp = (s.ip || s.subdomain || '').trim();
+            if (!sIp) continue;
+            const alreadyPresent = deduplicated.some(d => isSameServerAddress(d.ip, sIp));
+            if (!alreadyPresent) {
+                deduplicated.push({
+                    name: s.name || sIp,
+                    ip: normalizeServerIp(sIp),
                     acceptTextures: 1
                 });
             }
         }
 
-        // 3. Existing user servers
-        for (const s of existing) {
-            const ip = (s.ip || '').trim();
-            if (ip && !map.has(ip.toLowerCase())) {
-                map.set(ip.toLowerCase(), s);
-            }
-        }
-
-        const finalServers = Array.from(map.values());
-        const buf = buildServersDatBuffer(finalServers);
+        const buf = buildServersDatBuffer(deduplicated);
         fs.writeFileSync(srvFile, buf);
         return true;
     } catch (err) {

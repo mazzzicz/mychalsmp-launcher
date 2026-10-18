@@ -61,7 +61,8 @@ const { searchModrinth, downloadModOrPack, checkProfileModUpdates } = require('.
 const {
     scanInstanceDirectory,
     importInstanceProfile,
-    upgradeProfile
+    upgradeProfile,
+    discoverInstalledProfiles
 } = require('./profileManager');
 const {
     getMojangProfile,
@@ -2447,6 +2448,15 @@ ipcMain.handle('launch-game', async (event, profileId, serverIp) => {
 });
 
 // Profile Import & Upgrade IPC Handlers
+ipcMain.handle('discover-installed-profiles', async () => {
+    try {
+        return discoverInstalledProfiles();
+    } catch (e) {
+        console.warn('[PROFILE-DISCOVERY] Chyba při hledání profilů:', e.message);
+        return [];
+    }
+});
+
 ipcMain.handle('import-profile-dialog', async () => {
     try {
         const result = await dialog.showOpenDialog({

@@ -2585,7 +2585,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             const isBlocked = (isRunning || isLaunching) && !isThisRunning && !isThisLaunching;
 
             const isInst = Array.isArray(installedVersions) && installedVersions.includes(p.version);
-            const canUpgrade = p.version !== '26.3' && p.version !== '26.4';
             let launchBtnClass = 'mc-btn btn-launch-profile';
             let launchBtnAttrs = `data-profile-id="${escapeHtml(p.id)}"`;
             let launchBtnContent = '';
@@ -2628,15 +2627,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </div>
                     <div class="profile-card-right">
                         <div class="profile-actions">
-                            ${canUpgrade ? `
-                            <button class="btn-upgrade-profile" data-profile-id="${escapeHtml(p.id)}" title="Upgradovat tento profil na novou verzi">
-                                <svg class="ui-icon-svg ui-icon-svg--sm ui-icon-svg--blue" viewBox="0 0 24 24">
-                                    <circle cx="12" cy="12" r="10"></circle>
-                                    <polyline points="16 12 12 8 8 12"></polyline>
-                                    <line x1="12" y1="16" x2="12" y2="8"></line>
-                                </svg>
-                                Upgrade
-                            </button>` : ''}
                             <button class="profile-tool-btn btn-profile-settings" data-profile-id="${escapeHtml(p.id)}" title="Nastavení profilu">
                                 <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                             </button>
@@ -2701,18 +2691,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         });
 
-        // Bind Upgrade buttons
-        list.querySelectorAll('.btn-upgrade-profile').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                if (btn.disabled || isRunning || isLaunching) {
-                    showToast(isRunning ? 'Nelze provádět upgrade profilu během běhu hry.' : 'Nelze provádět upgrade během stahování / spouštění.', 'warning');
-                    return;
-                }
-                const pid = btn.dataset.profileId;
-                openUpgradeModal(pid);
-            });
-        });
 
         // Bind Settings buttons (Gear icon) to open Profile Settings Modal
         list.querySelectorAll('.btn-profile-settings').forEach(btn => {
@@ -8688,6 +8666,92 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnConfirmImport = document.getElementById('btnConfirmImport');
 
     let currentScannedData = null;
+    let discoveredProfilesCache = [];
+
+    async function loadDiscoveredProfiles() {
+        const discoveredSection = document.getElementById('discoveredProfilesSection');
+        const discoveredList = document.getElementById('discoveredProfilesList');
+        if (!discoveredSection || !discoveredList) return;
+
+        discoveredSection.style.display = 'block';
+        discoveredList.innerHTML = '<div style="font-size: 11.5px; color: #94a3b8; padding: 12px; text-align: center; display: flex; align-items: center; justify-content: center; gap: 8px;"><svg class="ui-icon-svg ui-icon-svg--xs ui-icon-spin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="12"></circle></svg> Hledám nainstalované profily (.minecraft, Lunar, Prism, Modrinth...)...</div>';
+
+        try {
+            const discovered = await window.api.discoverInstalledProfiles();
+            discoveredProfilesCache = discovered || [];
+            if (!discovered || discovered.length === 0) {
+                discoveredSection.style.display = 'none';
+                return;
+            }
+
+            discoveredSection.style.display = 'block';
+            discoveredList.innerHTML = discovered.map((p, idx) => `
+                <div class="discovered-profile-card" data-idx="${idx}">
+                    <div class="discovered-profile-top">
+                        <span class="discovered-profile-name">${escapeHtml(p.name)}</span>
+                        <span class="discovered-profile-badge">${escapeHtml(p.source)}</span>
+                    </div>
+                    <div class="discovered-profile-meta">
+                        <span>Verze ${escapeHtml(p.version)}</span>
+                        <span>•</span>
+                        <span>${escapeHtml(p.loader.toUpperCase())}</span>
+                        ${p.modCount > 0 ? `<span>•</span><span>${p.modCount} módů</span>` : ''}
+                        <span>•</span>
+                        <span>Naposledy: ${escapeHtml(p.lastPlayedFormatted)}</span>
+                    </div>
+                </div>
+            `).join('');
+
+            discoveredList.querySelectorAll('.discovered-profile-card').forEach(card => {
+                card.addEventListener('click', () => {
+                    discoveredList.querySelectorAll('.discovered-profile-card').forEach(c => c.classList.remove('active'));
+                    card.classList.add('active');
+                    const idx = Number(card.dataset.idx);
+                    const p = discoveredProfilesCache[idx];
+                    if (!p) return;
+
+                    currentScannedData = {
+                        originalDir: p.gameDir,
+                        effectiveGameDir: p.gameDir,
+                        name: p.name,
+                        detectedVersion: p.version,
+                        detectedLoader: p.loader,
+                        modCount: p.modCount,
+                        rpCount: 0,
+                        hasConfig: true,
+                        hasOptions: true
+                    };
+
+                    if (importPathLabel) importPathLabel.textContent = p.gameDir;
+                    if (importProfileNameInput) importProfileNameInput.value = p.name;
+                    if (importVersionSelect) {
+                        if (['26.2', '26.3', '26.1.2', '1.21.11'].includes(p.version)) {
+                            importVersionSelect.value = p.version;
+                        } else {
+                            importVersionSelect.value = '26.2';
+                        }
+                    }
+                    if (importLoaderSelect) {
+                        importLoaderSelect.value = p.loader || 'fabric';
+                    }
+
+                    if (scannedStatsPills) {
+                        scannedStatsPills.innerHTML = `
+                            <span class="stat-pill stat-good"><svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg> Nalezeno módů: ${p.modCount}</span>
+                            <span class="stat-pill stat-good"><svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Zdroj: ${escapeHtml(p.source)}</span>
+                            <span class="stat-pill stat-good"><svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Naposledy: ${escapeHtml(p.lastPlayedFormatted)}</span>
+                        `;
+                    }
+
+                    if (scannedInstancePreview) scannedInstancePreview.style.display = 'block';
+                    if (btnConfirmImport) btnConfirmImport.disabled = false;
+                });
+            });
+        } catch (e) {
+            console.warn('[IMPORT] Chyba při načítání nalezených profilů:', e);
+            if (discoveredSection) discoveredSection.style.display = 'none';
+        }
+    }
 
     if (btnImportProfileModalOpen) {
         btnImportProfileModalOpen.addEventListener('click', () => {
@@ -8697,6 +8761,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (scannedInstancePreview) scannedInstancePreview.style.display = 'none';
                 if (importPathLabel) importPathLabel.textContent = 'Zatím nebyla vybrána žádná složka';
                 if (btnConfirmImport) btnConfirmImport.disabled = true;
+                loadDiscoveredProfiles();
             }
         });
     }
@@ -9027,7 +9092,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         const upgradeBanner = document.getElementById('profileQuickUpgradeBanner');
-        const canUpgrade = profile.version !== '26.3' && profile.version !== '26.4';
+        const v = String(profile.version || '').trim().toLowerCase();
+        const canUpgrade = v && !v.includes('26.3') && !v.includes('26.4') && v !== 'latest';
         if (upgradeBanner) {
             if (canUpgrade) {
                 upgradeBanner.style.display = 'flex';
