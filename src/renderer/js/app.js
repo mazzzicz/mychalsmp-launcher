@@ -447,88 +447,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
 
-    // ── Easter Egg: 5x rychlé kliknutí na postavičku na home screenu ─────────
-    let avatarClickCount = 0;
-    let avatarClickTimer = null;
-    const heroAvatarArea = document.querySelector('.stage-avatar-area') || heroSkinCanvas3D;
-
-    function triggerEasterEggCelebration() {
-        showToast('360° otočení aktivováno.', 'info');
-
-        // 1. 3D otočka panáčka
-        if (skinViewer && skinViewer.playerObject) {
-            let startRot = skinViewer.playerObject.rotation.y;
-            let startTime = performance.now();
-            let duration = 650;
-            function animateSpin(now) {
-                let p = Math.min(1, (now - startTime) / duration);
-                let ease = 1 - Math.pow(1 - p, 3);
-                skinViewer.playerObject.rotation.y = startRot + (Math.PI * 2 * ease);
-                if (p < 1) requestAnimationFrame(animateSpin);
-            }
-            requestAnimationFrame(animateSpin);
-        }
-
-        // CSS fallback spin
-        if (heroSkinCanvas3D) {
-            heroSkinCanvas3D.classList.remove('spin-easteregg');
-            void heroSkinCanvas3D.offsetWidth;
-            heroSkinCanvas3D.classList.add('spin-easteregg');
-            setTimeout(() => heroSkinCanvas3D.classList.remove('spin-easteregg'), 800);
-        }
-        if (heroSkinImg) {
-            heroSkinImg.classList.remove('spin-easteregg');
-            void heroSkinImg.offsetWidth;
-            heroSkinImg.classList.add('spin-easteregg');
-            setTimeout(() => heroSkinImg.classList.remove('spin-easteregg'), 800);
-        }
-
-        // 2. Částicový efekt (jiskry a hvězdičky)
-        const stageArea = document.querySelector('.stage-avatar-area');
-        if (stageArea) {
-            const colors = ['#0a67e5', '#21DE00', '#ffffff', '#38bdf8'];
-            for (let i = 0; i < 24; i++) {
-                const particle = document.createElement('div');
-                particle.className = 'easteregg-particle';
-                const size = Math.floor(Math.random() * 7) + 5;
-                const angle = Math.random() * Math.PI * 2;
-                const dist = Math.floor(Math.random() * 80) + 40;
-                const tx = Math.cos(angle) * dist;
-                const ty = Math.sin(angle) * dist;
-                const color = colors[Math.floor(Math.random() * colors.length)];
-
-                particle.style.width = `${size}px`;
-                particle.style.height = `${size}px`;
-                particle.style.background = color;
-                particle.style.boxShadow = `0 0 8px ${color}`;
-                particle.style.top = '50%';
-                particle.style.left = '50%';
-                particle.style.setProperty('--tx', `${tx}px`);
-                particle.style.setProperty('--ty', `${ty}px`);
-
-                stageArea.appendChild(particle);
-                setTimeout(() => particle.remove(), 850);
-            }
-        }
-
-    }
-
-    if (heroAvatarArea) {
-        heroAvatarArea.style.cursor = 'pointer';
-        heroAvatarArea.addEventListener('click', () => {
-            avatarClickCount++;
-            clearTimeout(avatarClickTimer);
-            avatarClickTimer = setTimeout(() => {
-                avatarClickCount = 0;
-            }, 1600);
-
-            if (avatarClickCount >= 5) {
-                avatarClickCount = 0;
-                triggerEasterEggCelebration();
-            }
-        });
-    }
-
     // ── Server Status & Telemetry ───────────────────────────────────────────
     async function updateNetworkStatus() {
         try {
@@ -2102,7 +2020,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (notesBox) notesBox.style.display = 'none';
         }
 
-        // Reset progress & countdown
+        // Reset progress, icon & countdown
+        const iconWrap = document.getElementById('updateModalIconWrap');
+        if (iconWrap) {
+            iconWrap.innerHTML = `<svg class="ui-icon-svg ui-icon-svg--lg ui-icon-svg--blue" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>`;
+        }
         if (updateProgressContainer) updateProgressContainer.style.display = 'none';
         if (updateProgressBar) updateProgressBar.style.width = '0%';
         if (updateCountdownContainer) updateCountdownContainer.style.display = 'none';
@@ -2299,25 +2221,55 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (desc) desc.style.display = 'none';
                     if (updateModalFoot) updateModalFoot.style.display = 'none';
                     if (title) title.textContent = 'Aktualizace dokončena';
+
+                    const iconWrap = document.getElementById('updateModalIconWrap');
+                    if (iconWrap) {
+                        iconWrap.innerHTML = `<svg class="ui-icon-svg ui-icon-svg--lg ui-icon-svg--green" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="16 9 10 15 7 12"></polyline></svg>`;
+                    }
+
                     if (updateCountdownContainer) updateCountdownContainer.style.display = 'block';
 
                     let countdown = 3;
                     if (updateCountdownSec) updateCountdownSec.textContent = countdown;
 
-                    const interval = setInterval(async () => {
+                    const countdownFill = document.getElementById('updateCountdownFill');
+                    if (countdownFill) {
+                        countdownFill.style.transition = 'none';
+                        countdownFill.style.width = '100%';
+                        void countdownFill.offsetWidth;
+                        countdownFill.style.transition = 'width 3s linear';
+                        countdownFill.style.width = '0%';
+                    }
+
+                    let isRestarting = false;
+                    let interval = null;
+                    const doRestart = async () => {
+                        if (isRestarting) return;
+                        isRestarting = true;
+                        if (interval) clearInterval(interval);
+                        try {
+                            await window.api.restartLauncher();
+                        } catch (e) {
+                            console.error('[UPDATER] Chyba restartu launcheru:', e);
+                            showToast('Chyba při restartu launcheru: ' + (e.message || e), 'error');
+                            isUpdatingCurrently = false;
+                            isRestarting = false;
+                            if (updateCountdownContainer) updateCountdownContainer.style.display = 'none';
+                            if (updateModalFoot) updateModalFoot.style.display = 'flex';
+                        }
+                    };
+
+                    const btnRestartNow = document.getElementById('btnRestartNow');
+                    if (btnRestartNow) {
+                        btnRestartNow.onclick = () => doRestart();
+                    }
+
+                    interval = setInterval(async () => {
                         countdown--;
                         if (updateCountdownSec) updateCountdownSec.textContent = countdown;
                         if (countdown <= 0) {
                             clearInterval(interval);
-                            try {
-                                await window.api.restartLauncher();
-                            } catch (e) {
-                                console.error('[UPDATER] Chyba restartu launcheru:', e);
-                                showToast('Chyba při restartu launcheru: ' + (e.message || e), 'error');
-                                isUpdatingCurrently = false;
-                                if (updateCountdownContainer) updateCountdownContainer.style.display = 'none';
-                                if (updateModalFoot) updateModalFoot.style.display = 'flex';
-                            }
+                            await doRestart();
                         }
                     }, 1000);
                 } else if (res && res.openedInBrowser) {

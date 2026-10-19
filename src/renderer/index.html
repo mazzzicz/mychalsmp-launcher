@@ -2860,11 +2860,11 @@
 
     <!-- AUTO-UPDATE MODAL -->
     <div class="custom-modal-overlay" id="updateModal" style="display: none;">
-        <div class="custom-modal-box" style="max-width: 420px;">
+        <div class="custom-modal-box update-modal-card" style="max-width: 440px;">
             <div class="modal-head">
                 <div class="modal-title-with-icon">
-                    <span class="modal-icon">
-                        <svg class="ui-icon-svg ui-icon-svg--lg ui-icon-svg--blue" viewBox="0 0 24 24">
+                    <span class="modal-icon" id="updateModalIconWrap">
+                        <svg class="ui-icon-svg ui-icon-svg--lg ui-icon-svg--blue" viewBox="0 0 24 24" id="updateModalIcon">
                             <polyline points="23 4 23 10 17 10"></polyline>
                             <polyline points="1 20 1 14 7 14"></polyline>
                             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
@@ -2917,17 +2917,39 @@
                 </div>
 
                 <!-- RESTART COUNTDOWN CONTAINER (zobrazí se po instalaci) -->
-                <div id="updateCountdownContainer" style="display: none; text-align: center; padding: 16px 8px 6px;">
-                    <div
-                        style="width: 42px; height: 42px; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: rgba(33, 222, 0, 0.12); border: 1px solid rgba(33, 222, 0, 0.25);">
-                        <svg class="ui-icon-svg ui-icon-svg--md ui-icon-svg--green" viewBox="0 0 24 24">
-                            <polyline points="20 6 9 17 4 12"></polyline>
-                        </svg>
+                <div id="updateCountdownContainer" class="update-success-panel" style="display: none;">
+                    <div class="update-success-emblem-wrap">
+                        <div class="update-success-halo"></div>
+                        <div class="update-success-emblem">
+                            <svg class="update-success-check" viewBox="0 0 24 24">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                        </div>
                     </div>
-                    <div style="color: #f8fafc; font-size: 14px; font-weight: 600; margin-bottom: 4px;">Aktualizace
-                        nainstalována</div>
-                    <div style="font-size: 13px; color: #94a3b8;">Restartuji za <strong id="updateCountdownSec"
-                            style="color: #0a67e5; font-size: 14px;">3</strong> s...</div>
+                    <div class="update-success-title">Nová verze je připravena</div>
+                    <p class="update-success-subtitle">Aktualizace byla úspěšně nainstalována. Klient se automaticky restartuje.</p>
+
+                    <div class="update-countdown-row">
+                        <div class="update-countdown-badge">
+                            <span class="update-countdown-pulse"></span>
+                            <span>Automatický restart za <strong id="updateCountdownSec">3</strong> s</span>
+                        </div>
+                    </div>
+
+                    <div class="update-countdown-track">
+                        <div id="updateCountdownFill" class="update-countdown-fill"></div>
+                    </div>
+
+                    <div class="update-success-action-row">
+                        <button type="button" class="btn-restart-now" id="btnRestartNow">
+                            <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="23 4 23 10 17 10"></polyline>
+                                <polyline points="1 20 1 14 7 14"></polyline>
+                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                            </svg>
+                            <span>Restartovat nyní</span>
+                        </button>
+                    </div>
                 </div>
             </div>
             <div class="modal-foot" id="updateModalFoot">
