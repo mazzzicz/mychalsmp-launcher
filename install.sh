@@ -83,8 +83,8 @@ fi
 # Vytvoření zástupce v menu aplikací (.desktop)
 cat <<EOF > "$DESKTOP_DIR/mychalsmp-launcher.desktop"
 [Desktop Entry]
-Name=SMPLauncher
-Comment=Oficiální Minecraft launcher sítě MYCHAL SMP
+Name=SMPClient
+Comment=Oficiální Minecraft klient sítě MYCHAL SMP
 Exec=$INSTALL_DIR/mychalsmp-launcher %U
 Icon=mychalsmp-launcher
 Terminal=false
@@ -96,10 +96,28 @@ EOF
 chmod +x "$DESKTOP_DIR/mychalsmp-launcher.desktop"
 
 # Aktualizace ikony a menu cache pokud existují systémové nástroje
-command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$DESKTOP_DIR" || true
-command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -f "$HOME/.local/share/icons/hicolor" || true
+command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
+command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q -f "$HOME/.local/share/icons/hicolor" >/dev/null 2>&1 || true
 
 echo ""
-echo "✅ [HOTOVO] SMPLauncher byl úspěšně nainstalován!"
-echo "👉 Můžeš jej spustit z aplikačního menu systému nebo příkazem:"
-echo "   ~/.local/bin/mychalsmp-launcher"
+echo "✅ [HOTOVO] SMPClient byl úspěšně nainstalován!"
+
+# Pokud běží grafické prostředí (X11 nebo Wayland), automaticky spustíme launcher a zavřeme terminál
+if ([ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]) && [ "$NO_START" != "1" ] && [ "$1" != "--no-start" ]; then
+    echo "🚀 Spouštím herního klienta a zavírám terminál..."
+
+    # Plně odpojené spuštění v nové session nezávislé na terminálu
+    nohup setsid "$INSTALL_DIR/mychalsmp-launcher" </dev/null >/dev/null 2>&1 &
+    disown -a 2>/dev/null || true
+
+    sleep 1.2
+
+    # Automatické zavření okna terminálu ukončením rodičovského shellu
+    if [ -n "$PPID" ] && [ "$PPID" -gt 1 ]; then
+        kill -HUP "$PPID" 2>/dev/null || kill -TERM "$PPID" 2>/dev/null || kill -9 "$PPID" 2>/dev/null || true
+    fi
+    exit 0
+else
+    echo "👉 Můžeš jej spustit z aplikačního menu systému nebo příkazem:"
+    echo "   ~/.local/bin/mychalsmp-launcher"
+fi

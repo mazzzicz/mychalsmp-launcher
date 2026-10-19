@@ -54,4 +54,22 @@ EOF
 chmod +x "$DESKTOP_DIR/mychalsmp-launcher.desktop"
 
 echo "✅ [HOTOVO] MYCHAL SMP Launcher byl úspěšně nainstalován!"
-echo "👉 Můžeš ho spustit z aplikačního menu nebo příkazem: ~/.local/bin/mychalsmp-launcher"
+
+# Pokud běží grafické prostředí (X11 nebo Wayland), automaticky spustíme launcher a zavřeme terminál
+if ([ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]) && [ "$NO_START" != "1" ] && [ "$1" != "--no-start" ]; then
+    echo "🚀 Spouštím herního klienta a zavírám terminál..."
+
+    # Plně odpojené spuštění v nové session nezávislé na terminálu
+    nohup setsid "$INSTALL_DIR/mychalsmp-launcher" </dev/null >/dev/null 2>&1 &
+    disown -a 2>/dev/null || true
+
+    sleep 1.2
+
+    # Automatické zavření okna terminálu ukončením rodičovského shellu
+    if [ -n "$PPID" ] && [ "$PPID" -gt 1 ]; then
+        kill -HUP "$PPID" 2>/dev/null || kill -TERM "$PPID" 2>/dev/null || kill -9 "$PPID" 2>/dev/null || true
+    fi
+    exit 0
+else
+    echo "👉 Můžeš ho spustit z aplikačního menu nebo příkazem: ~/.local/bin/mychalsmp-launcher"
+fi
