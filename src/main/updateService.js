@@ -278,27 +278,48 @@ async function applyUpdate(assetUrl, onProgress) {
             if (assetUrl.endsWith('.diff')) {
                 // Cesta B: Binární Diff Patch přes Rust engine
                 const tmpDiff = path.join(os.tmpdir(), `mychalsmp-diff-${Date.now()}.diff`);
+                
+                const res = await fetch(assetUrl, {
+                    headers: { 'User-Agent': 'mychalsmp-launcher-updater' }
+                });
+                if (!res.ok) throw new Error(`Chyba stahování aktualizačního balíčku: HTTP ${res.status}`);
+
+                totalBytes = parseInt(res.headers.get('content-length')) || 0;
+                const fileStream = fs.createWriteStream(tmpDiff);
+                const nodeStream = Readable.fromWeb(res.body);
+
+                let lastReport = 0;
+                nodeStream.on('data', (chunk) => {
+                    receivedBytes += chunk.length;
+                    const now = Date.now();
+                    if (now - lastReport > 25 || receivedBytes === totalBytes) {
+                        lastReport = now;
+                        const percent = totalBytes > 0 ? Math.round((receivedBytes / totalBytes) * 85) : 20;
+                        if (onProgress) {
+                            onProgress({
+                                current: receivedBytes,
+                                total: totalBytes,
+                                percent: Math.min(percent, 85),
+                                status: 'downloading',
+                                isDelta: true,
+                                isDiff: true,
+                                step: 'Stahuji bleskový balíček změn...'
+                            });
+                        }
+                    }
+                });
+
+                await pipeline(nodeStream, fileStream);
+
                 if (onProgress) {
                     onProgress({
-                        current: 10,
-                        total: 100,
-                        percent: 10,
-                        status: 'downloading',
-                        isDelta: true,
-                        step: 'Stahuji binární mikro-patch (Rust)...'
-                    });
-                }
-
-                await nativeLoader.fastDownloadFile(assetUrl, tmpDiff);
-
-                if (onProgress) {
-                    onProgress({
-                        current: 60,
-                        total: 100,
-                        percent: 60,
+                        current: totalBytes,
+                        total: totalBytes,
+                        percent: 92,
                         status: 'extracting',
                         isDelta: true,
-                        step: 'Aplikuji binární patch v Rustu...'
+                        isDiff: true,
+                        step: 'Aplikuji aktualizaci do launcheru...'
                     });
                 }
 
@@ -309,48 +330,36 @@ async function applyUpdate(assetUrl, onProgress) {
                 totalBytes = st.size;
             } else {
                 // Cesta A: Delta ASAR balíček
-                if (nativeLoader.isNativeActive()) {
-                    try {
-                        const dlRes = await nativeLoader.fastDownloadFile(assetUrl, tmpAsar);
-                        receivedBytes = dlRes.bytes_downloaded;
-                        totalBytes = dlRes.bytes_downloaded;
-                    } catch (_) {
-                        // Fallback na standardní fetch stream níže
-                        receivedBytes = 0;
-                    }
-                }
+                const res = await fetch(assetUrl, {
+                    headers: { 'User-Agent': 'mychalsmp-launcher-updater' }
+                });
+                if (!res.ok) throw new Error(`Chyba stahování delta balíčku: HTTP ${res.status}`);
 
-                if (receivedBytes === 0) {
-                    const res = await fetch(assetUrl, {
-                        headers: { 'User-Agent': 'mychalsmp-launcher-updater' }
-                    });
-                    if (!res.ok) throw new Error(`Chyba stahování delta balíčku: HTTP ${res.status}`);
+                totalBytes = parseInt(res.headers.get('content-length')) || 0;
+                const fileStream = fs.createWriteStream(tmpAsar);
+                const nodeStream = Readable.fromWeb(res.body);
 
-                    totalBytes = parseInt(res.headers.get('content-length')) || 0;
-                    const fileStream = fs.createWriteStream(tmpAsar);
-                    const nodeStream = Readable.fromWeb(res.body);
-
-                    let lastReport = 0;
-                    nodeStream.on('data', (chunk) => {
-                        receivedBytes += chunk.length;
-                        const now = Date.now();
-                        if (now - lastReport > 40 || receivedBytes === totalBytes) {
-                            lastReport = now;
-                            const percent = totalBytes > 0 ? Math.round((receivedBytes / totalBytes) * 100) : 0;
-                            if (onProgress) {
-                                onProgress({
-                                    current: receivedBytes,
-                                    total: totalBytes,
-                                    percent: Math.min(percent, 100),
-                                    status: 'downloading',
-                                    isDelta: true
-                                });
-                            }
+                let lastReport = 0;
+                nodeStream.on('data', (chunk) => {
+                    receivedBytes += chunk.length;
+                    const now = Date.now();
+                    if (now - lastReport > 30 || receivedBytes === totalBytes) {
+                        lastReport = now;
+                        const percent = totalBytes > 0 ? Math.round((receivedBytes / totalBytes) * 88) : 20;
+                        if (onProgress) {
+                            onProgress({
+                                current: receivedBytes,
+                                total: totalBytes,
+                                percent: Math.min(percent, 88),
+                                status: 'downloading',
+                                isDelta: true,
+                                step: 'Stahuji aktualizaci...'
+                            });
                         }
-                    });
+                    }
+                });
 
-                    await pipeline(nodeStream, fileStream);
-                }
+                await pipeline(nodeStream, fileStream);
             }
 
             if (onProgress) {
@@ -358,8 +367,9 @@ async function applyUpdate(assetUrl, onProgress) {
                     current: totalBytes,
                     total: totalBytes,
                     percent: 100,
-                    status: 'extracting',
-                    isDelta: true
+                    status: 'installing',
+                    isDelta: true,
+                    step: 'Aktualizace byla úspěšně připravena!'
                 });
             }
 

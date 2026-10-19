@@ -638,14 +638,44 @@ document.addEventListener('DOMContentLoaded', async () => {
                     };
                 }
 
+                // Rychlé předvolby RAM tlačítek (4 GB, 16 GB atd.)
+                document.querySelectorAll('.btn-ram-preset[data-ram]').forEach(btn => {
+                    btn.onclick = () => {
+                        const val = parseInt(btn.getAttribute('data-ram'), 10);
+                        if (val && ramSlider && ramValueBadge) {
+                            if (ramSliderController) {
+                                ramSliderController.setTarget(val, false, true);
+                            } else {
+                                ramSlider.value = val;
+                                updateSliderVisuals(ramSlider, ramValueBadge);
+                            }
+                            currentConfig.ramMax = val;
+                            autoSaveSettings(true);
+                            showToast(`Nastavena paměť: ${val} GB RAM`, 'info');
+                        }
+                    };
+                });
+
                 // Auto-Detekce dedikované grafiky (Windows i Linux)
                 const gpuNameText = document.getElementById('gpuNameText');
                 const gpuDedicatedBadge = document.getElementById('gpuDedicatedBadge');
                 if (gpuNameText) {
-                    gpuNameText.textContent = sysInfo?.gpuName || 'Standardní grafický adaptér';
+                    let cleanGpu = sysInfo?.gpuName || 'Standardní grafická karta';
+                    const bracketMatch = cleanGpu.match(/\[(.*?)\]/);
+                    const vendorMatch = cleanGpu.match(/(NVIDIA|AMD|Radeon|Intel)/i);
+                    const vendor = vendorMatch ? (vendorMatch[1].toUpperCase() === 'NVIDIA' ? 'NVIDIA ' : (vendorMatch[1].toUpperCase() === 'INTEL' ? 'Intel ' : 'AMD ')) : '';
+                    if (bracketMatch && bracketMatch[1]) {
+                        const model = bracketMatch[1].trim();
+                        cleanGpu = vendor && !model.toLowerCase().includes(vendor.trim().toLowerCase()) ? `${vendor}${model}` : model;
+                    } else {
+                        cleanGpu = cleanGpu.replace(/^[0-9a-fA-F:.]+\s*(VGA compatible controller|3D controller|Display controller)?:\s*/i, '');
+                        cleanGpu = cleanGpu.replace(/\(rev\s+[0-9a-fA-F]+\)/i, '').replace(/Corporation/gi, '').trim();
+                    }
+                    gpuNameText.textContent = cleanGpu || 'Standardní grafická karta';
                 }
                 if (gpuDedicatedBadge) {
                     gpuDedicatedBadge.style.display = sysInfo?.isDedicatedGpu ? 'inline-block' : 'none';
+                    gpuDedicatedBadge.textContent = 'Výkonná grafika';
                 }
 
                 // Na Windows schovat čistě linuxová nastavení (co dělají bordel na Windows)
@@ -2003,25 +2033,33 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const pct = calculatePerceptualProgress(rawPct);
                 if (updateProgressBar) updateProgressBar.style.width = `${pct}%`;
                 if (updateProgressText) {
-                    updateProgressText.textContent = `Stahuji aktualizaci... ${pct} %`;
+                    const stepLabel = data.isDiff ? 'Stahuji bleskový balíček změn...' : (data.step || 'Stahuji aktualizaci...');
+                    updateProgressText.textContent = `${stepLabel} ${pct} %`;
                 }
                 if (updateProgressSize && data.total) {
-                    const curMb = (data.current / 1048576).toFixed(1);
-                    const totMb = (data.total / 1048576).toFixed(1);
-                    updateProgressSize.textContent = `${curMb} MB / ${totMb} MB`;
+                    if (data.total < 1048576) {
+                        const curKb = Math.round(data.current / 1024);
+                        const totKb = Math.round(data.total / 1024);
+                        updateProgressSize.textContent = `${curKb} KB / ${totKb} KB`;
+                    } else {
+                        const curMb = (data.current / 1048576).toFixed(1);
+                        const totMb = (data.total / 1048576).toFixed(1);
+                        updateProgressSize.textContent = `${curMb} MB / ${totMb} MB`;
+                    }
                 }
             } else if (data.status === 'extracting') {
-                if (updateProgressBar) updateProgressBar.style.width = '100%';
+                const pct = Math.max(90, calculatePerceptualProgress(data.percent || 90));
+                if (updateProgressBar) updateProgressBar.style.width = `${pct}%`;
                 if (updateProgressText) {
-                    updateProgressText.textContent = data.step || 'Příprava aktualizace...';
+                    updateProgressText.textContent = data.step || 'Aplikuji aktualizaci do launcheru...';
                 }
                 if (updateProgressSize) updateProgressSize.textContent = 'Instalace';
             } else if (data.status === 'installing') {
                 if (updateProgressBar) updateProgressBar.style.width = '100%';
                 if (updateProgressText) {
-                    updateProgressText.textContent = data.step || 'Instaluji aktualizaci...';
+                    updateProgressText.textContent = data.step || 'Aktualizace byla úspěšně připravena!';
                 }
-                if (updateProgressSize) updateProgressSize.textContent = 'Dokončování';
+                if (updateProgressSize) updateProgressSize.textContent = '100 %';
             }
         });
     }
@@ -2232,9 +2270,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (updateProgressContainer) {
                 updateProgressContainer.style.display = 'block';
-                if (updateProgressBar) updateProgressBar.style.width = '0%';
-                if (updateProgressText) updateProgressText.textContent = 'Stahuji aktualizaci...';
-                if (updateProgressSize) updateProgressSize.textContent = '';
+                if (updateProgressBar) updateProgressBar.style.width = '12%';
+                if (updateProgressText) updateProgressText.textContent = 'Připojuji a zahajuji stahování...';
+                if (updateProgressSize) updateProgressSize.textContent = 'Příprava';
             }
 
             try {
@@ -2245,6 +2283,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 const res = await window.api.applyUpdate(downloadUrl);
                 if (res && res.applied) {
+                    if (updateProgressBar) updateProgressBar.style.width = '100%';
+                    if (updateProgressText) updateProgressText.textContent = 'Aktualizace byla úspěšně připravena!';
+                    if (updateProgressSize) updateProgressSize.textContent = '100 %';
+
+                    // Plynulá prodleva 650 ms, aby uživatel jasně viděl dokončení progress baru a neprobliklo to
+                    await new Promise(r => setTimeout(r, 650));
+
                     if (updateProgressContainer) updateProgressContainer.style.display = 'none';
                     if (desc) desc.style.display = 'none';
                     if (updateModalFoot) updateModalFoot.style.display = 'none';

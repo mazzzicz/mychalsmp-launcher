@@ -37,6 +37,16 @@ jobs:
         run: |
           node -e "const fs = require('fs'); const pkg = JSON.parse(fs.readFileSync('./package.json')); pkg.version = '${{ github.event.inputs.custom_version }}'.replace(/^v/, ''); fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');"
 
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Native Rust Module (Windows)
+        shell: bash
+        run: |
+          cd native
+          cargo build --release
+          cp target/release/mychalsmp_native.dll ../src/main/mychalsmp_native.node
+
       - name: Ensure Build Resources
         shell: bash
         run: |
@@ -75,6 +85,16 @@ jobs:
         if: "${{ github.event.inputs.custom_version != '' }}"
         run: |
           node -e "const fs = require('fs'); const pkg = JSON.parse(fs.readFileSync('./package.json')); pkg.version = '${{ github.event.inputs.custom_version }}'.replace(/^v/, ''); fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');"
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Native Rust Module (Linux)
+        shell: bash
+        run: |
+          cd native
+          cargo build --release
+          cp target/release/libmychalsmp_native.so ../src/main/mychalsmp_native.node
 
       - name: Ensure Build Resources
         shell: bash

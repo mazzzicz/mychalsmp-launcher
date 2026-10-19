@@ -13,9 +13,12 @@ let isLoaded = false;
 
 // Candidate locations for the compiled native module (.node)
 const candidatePaths = [
+    path.join(__dirname, 'mychalsmp_native.node'),
+    path.join(__dirname.replace('app.asar', 'app.asar.unpacked'), 'mychalsmp_native.node'),
+    path.join(process.resourcesPath || '', 'app.asar.unpacked', 'src', 'main', 'mychalsmp_native.node'),
+    path.join(process.resourcesPath || '', 'app.asar.unpacked', 'mychalsmp_native.node'),
     path.join(__dirname, '..', '..', 'native', 'mychalsmp_native.node'),
-    path.join(__dirname, '..', '..', 'native', 'target', 'release', 'mychalsmp_native.node'),
-    path.join(__dirname, 'mychalsmp_native.node')
+    path.join(__dirname, '..', '..', 'native', 'target', 'release', 'mychalsmp_native.node')
 ];
 
 for (const p of candidatePaths) {

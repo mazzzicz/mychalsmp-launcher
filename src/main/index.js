@@ -3466,8 +3466,29 @@ ipcMain.handle('get-system-info', async () => {
     else if (totalRamGB <= 32) recommendedRamGB = 8;
     else recommendedRamGB = 10;
 
+    function formatCleanGpuName(raw) {
+        if (!raw) return 'Standardní grafická karta';
+        let clean = raw.trim();
+        // Extrahovat model v závorkách např. [GeForce RTX 4070]
+        const bracketMatch = clean.match(/\[(.*?)\]/);
+        const vendorMatch = clean.match(/(NVIDIA|AMD|Radeon|Intel)/i);
+        const vendor = vendorMatch ? (vendorMatch[1].toUpperCase() === 'NVIDIA' ? 'NVIDIA ' : (vendorMatch[1].toUpperCase() === 'INTEL' ? 'Intel ' : 'AMD ')) : '';
+
+        if (bracketMatch && bracketMatch[1]) {
+            const model = bracketMatch[1].trim();
+            if (vendor && !model.toLowerCase().includes(vendor.trim().toLowerCase())) {
+                return `${vendor}${model}`;
+            }
+            return model;
+        }
+        clean = clean.replace(/^[0-9a-fA-F:.]+\s*(VGA compatible controller|3D controller|Display controller)?:\s*/i, '');
+        clean = clean.replace(/\(rev\s+[0-9a-fA-F]+\)/i, '');
+        clean = clean.replace(/Corporation/gi, '');
+        return clean.trim() || 'Standardní grafická karta';
+    }
+
     // Detekce grafické karty a diskrétního GPU
-    let gpuName = 'Standardní grafický adaptér';
+    let gpuName = 'Standardní grafická karta';
     let isDedicatedGpu = false;
     if (process.platform === 'win32') {
         try {
@@ -3477,10 +3498,10 @@ ipcMain.handle('get-system-info', async () => {
             if (lines.length > 0) {
                 const dedicated = lines.find(l => /nvidia|geforce|rtx|gtx|radeon|amd/i.test(l));
                 if (dedicated) {
-                    gpuName = dedicated;
+                    gpuName = formatCleanGpuName(dedicated);
                     isDedicatedGpu = true;
                 } else {
-                    gpuName = lines[0];
+                    gpuName = formatCleanGpuName(lines[0]);
                     isDedicatedGpu = !/intel|basic|microsoft/i.test(lines[0]);
                 }
             }
@@ -3492,13 +3513,9 @@ ipcMain.handle('get-system-info', async () => {
             const lines = out.split('\n').map(s => s.trim()).filter(Boolean);
             if (lines.length > 0) {
                 const dedicated = lines.find(l => /nvidia|geforce|radeon|amd/i.test(l));
-                if (dedicated) {
-                    gpuName = dedicated.replace(/^[^:]+:\s*/, '');
-                    isDedicatedGpu = true;
-                } else {
-                    gpuName = lines[0].replace(/^[^:]+:\s*/, '');
-                    isDedicatedGpu = !/intel/i.test(lines[0]);
-                }
+                const chosen = dedicated || lines[0];
+                gpuName = formatCleanGpuName(chosen);
+                isDedicatedGpu = /nvidia|geforce|rtx|gtx|radeon|amd/i.test(chosen) && !/intel/i.test(chosen);
             }
         } catch (_) { }
     }
