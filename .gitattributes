@@ -1,0 +1,5 @@
+# GitHub Linguist overrides
+native/target/** linguist-vendored
+*.d linguist-vendored
+*.node binary
+src/renderer/js/lib/** linguist-vendored
