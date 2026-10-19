@@ -546,6 +546,10 @@ async function downloadModOrPack(options, targetDir) {
 
     // Prefer match for game version if available in list
     let picked = versions.find(v => Array.isArray(v.game_versions) && v.game_versions.includes(version));
+    if (!picked && projectType === 'mod') {
+        const vPrefix = String(version).split('.').slice(0, 2).join('.');
+        picked = versions.find(v => Array.isArray(v.game_versions) && v.game_versions.some(gv => gv === version || gv.startsWith(vPrefix)));
+    }
     if (!picked) {
         if (projectType === 'mod') {
             const avail = (versions[0]?.game_versions || []).join(', ') || 'jinou verzi';

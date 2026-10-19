@@ -751,6 +751,69 @@ Handler.prototype.downloadToDirectory = async function (directory, libraries, ev
     return libs;
 };
 
+/**
+ * Intercept Handler.prototype.getClasses:
+ * Zajišťuje, že veškeré knihovny z Vanilla manifestu (např. fastutil, log4j, netty, guava, brigadier)
+ * i zavaděče (Fabric loader, asm, sponge-mixin) jsou VŽDY kompletně staženy a zahrnuty na classpath (-cp).
+ * Zabraňuje NoClassDefFoundError: it/unimi/dsi/fastutil/... i chybějícímu Log4j provideru.
+ */
+Handler.prototype.getClasses = async function (classJson) {
+    let libs = [];
+    const libraryDirectory = path.resolve(this.options.overrides?.libraryRoot || path.join(this.options.root, 'libraries'));
+
+    // 1. Zjistit cílovou verzi Minecraftu (např. 26.2)
+    const targetVersion = this.options.version?.number || this.version?.inheritsFrom || '26.2';
+    let vanillaJson = null;
+    try {
+        vanillaJson = await getOrFetchVanillaVersionJson(this.options.root, targetVersion);
+    } catch (_) { }
+
+    const combinedLibraries = [];
+    const seenArtifacts = new Set();
+
+    const getArtifactKey = (lib) => {
+        if (!lib || !lib.name) return null;
+        const parts = lib.name.split(':');
+        return `${parts[0]}:${parts[1]}`;
+    };
+
+    // a) Custom mavenFiles (např. ForgeWrapper)
+    if (classJson && Array.isArray(classJson.mavenFiles)) {
+        await this.downloadToDirectory(libraryDirectory, classJson.mavenFiles, 'classes-maven-custom');
+    }
+
+    // b) Knihovny z custom JSON (Fabric / Forge / NeoForge)
+    const customLibs = classJson?.libraries || this.version?.libraries || [];
+    if (Array.isArray(customLibs)) {
+        for (const lib of customLibs) {
+            if (!lib || this.parseRule(lib)) continue;
+            const key = getArtifactKey(lib);
+            if (key) seenArtifacts.add(key);
+            combinedLibraries.push(lib);
+        }
+    }
+
+    // c) Knihovny z Vanilla manifestu (fastutil, log4j, netty, guava...) - doplníme vše, co loader nenahradil
+    const vanillaLibs = vanillaJson?.libraries || (this.version?.inheritsFrom ? null : this.version?.libraries) || [];
+    if (Array.isArray(vanillaLibs)) {
+        for (const lib of vanillaLibs) {
+            if (!lib || this.parseRule(lib)) continue;
+            const key = getArtifactKey(lib);
+            if (key && seenArtifacts.has(key)) {
+                continue; // Custom knihovna má přednost
+            }
+            if (key) seenArtifacts.add(key);
+            combinedLibraries.push(lib);
+        }
+    }
+
+    // d) Stažení a zařazení všech knihoven do classpath
+    libs = await this.downloadToDirectory(libraryDirectory, combinedLibraries, 'classes');
+
+    this.client.emit('debug', `[MCLC]: Úspěšně shromážděno ${libs.length} herních knihoven do classpath.`);
+    return libs;
+};
+
 function downloadFileWithHttps(targetUrl, destPath, timeoutMs = 15000) {
     if (nativeLoader.isNativeActive()) {
         return nativeLoader.fastDownloadFile(targetUrl, destPath)
@@ -2342,7 +2405,10 @@ async function getOrFetchVanillaVersionJson(centralRootDir, targetVersion) {
     const localJson = path.join(versionsDir, targetVersion, `${targetVersion}.json`);
     if (fs.existsSync(localJson)) {
         try {
-            return JSON.parse(fs.readFileSync(localJson, 'utf8'));
+            const parsed = JSON.parse(fs.readFileSync(localJson, 'utf8'));
+            if (parsed && Array.isArray(parsed.libraries) && parsed.libraries.length > 20) {
+                return parsed;
+            }
         } catch (e) { }
     }
 
@@ -2352,30 +2418,42 @@ async function getOrFetchVanillaVersionJson(centralRootDir, targetVersion) {
         if (fs.existsSync(candJson)) {
             try {
                 const parsed = JSON.parse(fs.readFileSync(candJson, 'utf8'));
-                fs.mkdirSync(path.join(versionsDir, targetVersion), { recursive: true });
-                fs.copyFileSync(candJson, localJson);
-                return parsed;
+                if (parsed && Array.isArray(parsed.libraries) && parsed.libraries.length > 20) {
+                    fs.mkdirSync(path.join(versionsDir, targetVersion), { recursive: true });
+                    fs.copyFileSync(candJson, localJson);
+                    return parsed;
+                }
             } catch (e) { }
         }
     }
 
     try {
-        const manRes = await fetch('https://piston-meta.mojang.com/mc/game/version_manifest_v2.json', { signal: AbortSignal.timeout(8000) });
-        if (manRes.ok) {
-            const manifest = await manRes.json();
-            let entry = manifest.versions.find(v => v.id === targetVersion);
-            if (!entry && targetVersion === '1.21.11') {
-                entry = manifest.versions.find(v => v.id === '1.21.1') || manifest.versions.find(v => v.id === '1.21');
-            }
-            if (entry && entry.url) {
-                const vRes = await fetch(entry.url, { signal: AbortSignal.timeout(10000) });
-                if (vRes.ok) {
-                    const vJson = await vRes.json();
-                    fs.mkdirSync(path.join(versionsDir, targetVersion), { recursive: true });
-                    fs.writeFileSync(localJson, JSON.stringify(vJson, null, 2), 'utf8');
-                    return vJson;
+        const manUrls = [
+            'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json',
+            'https://launchermeta.mojang.com/mc/game/version_manifest.json'
+        ];
+        for (const manUrl of manUrls) {
+            try {
+                const manRes = await fetch(manUrl, { signal: AbortSignal.timeout(12000) });
+                if (manRes.ok) {
+                    const manifest = await manRes.json();
+                    let entry = manifest.versions.find(v => v.id === targetVersion);
+                    if (!entry && targetVersion === '1.21.11') {
+                        entry = manifest.versions.find(v => v.id === '1.21.1') || manifest.versions.find(v => v.id === '1.21');
+                    }
+                    if (entry && entry.url) {
+                        const vRes = await fetch(entry.url, { signal: AbortSignal.timeout(15000) });
+                        if (vRes.ok) {
+                            const vJson = await vRes.json();
+                            if (vJson && Array.isArray(vJson.libraries) && vJson.libraries.length > 20) {
+                                fs.mkdirSync(path.join(versionsDir, targetVersion), { recursive: true });
+                                fs.writeFileSync(localJson, JSON.stringify(vJson, null, 2), 'utf8');
+                                return vJson;
+                            }
+                        }
+                    }
                 }
-            }
+            } catch (_) { }
         }
     } catch (e) { }
     return null;
@@ -2418,7 +2496,7 @@ async function ensureFabricProfile(centralRootDir, targetVersion, onLog = consol
             const exJsonPath = path.join(versionsDir, existing, `${existing}.json`);
             try {
                 const exJson = JSON.parse(fs.readFileSync(exJsonPath, 'utf8'));
-                if (exJson.downloads && exJson.assetIndex && exJson.libraries && exJson.libraries.length > 15) {
+                if (exJson.downloads && exJson.assetIndex && exJson.libraries && exJson.libraries.length > 20) {
                     // Ověřit, že samotný fabric-loader JAR v libraries existuje a má platnou hlavičku
                     const loaderLib = exJson.libraries.find(l => l.name && l.name.startsWith('net.fabricmc:fabric-loader:'));
                     let loaderJarValid = true;
@@ -2485,6 +2563,27 @@ async function ensureFabricProfile(centralRootDir, targetVersion, onLog = consol
 
         // Sloučit s Vanilla manifestem (doplnit downloads.client, assetIndex a vanilkové knihovny)
         const vanillaJson = await getOrFetchVanillaVersionJson(centralRootDir, targetVersion);
+        if (!vanillaJson || !Array.isArray(vanillaJson.libraries) || vanillaJson.libraries.length < 10) {
+            throw new Error(`Nepodařilo se získat vanilkový manifest pro verzi ${targetVersion}`);
+        }
+
+        const combinedLibs = [];
+        const seenLibKeys = new Set();
+        const getLibKey = (l) => l?.name ? l.name.split(':').slice(0, 2).join(':') : null;
+
+        for (const l of (profileJson.libraries || [])) {
+            const k = getLibKey(l);
+            if (k) seenLibKeys.add(k);
+            combinedLibs.push(l);
+        }
+        for (const l of (vanillaJson.libraries || [])) {
+            const k = getLibKey(l);
+            if (k && !seenLibKeys.has(k)) {
+                seenLibKeys.add(k);
+                combinedLibs.push(l);
+            }
+        }
+
         const mergedProfile = {
             id: fabricId,
             inheritsFrom: targetVersion,
@@ -2502,10 +2601,7 @@ async function ensureFabricProfile(centralRootDir, targetVersion, onLog = consol
                     ...(vanillaJson?.arguments?.jvm || [])
                 ]
             },
-            libraries: [
-                ...(profileJson.libraries || []),
-                ...(vanillaJson?.libraries || [])
-            ],
+            libraries: combinedLibs,
             assetIndex: vanillaJson?.assetIndex,
             assets: vanillaJson?.assets,
             downloads: vanillaJson?.downloads
@@ -2568,8 +2664,11 @@ async function ensureFabricProfile(centralRootDir, targetVersion, onLog = consol
                 fs.existsSync(path.join(versionsDir, d, `${d}.json`))
             );
             if (localFallback) {
-                onLog(`[FABRIC] Síťové ověření selhalo (${err.message}), použiji existující lokální profil: ${localFallback}`);
-                return localFallback;
+                const fbJson = JSON.parse(fs.readFileSync(path.join(versionsDir, localFallback, `${localFallback}.json`), 'utf8'));
+                if (fbJson.libraries && fbJson.libraries.length > 20) {
+                    onLog(`[FABRIC] Síťové ověření selhalo (${err.message}), použiji existující lokální profil: ${localFallback}`);
+                    return localFallback;
+                }
             }
         } catch (_) { }
         onLog(`[FABRIC] ⚠ Nepodařilo se připravit Fabric profil: ${err.message}. Spouštím Vanilla.`);
@@ -2855,13 +2954,15 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
 
     let hasIris = false;
     let sodiumMod = null;
-    let hasFabricApi = false;
+    let fabricApiMod = null;
 
     for (const f of jarFiles) {
         const fullPath = path.join(modsDir, f);
         const lName = f.toLowerCase();
         if ((lName.includes('fabric-api') || lName.includes('fabric_api')) && !lName.includes('fabric-api-base')) {
-            hasFabricApi = true;
+            if (!fabricApiMod) {
+                fabricApiMod = { filename: f, fullPath, version: f };
+            }
         }
         if ((lName.startsWith('sodium-') || lName.startsWith('sodium_') || lName === 'sodium.jar') && !lName.includes('extra') && !lName.includes('options')) {
             sodiumMod = { filename: f, fullPath, version: '' };
@@ -2889,7 +2990,12 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
                         };
                     }
                     if (idLower === 'fabric-api' || idLower === 'fabric_api') {
-                        hasFabricApi = true;
+                        fabricApiMod = {
+                            filename: f,
+                            fullPath,
+                            id: fab.id,
+                            version: String(fab.version || f)
+                        };
                     }
                 }
             }
@@ -2935,10 +3041,47 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
         }
     }
 
-    // 3. KONTROLA FABRIC API: Pokud v profilu chybí Fabric API, automaticky ho doplníme
-    if (!hasFabricApi) {
+    // 3. KONTROLA FABRIC API: Kontrola přítomnosti a verze pro cílovou verzi Minecraftu
+    const targetVer = String(targetVersion || '26.2');
+    let fabricApiIncompatible = false;
+
+    if (fabricApiMod) {
+        const fVer = (fabricApiMod.version || fabricApiMod.filename).toLowerCase();
+        if (targetVer === '26.2') {
+            if (fVer.includes('26.4') || fVer.includes('26.3') || fVer.includes('1.21')) {
+                fabricApiIncompatible = true;
+            }
+        } else if (targetVer === '26.3') {
+            if (fVer.includes('26.4') || fVer.includes('26.2') || fVer.includes('1.21')) {
+                fabricApiIncompatible = true;
+            }
+        } else if (targetVer.startsWith('1.21')) {
+            if (fVer.includes('26.')) {
+                fabricApiIncompatible = true;
+            }
+        }
+    }
+
+    // Odstranění všech zbylých nekompatibilních Fabric API souborů v mods složce
+    for (const f of jarFiles) {
+        const lName = f.toLowerCase();
+        if ((lName.includes('fabric-api') || lName.includes('fabric_api')) && !lName.includes('fabric-api-base')) {
+            if (targetVer === '26.2' && (lName.includes('26.4') || lName.includes('26.3') || lName.includes('1.21'))) {
+                try {
+                    fs.unlinkSync(path.join(modsDir, f));
+                    if (typeof onLog === 'function') onLog(`[ZÁVISLOSTI] 🗑️ Odstraněna nekompatibilní verze Fabric API: ${f}`);
+                } catch (_) { }
+            }
+        }
+    }
+
+    if (!fabricApiMod || fabricApiIncompatible) {
         if (typeof onLog === 'function') {
-            onLog(`[ZÁVISLOSTI] 🔍 Zjištěna absence Fabric API. Automaticky stahuji z Modrinthu...`);
+            if (fabricApiIncompatible) {
+                onLog(`[ZÁVISLOSTI] ⚠️ Zjištěna nekompatibilní verze Fabric API (${fabricApiMod.filename}). Vyžadována verze pro Minecraft ${targetVersion}. Automaticky aktualizuji...`);
+            } else {
+                onLog(`[ZÁVISLOSTI] 🔍 Zjištěna absence Fabric API. Automaticky stahuji z Modrinthu...`);
+            }
         }
         try {
             const dlRes = await downloadModOrPack({
@@ -2946,7 +3089,8 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
                 title: 'Fabric API',
                 projectType: 'mod',
                 version: targetVersion,
-                loader: 'fabric'
+                loader: 'fabric',
+                oldFilename: fabricApiIncompatible ? fabricApiMod.filename : null
             }, gameInstanceDir);
 
             if (dlRes && dlRes.success) {
@@ -2954,7 +3098,11 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
                     onLog(`[ZÁVISLOSTI] ✔ Úspěšně stažen Fabric API: ${dlRes.filename}`);
                 }
             }
-        } catch (_) { }
+        } catch (fErr) {
+            if (typeof onLog === 'function') {
+                onLog(`[ZÁVISLOSTI] ⚠️ Nepodařilo se stáhnout Fabric API: ${fErr.message}`);
+            }
+        }
     }
 
     const finalFingerprint = getModsDirectoryFingerprint(modsDir);
