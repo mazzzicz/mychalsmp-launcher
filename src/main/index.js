@@ -332,6 +332,7 @@ function createSplashWindow() {
 }
 
 function createWindow() {
+    let isInitialShowCompleted = false;
     let winX, winY, winW = 1180, winH = 740;
     try {
         const primary = screen.getPrimaryDisplay();
@@ -392,6 +393,7 @@ function createWindow() {
     });
 
     mainWindow.on('hide', () => {
+        if (!isInitialShowCompleted) return;
         if (mainWindow && !mainWindow.isDestroyed()) {
             try {
                 mainWindow.webContents.setBackgroundThrottling(true);
@@ -430,6 +432,7 @@ function createWindow() {
     });
 
     mainWindow.on('minimize', () => {
+        if (!isInitialShowCompleted) return;
         if (mainWindow && !mainWindow.isDestroyed()) {
             try {
                 mainWindow.webContents.setBackgroundThrottling(true);
@@ -485,6 +488,15 @@ function createWindow() {
 
         mainWindow.show();
         mainWindow.focus();
+
+        setTimeout(() => {
+            isInitialShowCompleted = true;
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                try {
+                    mainWindow.webContents.send('window-restored-from-tray');
+                } catch (_) { }
+            }
+        }, 400);
     });
 
     mainWindow.on('close', (event) => {
@@ -3378,6 +3390,9 @@ ipcMain.handle('restart-launcher', () => {
             return;
         }
 
+        try {
+            app.releaseSingleInstanceLock();
+        } catch (_) {}
         app.relaunch();
         app.exit(0);
         return;
@@ -3397,7 +3412,89 @@ ipcMain.handle('restart-launcher', () => {
                 targetExe = path.join(exeDir, 'mychalsmp-launcher');
             }
         }
+
+        const resourcesDir = getResourcesDir();
+        const pendingAsar = path.join(resourcesDir, 'app.asar.pending');
+        const targetAsar = path.join(resourcesDir, 'app.asar');
+        const currentPid = process.pid;
+
+        let exeToRun = process.execPath;
+        let argsToRun = ['--no-sandbox'];
+
+        if (!app.isPackaged || process.execPath.includes('node_modules')) {
+            exeToRun = process.execPath;
+            argsToRun = [projectRoot, '--no-sandbox'];
+        } else if (process.env.APPIMAGE && fs.existsSync(process.env.APPIMAGE)) {
+            exeToRun = process.env.APPIMAGE;
+            argsToRun = ['--no-sandbox'];
+        } else if (fs.existsSync(targetExe)) {
+            exeToRun = targetExe;
+            argsToRun = ['--no-sandbox'];
+        } else if (fs.existsSync(process.execPath)) {
+            exeToRun = process.execPath;
+            argsToRun = ['--no-sandbox'];
+        }
+
+        // Spustíme oddělený bash proces na pozadí, který:
+        // 1. Počká na úplné ukončení stávajícího procesu (uvolnění paměti a OS locku)
+        // 2. Provede atomickou výměnu app.asar.pending -> app.asar (pokud byl stažen update)
+        // 3. Spustí novou instanci launcheru
+        const bashScript = [
+            '#!/bin/bash',
+            `TARGET_PID=${currentPid}`,
+            `TARGET_ASAR="${targetAsar}"`,
+            `PENDING_ASAR="${pendingAsar}"`,
+            `TARGET_EXE="${exeToRun}"`,
+            '',
+            '# 1. Počkáme na úplné ukončení běžícího procesu',
+            'while kill -0 "$TARGET_PID" 2>/dev/null; do',
+            '    sleep 0.05',
+            'done',
+            '',
+            '# Bezpečnostní prodleva pro uvolnění Unix domain socketu singleton zámku v ~/.config',
+            'sleep 0.2',
+            '',
+            '# 2. Výměna app.asar.pending za app.asar v klidovém stavu',
+            'if [ -f "$PENDING_ASAR" ]; then',
+            '    mv -f "$PENDING_ASAR" "$TARGET_ASAR" 2>/dev/null || cp -f "$PENDING_ASAR" "$TARGET_ASAR" 2>/dev/null',
+            '    rm -f "$PENDING_ASAR" 2>/dev/null',
+            'fi',
+            '',
+            '# 3. Spuštění nové čisté instance launcheru',
+            `exec "$TARGET_EXE" ${argsToRun.map(a => `"${a}"`).join(' ')} >/dev/null 2>&1 &`,
+            'exit 0'
+        ].join('\n');
+
+        const scriptPath = path.join(os.tmpdir(), `mychalsmp_restart_${Date.now()}.sh`);
+        try {
+            fs.writeFileSync(scriptPath, bashScript, { encoding: 'utf8', mode: 0o755 });
+            const { spawn } = require('child_process');
+            const child = spawn('/bin/bash', [scriptPath], {
+                detached: true,
+                stdio: 'ignore'
+            });
+            child.unref();
+
+            try {
+                app.releaseSingleInstanceLock();
+            } catch (_) {}
+
+            app.exit(0);
+            return;
+        } catch (err) {
+            console.error('[UPDATER] Selhalo spuštění Linux bash restart runneru, použijeme fallback:', err);
+            try {
+                app.releaseSingleInstanceLock();
+            } catch (_) {}
+            app.relaunch({ execPath: exeToRun, args: argsToRun });
+            app.exit(0);
+            return;
+        }
     }
+
+    try {
+        app.releaseSingleInstanceLock();
+    } catch (_) {}
 
     if (!app.isPackaged || process.execPath.includes('node_modules')) {
         app.relaunch({ execPath: process.execPath, args: [projectRoot, '--no-sandbox'] });

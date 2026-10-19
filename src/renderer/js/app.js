@@ -170,22 +170,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     let runningProfileId = null;
     let launchingProfileId = null;
     const BUNDLED_KEYARTS = {
-        '1.21.11': 'assets/keyarts/1.21.11.webp',
-        '26.1': 'assets/keyarts/26.1.webp',
-        '26.2': 'assets/keyarts/26.2.webp',
-        '26.3': 'assets/keyarts/26.3.webp',
-        'card-1.21.11': 'assets/keyarts/card-1.21.11.webp',
-        'card-26.1': 'assets/keyarts/card-26.1.webp',
-        'card-26.2': 'assets/keyarts/card-26.2.webp',
-        'card-26.3': 'assets/keyarts/card-26.3.webp',
-        'default': 'assets/keyarts/default.webp'
+        '1.21.11': 'assets/keyarts/1.21.11.jpg',
+        '26.1': 'assets/keyarts/26.1.jpg',
+        '26.2': 'assets/keyarts/26.2.jpg',
+        '26.3': 'assets/keyarts/26.3.jpg',
+        'card-1.21.11': 'assets/keyarts/card-1.21.11.jpg',
+        'card-26.1': 'assets/keyarts/card-26.1.jpg',
+        'card-26.2': 'assets/keyarts/card-26.2.jpg',
+        'card-26.3': 'assets/keyarts/card-26.3.jpg',
+        'default': 'assets/keyarts/default.jpg'
     };
     const BUNDLED_CARD_KEYARTS = {
-        '1.21.11': 'assets/keyarts/card-1.21.11.webp',
-        '26.1': 'assets/keyarts/card-26.1.webp',
-        '26.2': 'assets/keyarts/card-26.2.webp',
-        '26.3': 'assets/keyarts/card-26.3.webp',
-        'default': 'assets/keyarts/default.webp'
+        '1.21.11': 'assets/keyarts/card-1.21.11.jpg',
+        '26.1': 'assets/keyarts/card-26.1.jpg',
+        '26.2': 'assets/keyarts/card-26.2.jpg',
+        '26.3': 'assets/keyarts/card-26.3.jpg',
+        'default': 'assets/keyarts/default.jpg'
     };
     let availableKeyartsMap = { ...BUNDLED_KEYARTS };
     let currentModFilter = {
@@ -267,12 +267,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.body.classList.remove('app-in-tray-paused');
 
         // 2. Obnovit 3D renderování pouze pro aktivní záložku
-        const curTab = document.querySelector('.nav-btn.active')?.dataset?.tab || 'play';
+        const curTab = (document.querySelector('.nav-icon-btn.active, .nav-btn.active')?.dataset?.tab) || 'play';
         if (heroSkinViewer) {
             heroSkinViewer.renderPaused = (curTab !== 'play');
             if (curTab === 'play') {
                 heroSkinViewer.setSize(220, 280);
-                heroSkinViewer.draw();
+                try { heroSkinViewer.draw(); } catch (_) { }
                 if (typeof scheduleHeroReturn === 'function') scheduleHeroReturn();
                 if (typeof triggerHeroWave === 'function') triggerHeroWave(true);
             }
@@ -281,7 +281,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             skinViewer.renderPaused = (curTab !== 'character');
             if (curTab === 'character') {
                 skinViewer.setSize(200, 235);
-                skinViewer.draw();
+                try { skinViewer.draw(); } catch (_) { }
             }
         }
 
@@ -608,8 +608,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (profileRamSlider) profileRamSlider.max = maxRam;
                 const newProfRam = document.getElementById('newProfileRamSlider');
                 if (newProfRam) newProfRam.max = maxRam;
-
-                renderRamSliderMarks(maxRam);
+                window._lastRecommendedRamGB = sysInfo?.recommendedRamGB || 8;
+                renderRamSliderMarks(maxRam, window._lastRecommendedRamGB);
 
                 // Chytrý RAM asistent podle HW v PC (Windows + Linux)
                 const ramTotalText = document.getElementById('ramTotalText');
@@ -1120,19 +1120,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         return controller;
     }
 
-    function renderRamSliderMarks(maxGb) {
+    function renderRamSliderMarks(maxGb, recGb) {
         const marksContainer = document.getElementById('ramSliderMarks') || document.querySelector('.slider-marks');
         if (!marksContainer) return;
         const min = 2;
         const max = maxGb || 16;
+        const targetRec = (typeof recGb === 'number' && recGb > 0) ? recGb : (window._lastRecommendedRamGB || 8);
 
         // Clean landmarks within [min, max]
         const candidates = [4, 8, 16, 24, 32, 48, 64];
+        if (targetRec > min && targetRec < max && !candidates.includes(targetRec)) {
+            candidates.push(targetRec);
+            candidates.sort((a, b) => a - b);
+        }
         const points = [min];
 
         candidates.forEach(c => {
             if (c > min && c < max) {
-                if (max - c >= 3) {
+                if (max - c >= 3 || c === targetRec) {
                     points.push(c);
                 }
             }
@@ -1146,7 +1151,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const isFirst = idx === 0;
             const isLast = idx === points.length - 1;
             const pct = Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100));
-            const isRec = (val === 4);
+            const isRec = (val === targetRec);
 
             let label = `${val} GB`;
             let extraClass = '';
@@ -2438,7 +2443,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── Version Key Arts (Background Artworks) ──────────────────────────────
     function resolveKeyartUrl(versionStr) {
         if (!availableKeyartsMap || Object.keys(availableKeyartsMap).length === 0) {
-            return 'assets/keyarts/default.webp';
+            return 'assets/keyarts/default.jpg';
         }
         if (!versionStr) {
             return availableKeyartsMap['26.2'] || availableKeyartsMap['default'] || null;
@@ -2489,7 +2494,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function resolveCardKeyartUrl(versionStr) {
         if (!availableKeyartsMap || Object.keys(availableKeyartsMap).length === 0) {
-            return BUNDLED_CARD_KEYARTS['26.2'] || 'assets/keyarts/default.webp';
+            return BUNDLED_CARD_KEYARTS['26.2'] || 'assets/keyarts/default.jpg';
         }
         if (!versionStr) {
             return availableKeyartsMap['card-26.2'] || BUNDLED_CARD_KEYARTS['26.2'] || null;
@@ -5865,7 +5870,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     function initHeroSkinViewer3D(force = false) {
         const canvas = document.getElementById('heroSkinCanvas3D');
         if (!canvas || !window.skinview3d) return;
-        if (heroSkinViewer && !force) return;
+        if (heroSkinViewer && !force) {
+            document.body.classList.remove('app-in-tray-paused');
+            heroSkinViewer.renderPaused = false;
+            heroSkinViewer.setSize(220, 280);
+            try { heroSkinViewer.draw(); } catch (_) { }
+            return;
+        }
 
         try {
             cancelHeroReturn();
@@ -5874,6 +5885,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 heroSkinViewer = null;
             }
 
+            document.body.classList.remove('app-in-tray-paused');
             const isSlim = currentConfig ? (currentConfig.customSkinVariant === 'slim') : false;
             heroSkinViewer = new window.skinview3d.SkinViewer({
                 canvas: canvas,
@@ -5881,6 +5893,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 height: 280,
                 model: isSlim ? 'slim' : 'default'
             });
+            heroSkinViewer.renderPaused = false;
 
             heroWaveStartTime = Date.now() + 2000;
             lastHeroWaveTime = Date.now() + 2000;
@@ -5972,6 +5985,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (pSkin && typeof pSkin.then === 'function') {
                     pSkin.then(() => {
                         if (heroSkinImg) heroSkinImg.classList.add('is-hidden');
+                        try { heroSkinViewer?.draw(); } catch (_) { }
                     }).catch(err => {
                         console.warn('[HERO 3D] loadSkin init failed:', err);
                         if (heroSkinImg) heroSkinImg.classList.remove('is-hidden');
@@ -5984,6 +5998,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 }
             }
+            try { heroSkinViewer.draw(); } catch (_) { }
         } catch (e) {
             console.warn('[HERO 3D] Inicializace hero 3D prohlížeče selhala:', e);
             if (heroSkinImg) {
@@ -6006,12 +6021,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!heroSkinViewer) return;
 
         try {
+            document.body.classList.remove('app-in-tray-paused');
+            heroSkinViewer.renderPaused = false;
             heroSkinViewer.setSize(220, 280);
             if (skinUrl) {
                 const pSkin = heroSkinViewer.loadSkin(skinUrl, { model: isSlim ? 'slim' : 'default' });
                 if (pSkin && typeof pSkin.then === 'function') {
                     pSkin.then(() => {
                         if (heroSkinImg) heroSkinImg.classList.add('is-hidden');
+                        try { heroSkinViewer?.draw(); } catch (_) { }
                     }).catch(err => {
                         console.warn('[HERO 3D] loadSkin failed:', err);
                         if (heroSkinImg) heroSkinImg.classList.remove('is-hidden');
@@ -6027,6 +6045,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else {
                 heroSkinViewer.loadCape(null);
             }
+            try { heroSkinViewer.draw(); } catch (_) { }
         } catch (e) {
             console.warn('[HERO 3D] Chyba při aktualizaci 3D modelu na dashboardu:', e);
         }
@@ -6048,6 +6067,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 height: 235,
                 model: currentConfig.customSkinVariant === 'slim' ? 'slim' : 'default'
             });
+            skinViewer.renderPaused = false;
 
             skinViewer.camera.position.set(0, 0, 70);
             skinViewer.zoom = 0.88;
@@ -9581,4 +9601,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initialize
     await loadConfiguration();
+
+    // Ujistíme se, že okno, 3D model i stav sítě jsou po startu v aktivním stavu
+    setTimeout(() => {
+        resumeLauncherBackgroundActivity();
+    }, 150);
 });

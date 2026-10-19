@@ -397,32 +397,13 @@ async function applyUpdate(assetUrl, onProgress) {
                 throw new Error('Stažený balíček aktualizace je poškozený nebo neplatný.');
             }
 
-            if (process.platform === 'win32') {
-                // Na Windows NIKDY nepřepisujeme běžící app.asar za chodu Electron procesu.
-                // Soubor je uzamčen Windows kernelem; přepisování za chodu způsobuje SyntaxError / poškození asar.
-                // Uložíme do app.asar.pending, který při ukončení launcheru bleskově přemístí oddělený PowerShell proces.
-                const pendingAsar = path.join(resourcesDir, 'app.asar.pending');
-                fs.copyFileSync(tmpAsar, pendingAsar);
-                try { fs.unlinkSync(tmpAsar); } catch (_) {}
-            } else {
-                // Linux: Atomické přepsání s lokální zálohou
-                const backupAsar = path.join(resourcesDir, 'app.asar.bak');
-                try {
-                    if (fs.existsSync(targetAsar)) {
-                        fs.copyFileSync(targetAsar, backupAsar);
-                    }
-                } catch (e) {}
-
-                try {
-                    safeCopyFile(tmpAsar, targetAsar);
-                    try { fs.unlinkSync(tmpAsar); } catch (e) {}
-                } catch (copyErr) {
-                    if (fs.existsSync(backupAsar)) {
-                        try { safeCopyFile(backupAsar, targetAsar); } catch (e) {}
-                    }
-                    throw new Error(`Chyba při zápisu delta balíčku: ${copyErr.message}`);
-                }
-            }
+            // Uložíme balíček do app.asar.pending na Windows i Linuxu.
+            // Běžící Electron proces tak nepřepisuje svůj vlastní živý balíček za chodu,
+            // což předchází poškození paměťových map, pádům a mizejícím assetům.
+            // Atomickou výměnu zařídí bezpečně samostatný proces při restartu launcheru.
+            const pendingAsar = path.join(resourcesDir, 'app.asar.pending');
+            fs.copyFileSync(tmpAsar, pendingAsar);
+            try { fs.unlinkSync(tmpAsar); } catch (_) {}
 
             const targetExe = process.execPath;
             return {

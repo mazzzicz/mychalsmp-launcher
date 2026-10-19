@@ -138,7 +138,7 @@
                         <div class="hero-character-stage">
                             <div class="stage-keyart-container" id="heroKeyartContainer">
                                 <div class="stage-keyart-layer stage-keyart-active" id="heroKeyartBg"
-                                    style="background-image: url('assets/keyarts/26.2.webp');"></div>
+                                    style="background-image: url('assets/keyarts/26.2.jpg');"></div>
                             </div>
                             <div class="stage-keyart-overlay"></div>
                             <div class="stage-bg-overlay"></div>
@@ -1146,26 +1146,35 @@
                         </div>
 
                         <!-- Výběr rozlišení -->
-                        <div class="form-group">
+                        <div class="form-group setting-resolution-group">
                             <label class="setting-section-label">Velikost herního okna</label>
                             <div class="resolution-options">
-                                <label class="radio-label">
+                                <label class="radio-label radio-label--res">
                                     <input type="radio" name="res" value="1280x720" checked>
-                                    <span>1280 × 720 (HD)</span>
+                                    <div class="radio-card-content">
+                                        <span class="res-title">1280 × 720</span>
+                                        <span class="res-sub">HD okno</span>
+                                    </div>
                                 </label>
-                                <label class="radio-label">
+                                <label class="radio-label radio-label--res">
                                     <input type="radio" name="res" value="1920x1080">
-                                    <span>1920 × 1080 (Full HD)</span>
+                                    <div class="radio-card-content">
+                                        <span class="res-title">1920 × 1080</span>
+                                        <span class="res-sub">Full HD okno</span>
+                                    </div>
                                 </label>
-                                <label class="radio-label">
+                                <label class="radio-label radio-label--res">
                                     <input type="radio" name="res" value="fullscreen">
-                                    <span>Celá obrazovka</span>
+                                    <div class="radio-card-content">
+                                        <span class="res-title">Celá obrazovka</span>
+                                        <span class="res-sub">Nativní monitor</span>
+                                    </div>
                                 </label>
                             </div>
                         </div>
 
                         <!-- Bezokrajové okno (Borderless Fullscreen) BETA -->
-                        <div class="form-group" style="margin-bottom: 0;">
+                        <div class="form-group setting-borderless-group">
                             <label class="perf-toggle-card perf-toggle-card--highlight">
                                 <input type="checkbox" id="checkBorderlessFullscreen">
                                 <div class="perf-toggle-info">
@@ -1209,11 +1218,11 @@
                                     <span class="setting-section-hint">Minecraft 26.x</span>
                                 </div>
                                 <div class="backend-options">
-                                    <label class="radio-label">
+                                    <label class="radio-label radio-label--backend">
                                         <input type="radio" name="graphicsBackend" value="default" checked>
                                         <span>Výchozí</span>
                                     </label>
-                                    <label class="radio-label">
+                                    <label class="radio-label radio-label--backend">
                                         <input type="radio" name="graphicsBackend" value="vulkan">
                                         <span class="backend-vulkan-label">
                                             <svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--blue" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -1224,7 +1233,7 @@
                                             Vulkan
                                         </span>
                                     </label>
-                                    <label class="radio-label">
+                                    <label class="radio-label radio-label--backend">
                                         <input type="radio" name="graphicsBackend" value="opengl">
                                         <span>OpenGL</span>
                                     </label>
