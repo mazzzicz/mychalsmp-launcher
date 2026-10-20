@@ -309,25 +309,29 @@ function registerServiceIpc({ getMainWindow }) {
 
                 const batLines = [
                     '@echo off',
-                    'setlocal EnableExtensions',
+                    'setlocal EnableExtensions EnableDelayedExpansion',
                     'chcp 65001 >nul',
                     `set "PID=${currentPid}"`,
                     `set "INSTALLER=${cleanInstaller}"`,
+                    'set "LOG_FILE=%TEMP%\\mychalsmp_update.log"',
+                    '',
+                    'echo [%date% %time%] Spoustim instalator: %INSTALLER% >> "%LOG_FILE%"',
                     '',
                     'set WAIT_COUNT=0',
                     ':wait_loop',
                     'tasklist /fi "PID eq %PID%" 2>nul | findstr /c:"%PID%" >nul',
                     'if %ERRORLEVEL% equ 0 (',
                     '    set /a WAIT_COUNT+=1',
-                    '    if %WAIT_COUNT% lss 20 (',
+                    '    if !WAIT_COUNT! lss 30 (',
                     '        ping 127.0.0.1 -n 2 >nul',
                     '        goto wait_loop',
                     '    )',
+                    '    taskkill /f /pid %PID% >nul 2>&1',
                     ')',
                     'ping 127.0.0.1 -n 2 >nul',
                     '',
-                    'start "" "%INSTALLER%"',
-                    '',
+                    'start "" "%INSTALLER%" /S',
+                    'echo [%date% %time%] Instalator spusten >> "%LOG_FILE%"',
                     '(goto) 2>nul & del "%~f0"',
                     'exit /b 0'
                 ];
@@ -343,7 +347,7 @@ function registerServiceIpc({ getMainWindow }) {
                     child.unref();
 
                     try { app.releaseSingleInstanceLock(); } catch (_) {}
-                    setTimeout(() => { app.exit(0); }, 450);
+                    setTimeout(() => { app.exit(0); }, 350);
                     return;
                 } catch (err) {
                     console.error('[UPDATER] Nelze zapsat/spustit instalátor:', err);
@@ -365,7 +369,6 @@ function registerServiceIpc({ getMainWindow }) {
                 const cleanPending = pendingPath.replace(/%/g, '%%');
                 const cleanExe = exePath.replace(/%/g, '%%');
                 const cleanExeDir = exeDir.replace(/%/g, '%%');
-                const cleanExeName = path.basename(exePath).replace(/%/g, '%%');
                 const cleanOldMask = isPortableSwap ? `${cleanTarget}.old.*` : path.join(path.dirname(cleanTarget), 'app.asar.old.*');
 
                 const batLines = [
@@ -378,16 +381,20 @@ function registerServiceIpc({ getMainWindow }) {
                     `set "EXE=${cleanExe}"`,
                     `set "EXE_DIR=${cleanExeDir}"`,
                     `set "PID=${currentPid}"`,
+                    'set "LOG_FILE=%TEMP%\\mychalsmp_update.log"',
+                    '',
+                    'echo [%date% %time%] Zahajuji vymenu souboru pro PID %PID% >> "%LOG_FILE%"',
                     '',
                     'set WAIT_COUNT=0',
                     ':wait_loop',
                     'tasklist /fi "PID eq %PID%" 2>nul | findstr /c:"%PID%" >nul',
                     'if %ERRORLEVEL% equ 0 (',
                     '    set /a WAIT_COUNT+=1',
-                    '    if !WAIT_COUNT! lss 20 (',
+                    '    if !WAIT_COUNT! lss 30 (',
                     '        ping 127.0.0.1 -n 2 >nul',
                     '        goto wait_loop',
                     '    )',
+                    '    taskkill /f /pid %PID% >nul 2>&1',
                     ')',
                     'ping 127.0.0.1 -n 2 >nul',
                     '',
@@ -403,31 +410,34 @@ function registerServiceIpc({ getMainWindow }) {
                     '        )',
                     '    )',
                     '',
-                    '    move /y "%PENDING%" "%TARGET%" >nul 2>&1',
+                    '    move /y "%PENDING%" "%TARGET%" >> "%LOG_FILE%" 2>&1',
                     '',
                     '    if exist "%PENDING%" (',
-                    '        copy /y "%PENDING%" "%TARGET%" >nul 2>&1',
+                    '        copy /y "%PENDING%" "%TARGET%" >> "%LOG_FILE%" 2>&1',
                     '        if exist "%TARGET%" (',
                     '            del /f /q "%PENDING%" >nul 2>&1',
                     '        )',
                     '    )',
                     '',
                     '    if not exist "%PENDING%" if exist "%TARGET%" (',
+                    '        echo [%date% %time%] Vymena souboru uspesna >> "%LOG_FILE%"',
                     '        goto launch_app',
                     '    )',
                     ')',
                     '',
-                    'if !SWAP_ATTEMPTS! equ 10 (',
+                    'if !SWAP_ATTEMPTS! equ 5 (',
                     '    if exist "%PENDING%" (',
-                    '        powershell.exe -NoProfile -Command "Start-Process cmd.exe -ArgumentList \'/c move /y `"%PENDING%`" `"%TARGET%`"`" -Verb RunAs -WindowStyle Hidden" >nul 2>&1',
+                    '        echo [%date% %time%] Pokus o elevovany presun s pravy spravce >> "%LOG_FILE%"',
+                    '        powershell.exe -NoProfile -Command "Start-Process cmd.exe -ArgumentList \'/c move /y `"%PENDING%`" `"%TARGET%`"`" -Verb RunAs -WindowStyle Hidden -Wait" >nul 2>&1',
                     '        ping 127.0.0.1 -n 2 >nul',
                     '        if not exist "%PENDING%" if exist "%TARGET%" (',
+                    '            echo [%date% %time%] Elevovany presun uspesny >> "%LOG_FILE%"',
                     '            goto launch_app',
                     '        )',
                     '    )',
                     ')',
                     '',
-                    'if !SWAP_ATTEMPTS! lss 30 (',
+                    'if !SWAP_ATTEMPTS! lss 25 (',
                     '    ping 127.0.0.1 -n 2 >nul',
                     '    goto swap_loop',
                     ')',
@@ -435,9 +445,9 @@ function registerServiceIpc({ getMainWindow }) {
                     ':launch_app',
                     'ping 127.0.0.1 -n 2 >nul',
                     `del /f /q "${cleanOldMask}" >nul 2>&1`,
-                    `taskkill /f /im "${cleanExeName}" >nul 2>&1`,
                     'ping 127.0.0.1 -n 2 >nul',
                     'cd /d "%EXE_DIR%"',
+                    'echo [%date% %time%] Spoustim %EXE% >> "%LOG_FILE%"',
                     'start "" /d "%EXE_DIR%" "%EXE%" --no-sandbox',
                     'ping 127.0.0.1 -n 2 >nul',
                     '(goto) 2>nul & del "%~f0"',
@@ -456,7 +466,7 @@ function registerServiceIpc({ getMainWindow }) {
                     child.unref();
 
                     try { app.releaseSingleInstanceLock(); } catch (_) {}
-                    setTimeout(() => { app.exit(0); }, 450);
+                    setTimeout(() => { app.exit(0); }, 350);
                     return;
                 } catch (err) {
                     console.error('[UPDATER] Nelze zapsat Windows swap skript:', err);
@@ -488,58 +498,101 @@ function registerServiceIpc({ getMainWindow }) {
             }
 
             const resourcesDir = getResourcesDir();
-            const pendingAsar = path.join(resourcesDir, 'app.asar.pending');
+            let pendingAsar = path.join(resourcesDir, 'app.asar.pending');
+            if (!fs.existsSync(pendingAsar)) {
+                const tmpPending = path.join(os.tmpdir(), 'mychalsmp_app.asar.pending');
+                if (fs.existsSync(tmpPending)) {
+                    pendingAsar = tmpPending;
+                }
+            }
             const targetAsar = path.join(resourcesDir, 'app.asar');
             const currentPid = process.pid;
 
             let exeToRun = process.execPath;
             let argsToRun = ['--no-sandbox'];
 
-            if (fs.existsSync(pendingAsar) && fs.existsSync(targetExe)) {
-                exeToRun = targetExe;
-                argsToRun = ['--no-sandbox'];
-            } else if (!app.isPackaged || process.execPath.includes('node_modules')) {
+            if (!app.isPackaged || process.execPath.includes('node_modules')) {
                 exeToRun = process.execPath;
                 argsToRun = [projectRoot, '--no-sandbox'];
             } else if (process.env.APPIMAGE && fs.existsSync(process.env.APPIMAGE)) {
                 exeToRun = process.env.APPIMAGE;
                 argsToRun = ['--no-sandbox'];
+            } else if (process.execPath && !process.execPath.startsWith('/tmp') && fs.existsSync(process.execPath)) {
+                exeToRun = process.execPath;
+                argsToRun = ['--no-sandbox'];
             } else if (fs.existsSync(targetExe)) {
                 exeToRun = targetExe;
                 argsToRun = ['--no-sandbox'];
-            } else if (fs.existsSync(process.execPath)) {
-                exeToRun = process.execPath;
-                argsToRun = ['--no-sandbox'];
             }
+
+            const envExports = [
+                process.env.DISPLAY ? `export DISPLAY="${process.env.DISPLAY}"` : '',
+                process.env.WAYLAND_DISPLAY ? `export WAYLAND_DISPLAY="${process.env.WAYLAND_DISPLAY}"` : '',
+                process.env.XAUTHORITY ? `export XAUTHORITY="${process.env.XAUTHORITY}"` : '',
+                process.env.XDG_RUNTIME_DIR ? `export XDG_RUNTIME_DIR="${process.env.XDG_RUNTIME_DIR}"` : '',
+                process.env.DBUS_SESSION_BUS_ADDRESS ? `export DBUS_SESSION_BUS_ADDRESS="${process.env.DBUS_SESSION_BUS_ADDRESS}"` : ''
+            ].filter(Boolean).join('\n');
+
+            const logPath = path.join(os.tmpdir(), 'mychalsmp_update.log');
 
             const bashScript = [
                 '#!/bin/bash',
+                envExports,
                 `TARGET_PID=${currentPid}`,
                 `TARGET_ASAR="${targetAsar}"`,
                 `PENDING_ASAR="${pendingAsar}"`,
                 `RESOURCES_DIR="${resourcesDir}"`,
                 `TARGET_EXE="${exeToRun}"`,
+                `LOG_FILE="${logPath}"`,
                 '',
+                'echo "[$(date)] Updater runner spusten pro PID $TARGET_PID" >> "$LOG_FILE"',
+                '',
+                'WAIT_COUNT=0',
                 'while kill -0 "$TARGET_PID" 2>/dev/null; do',
-                '    sleep 0.05',
+                '    sleep 0.1',
+                '    WAIT_COUNT=$((WAIT_COUNT + 1))',
+                '    if [ "$WAIT_COUNT" -ge 100 ]; then',
+                '        echo "[$(date)] Vyprsel limit cekani na PID $TARGET_PID, vynucuji ukonceni" >> "$LOG_FILE"',
+                '        kill -9 "$TARGET_PID" 2>/dev/null || true',
+                '        break',
+                '    fi',
                 'done',
                 'sleep 0.3',
                 '',
                 'if [ -f "$PENDING_ASAR" ]; then',
+                '    echo "[$(date)] Nalezen pending asar: $PENDING_ASAR" >> "$LOG_FILE"',
                 '    if [ -L "$RESOURCES_DIR/app" ]; then',
                 '        rm -f "$RESOURCES_DIR/app" 2>/dev/null || true',
                 '    fi',
-                '    mv -f "$PENDING_ASAR" "$TARGET_ASAR" 2>/dev/null || cp -f "$PENDING_ASAR" "$TARGET_ASAR" 2>/dev/null',
-                '    rm -f "$PENDING_ASAR" 2>/dev/null',
+                '    if [ -f "$TARGET_ASAR" ]; then',
+                '        cp -f "$TARGET_ASAR" "${TARGET_ASAR}.bak" 2>/dev/null || true',
+                '    fi',
+                '    if mv -f "$PENDING_ASAR" "$TARGET_ASAR" >> "$LOG_FILE" 2>&1 || cp -f "$PENDING_ASAR" "$TARGET_ASAR" >> "$LOG_FILE" 2>&1; then',
+                '        echo "[$(date)] Uspech: app.asar byl zaktualizovan" >> "$LOG_FILE"',
+                '        rm -f "$PENDING_ASAR" 2>/dev/null || true',
+                '    else',
+                '        echo "[$(date)] CHYBA: Nelze prepsat $TARGET_ASAR" >> "$LOG_FILE"',
+                '    fi',
                 'fi',
                 '',
-                'rm -rf "$HOME/.config/mychalsmp-launcher/Singleton"* 2>/dev/null || true',
-                'rm -rf "$HOME/.config/SMPClient/Singleton"* 2>/dev/null || true',
-                'sleep 0.4',
+                '# Pojistka: deaktivace chrome-sandbox pokud neni suid root (zabranuje SIGTRAP crashi)',
+                'CHROME_SANDBOX="$(dirname "$TARGET_EXE")/chrome-sandbox"',
+                'if [ -f "$CHROME_SANDBOX" ] && [ ! -u "$CHROME_SANDBOX" ]; then',
+                '    mv -f "$CHROME_SANDBOX" "${CHROME_SANDBOX}.disabled" 2>/dev/null || true',
+                'fi',
+                '',
+                '# Vymazat zámky jedné instance',
+                'rm -f "$HOME/.config/mychalsmp-launcher/Singleton"* 2>/dev/null || true',
+                'rm -f "$HOME/.config/SMPClient/Singleton"* 2>/dev/null || true',
+                'sleep 0.3',
+                '',
+                'echo "[$(date)] Spoustim: $TARGET_EXE ${argsToRun.join(\' \')}" >> "$LOG_FILE"',
                 'cd "$(dirname "$TARGET_EXE")" || true',
-                `nohup "$TARGET_EXE" ${argsToRun.map(a => `"${a}"`).join(' ')} </dev/null >/dev/null 2>&1 &`,
+                `nohup "$TARGET_EXE" ${argsToRun.map(a => `"${a}"`).join(' ')} >> "$LOG_FILE" 2>&1 &`,
+                'NEW_PID=$!',
+                'echo "[$(date)] Proces spusten pod PID $NEW_PID" >> "$LOG_FILE"',
                 'disown -a 2>/dev/null || true',
-                'sleep 0.6',
+                'sleep 0.5',
                 'exit 0'
             ].join('\n');
 

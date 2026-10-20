@@ -618,13 +618,17 @@ function startMainApplication() {
 }
 
 if (!gotTheLock) {
-    setTimeout(() => {
+    let retries = 0;
+    const checkLockInterval = setInterval(() => {
+        retries++;
         if (app.requestSingleInstanceLock()) {
+            clearInterval(checkLockInterval);
             startMainApplication();
-        } else {
+        } else if (retries >= 8) {
+            clearInterval(checkLockInterval);
             app.quit();
         }
-    }, 600);
+    }, 300);
 } else {
     startMainApplication();
 }

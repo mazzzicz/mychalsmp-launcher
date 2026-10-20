@@ -572,10 +572,17 @@ async function applyUpdate(assetUrl, onProgress) {
                     skipped += sub.skipped;
                 } else if (entry.isFile()) {
                     let needsCopy = true;
-                    if (fs.existsSync(dstPath)) {
+                    // Pro app.asar nepíšeme do živého balíčku za chodu, ale do app.asar.pending,
+                    // aby atomickou výměnu po ukončení procesu bezpečně provedl restart skript.
+                    let targetDst = dstPath;
+                    if (entry.name === 'app.asar') {
+                        targetDst = path.join(path.dirname(dstPath), 'app.asar.pending');
+                    }
+
+                    if (fs.existsSync(targetDst)) {
                         try {
                             const srcStat = fs.statSync(srcPath);
-                            const dstStat = fs.statSync(dstPath);
+                            const dstStat = fs.statSync(targetDst);
                             if (srcStat.size === dstStat.size) {
                                 needsCopy = false;
                                 skipped++;
@@ -584,10 +591,14 @@ async function applyUpdate(assetUrl, onProgress) {
                     }
                     if (needsCopy) {
                         try {
-                            safeCopyFile(srcPath, dstPath);
+                            const srcStat = fs.statSync(srcPath);
+                            safeCopyFile(srcPath, targetDst);
+                            if (srcStat.mode) {
+                                try { fs.chmodSync(targetDst, srcStat.mode); } catch (_) {}
+                            }
                             modified++;
                         } catch (copyErr) {
-                            console.warn(`[UPDATER] Nelze přepsat ${dstPath}:`, copyErr.message);
+                            console.warn(`[UPDATER] Nelze přepsat ${targetDst}:`, copyErr.message);
                         }
                     }
                 }
@@ -599,6 +610,14 @@ async function applyUpdate(assetUrl, onProgress) {
 
         const syncStats = await syncDirDiffAsync(sourceDir, installDir);
         console.log(`[DIFF UPDATER] Synchronizováno ${syncStats.modified} změněných souborů, ${syncStats.skipped} nezměněných knihoven zachováno.`);
+
+        // Pojistka: deaktivace chrome-sandbox pokud není suid root (zabraňuje SIGTRAP crashi v Electronu na Linuxu)
+        const sandboxBin = path.join(installDir, 'chrome-sandbox');
+        if (fs.existsSync(sandboxBin)) {
+            try {
+                fs.renameSync(sandboxBin, path.join(installDir, 'chrome-sandbox.disabled'));
+            } catch (_) {}
+        }
 
         let targetExe = path.join(installDir, 'SMPClient');
         if (!fs.existsSync(targetExe)) {
