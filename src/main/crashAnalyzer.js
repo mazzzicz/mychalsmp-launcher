@@ -13,6 +13,17 @@ const nativeLoader = require('./nativeLoader');
  * 1-click automatic fixes.
  */
 
+// Klíčové systémové módy, které nesmí být nikdy automaticky vyřazeny jako "nekompatibilní"
+const PROTECTED_CORE_MODS = new Set([
+    'sodium',
+    'iris',
+    'fabric-api',
+    'fabric_api',
+    'fabricapi',
+    'lithium',
+    'selfnametag'
+]);
+
 /**
  * Searches for the newest crash report in gameDir/crash-reports
  */
@@ -522,7 +533,10 @@ function autoResolveIncompatibleMods(gameDir, combinedText) {
     const entrypointRegex = /Could not execute entrypoint stage '[^']+' due to errors, provided by '([^']+)'/gi;
     while ((m = entrypointRegex.exec(combinedText)) !== null) {
         const id = m[1];
-        if (!['minecraft', 'fabric', 'fabricloader'].includes(id.toLowerCase()) && !culprits.some(c => c.id.toLowerCase() === id.toLowerCase())) {
+        const idLower = id.toLowerCase();
+        if (!['minecraft', 'fabric', 'fabricloader'].includes(idLower) &&
+            !PROTECTED_CORE_MODS.has(idLower) &&
+            !culprits.some(c => c.id.toLowerCase() === idLower)) {
             culprits.push({
                 name: id,
                 id,
@@ -535,7 +549,10 @@ function autoResolveIncompatibleMods(gameDir, combinedText) {
     const mixinRegex = /in\s+\[([a-zA-Z0-9_\-]+)\.mixins\.json/gi;
     while ((m = mixinRegex.exec(combinedText)) !== null) {
         const id = m[1];
-        if (!['minecraft', 'fabric', 'fabricloader'].includes(id.toLowerCase()) && !culprits.some(c => c.id.toLowerCase() === id.toLowerCase())) {
+        const idLower = id.toLowerCase();
+        if (!['minecraft', 'fabric', 'fabricloader'].includes(idLower) &&
+            !PROTECTED_CORE_MODS.has(idLower) &&
+            !culprits.some(c => c.id.toLowerCase() === idLower)) {
             culprits.push({
                 name: id,
                 id,
@@ -621,6 +638,12 @@ function autoResolveIncompatibleMods(gameDir, combinedText) {
     // Automatically disable matched jar files by renaming to .disabled
     const disabledMods = [];
     for (const c of matchedCulprits) {
+        const cId = (c.id || '').toLowerCase();
+        const cName = (c.name || '').toLowerCase();
+        if (PROTECTED_CORE_MODS.has(cId) || PROTECTED_CORE_MODS.has(cName)) {
+            console.warn(`[CRASH ANALYZER] Ochrana jádra: Systémový mód ${c.matchedFile || cId} nebude automaticky deaktivován.`);
+            continue;
+        }
         if (c.fullPath && fs.existsSync(c.fullPath)) {
             try {
                 const targetDisabled = c.fullPath + '.disabled';
@@ -875,6 +898,42 @@ async function analyzeCrash(gameDir, exitCode = 1, recentMemoryLogs = [], launch
                 }
             };
         }
+    }
+
+    // ── Diagnostic Rule: Sodium Graphics PreLaunch Crash ───────────────────────
+    const isSodiumPreLaunch =
+        (/Could not execute entrypoint stage 'preLaunch' due to errors, provided by 'sodium'/i.test(combinedText) ||
+         /SodiumPreLaunch/i.test(combinedText)) &&
+        !combinedText.includes('Incompatible mods found!');
+
+    if (isSodiumPreLaunch) {
+        let sodiumExcerpt = '';
+        const sodIdx = combinedText.indexOf("provided by 'sodium'");
+        if (sodIdx !== -1) {
+            sodiumExcerpt = combinedText.substring(Math.max(0, sodIdx - 50), sodIdx + 750).trim();
+        } else {
+            const preIdx = combinedText.indexOf("SodiumPreLaunch");
+            if (preIdx !== -1) {
+                sodiumExcerpt = combinedText.substring(Math.max(0, preIdx - 50), preIdx + 750).trim();
+            }
+        }
+
+        return {
+            hasCrash: true,
+            exitCode,
+            reportPath,
+            fixed: false,
+            title: 'Chyba grafického ovladače (Sodium)',
+            severity: 'critical',
+            description: 'Mód Sodium (grafické jádro hry) nemohl inicializovat grafický adaptér v předsouborové fázi (SodiumPreLaunch). K této chybě dochází, pokud grafická karta nemá aktuální ovladače od výrobce (NVIDIA, AMD, Intel), nebo pokud do hry zasahuje externí program s překryvem obrazu (např. RivaTuner Statistics Server, MSI Afterburner, Discord overlay).',
+            recommendation: '1. Aktualizuj ovladač grafické karty přímo ze stránek výrobce (NVIDIA / AMD / Intel).\n2. Vypni programy s překryvem obrazu (RivaTuner RTSS, Afterburner).\n3. U notebooků se 2 grafikami nastav ve Windows pro javaw.exe vysoký výkon (dedikovanou GPU).',
+            logExcerpt: sodiumExcerpt || logExcerpt,
+            autoFix: {
+                id: 'BYPASS_SODIUM_DRIVER_CHECKS',
+                label: '⚡ Zkusit obejít kontroly ovladače',
+                description: 'Přidá parametry pro přeskočení striktních kontrol kompatibility GPU v Sodium a restartuje hru.'
+            }
+        };
     }
 
     // ── Diagnostic Rule 0: Incompatible / Conflicting Mods (Smart Auto-Fix) ────
@@ -1359,6 +1418,63 @@ async function executeCrashFix(autoFix, gameDir, config, saveConfigFn, detectJav
     }
 
     switch (autoFix.id) {
+        case 'BYPASS_SODIUM_DRIVER_CHECKS': {
+            // 1. Obnovíme dříve deaktivované Sodium a Iris, aby je mohl hráč otestovat s novými flagy
+            const modsDir = path.join(gameDir, 'mods');
+            if (fs.existsSync(modsDir)) {
+                try {
+                    const mFiles = fs.readdirSync(modsDir);
+                    for (const f of mFiles) {
+                        const l = f.toLowerCase();
+                        if ((l.startsWith('sodium-') || l.startsWith('sodium_') || l === 'sodium.jar.disabled') && l.endsWith('.disabled')) {
+                            const srcP = path.join(modsDir, f);
+                            const dstP = srcP.replace(/\.disabled$/i, '');
+                            if (!fs.existsSync(dstP)) {
+                                fs.renameSync(srcP, dstP);
+                            }
+                        }
+                        if ((l.startsWith('iris-') || l.startsWith('iris_') || l === 'iris.jar.disabled') && l.endsWith('.disabled')) {
+                            const srcP = path.join(modsDir, f);
+                            const dstP = srcP.replace(/\.disabled$/i, '');
+                            if (!fs.existsSync(dstP)) {
+                                fs.renameSync(srcP, dstP);
+                            }
+                        }
+                    }
+                } catch (_) {}
+            }
+
+            // 2. Přidáme JVM argumenty obcházející bugchecky Sodium
+            const sodiumFlags = [
+                '-Dsodium.checks.issue2561=false',
+                '-Dsodium.checks.issue899=false',
+                '-Dsodium.checks.issue1486=false',
+                '-Dsodium.checks.issue2048=false',
+                '-Dsodium.checks.issue2637=false'
+            ];
+            let currentArgs = config.jvmArgs || [];
+            if (typeof currentArgs === 'string') {
+                currentArgs = currentArgs.split(/\s+/).filter(Boolean);
+            }
+            if (!Array.isArray(currentArgs)) {
+                currentArgs = [];
+            }
+            for (const flag of sodiumFlags) {
+                const prefix = flag.split('=')[0];
+                if (!currentArgs.some(a => typeof a === 'string' && a.startsWith(prefix))) {
+                    currentArgs.push(flag);
+                }
+            }
+            config.jvmArgs = currentArgs;
+            if (saveConfigFn) saveConfigFn({ jvmArgs: config.jvmArgs });
+            return {
+                success: true,
+                relaunch: true,
+                message: 'Byla nastavena pravidla pro přeskočení kontrol grafického ovladače v Sodium. Spouštím hru znovu...',
+                updatedConfig: { jvmArgs: config.jvmArgs }
+            };
+        }
+
         case 'SET_RAM_6GB': {
             const newRam = autoFix.targetRam || 6;
             config.ramMax = Math.max(config.ramMax || 4, newRam);

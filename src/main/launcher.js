@@ -3097,28 +3097,15 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
 
     let files = [];
     try { files = fs.readdirSync(modsDir); } catch (_) { return; }
-
-    // 1. Obnovíme VŠECHNY dříve deaktivované módy (.disabled) zpět na plnohodnotné .jar
-    for (const f of files) {
-        if (f.toLowerCase().endsWith('.disabled')) {
-            const orig = path.join(modsDir, f);
-            const enabled = orig.replace(/\.disabled$/i, '');
-            if (!fs.existsSync(enabled)) {
-                try {
-                    fs.renameSync(orig, enabled);
-                    if (typeof onLog === 'function') {
-                        onLog(`[ZÁVISLOSTI] 🔄 Obnoven mód: ${path.basename(enabled)}`);
-                    }
-                } catch (_) { }
-            } else {
-                try { fs.unlinkSync(orig); } catch (_) { }
-            }
-        }
-    }
-
-    try { files = fs.readdirSync(modsDir); } catch (_) { return; }
     const jarFiles = files.filter(f => f.toLowerCase().endsWith('.jar'));
     if (jarFiles.length === 0) return;
+
+    // Ověříme, zda není Sodium explicitně deaktivováno (.disabled)
+    const isSodiumDisabled = files.some(f => {
+        const l = f.toLowerCase();
+        return (l.startsWith('sodium-') || l.startsWith('sodium_') || l === 'sodium.jar.disabled') &&
+               l.endsWith('.disabled') && !l.includes('extra') && !l.includes('options');
+    });
 
     let downloadModOrPack;
     try {
@@ -3180,8 +3167,24 @@ async function ensureProfileModsDependencies(gameInstanceDir, config, onLog) {
 
     const targetVersion = config.version || '26.2';
 
-    // 2. KLÍČOVÁ KONTROLA: Iris na Minecraftu 26.2 striktně vyžaduje Sodium 0.9.x
-    if (hasIris) {
+    // 2. KLÍČOVÁ KONTROLA: Iris na Minecraftu striktně vyžaduje Sodium
+    if (hasIris && isSodiumDisabled) {
+        // Pokud je Sodium záměrně deaktivováno (.disabled), musíme dočasně zakázat i Iris,
+        // jinak Iris okamžitě způsobí pád Fabricu kvůli chybějícímu Sodium.
+        if (typeof onLog === 'function') {
+            onLog('[ZÁVISLOSTI] ⚠️ Sodium je deaktivováno (.disabled) – dočasně deaktivuji Iris, aby hra nespadla na chybějící závislosti.');
+        }
+        for (const f of jarFiles) {
+            const l = f.toLowerCase();
+            if (l.startsWith('iris-') || l.startsWith('iris_') || l === 'iris.jar') {
+                try {
+                    const fullP = path.join(modsDir, f);
+                    fs.renameSync(fullP, fullP + '.disabled');
+                } catch (_) {}
+            }
+        }
+        hasIris = false;
+    } else if (hasIris && !isSodiumDisabled) {
         const sodiumNeedsUpdate = !sodiumMod ||
             (!sodiumMod.version.startsWith('0.9') && !sodiumMod.filename.toLowerCase().includes('0.9'));
 
