@@ -3179,7 +3179,8 @@ ipcMain.handle('restart-launcher', () => {
         const pendingAsar = path.join(resourcesDir, 'app.asar.pending');
         const targetAsar = path.join(resourcesDir, 'app.asar');
 
-        // Kontrola také pro přenosnou (portable) verzi launcheru
+        // Kontrola přenosné (portable) verze launcheru
+        const isPortable = !!process.env.PORTABLE_EXECUTABLE_FILE;
         const portableTarget = process.env.PORTABLE_EXECUTABLE_FILE;
         const portablePending = portableTarget ? portableTarget + '.pending' : null;
         const hasPortablePending = portablePending && fs.existsSync(portablePending);
@@ -3190,121 +3191,82 @@ ipcMain.handle('restart-launcher', () => {
         const hasInstallerPending = fs.existsSync(pendingInstaller);
 
         if (hasInstallerPending) {
-            const { spawn } = require('child_process');
+            const currentPid = process.pid;
+            const timestamp = Date.now();
+            const batPath = path.join(os.tmpdir(), `mychalsmp_install_${timestamp}.bat`);
+            const cleanInstaller = pendingInstaller.replace(/%/g, '%%');
+
+            const batLines = [
+                '@echo off',
+                'setlocal EnableExtensions',
+                'chcp 65001 >nul',
+                `set "PID=${currentPid}"`,
+                `set "INSTALLER=${cleanInstaller}"`,
+                '',
+                ':: 1. Počkáme na úplné ukončení stávajícího procesu launcheru',
+                'set WAIT_COUNT=0',
+                ':wait_loop',
+                'tasklist /fi "PID eq %PID%" 2>nul | findstr /c:"%PID%" >nul',
+                'if %ERRORLEVEL% equ 0 (',
+                '    set /a WAIT_COUNT+=1',
+                '    if %WAIT_COUNT% lss 20 (',
+                '        ping 127.0.0.1 -n 2 >nul',
+                '        goto wait_loop',
+                '    )',
+                ')',
+                'ping 127.0.0.1 -n 2 >nul',
+                '',
+                ':: 2. Spustíme instalační balíček',
+                'start "" "%INSTALLER%"',
+                '',
+                ':: 3. Samomazání',
+                '(goto) 2>nul & del "%~f0"',
+                'exit /b 0'
+            ];
+
             try {
-                spawn(pendingInstaller, [], { detached: true, stdio: 'ignore' }).unref();
+                fs.writeFileSync(batPath, batLines.join('\r\n') + '\r\n', 'utf8');
+                const { spawn } = require('child_process');
+                const child = spawn('cmd.exe', ['/c', 'start', '""', '/min', batPath], {
+                    detached: true,
+                    stdio: 'ignore',
+                    windowsHide: true
+                });
+                child.unref();
+
+                try {
+                    app.releaseSingleInstanceLock();
+                } catch (_) {}
+
+                setTimeout(() => {
+                    app.exit(0);
+                }, 450);
+                return;
             } catch (err) {
-                console.error('[UPDATER] Nelze spustit instalátor aktualizace:', err);
+                console.error('[UPDATER] Nelze zapsat/spustit instalátor:', err);
             }
-            app.exit(0);
-            return;
         }
 
         if (hasAsarPending || hasPortablePending) {
             const currentPid = process.pid;
-            const isPortableSwap = hasPortablePending && !hasAsarPending;
+            const isPortableSwap = isPortable && hasPortablePending;
             const targetPath = isPortableSwap ? portableTarget : targetAsar;
             const pendingPath = isPortableSwap ? portablePending : pendingAsar;
             const exePath = portableTarget || process.execPath;
             const exeDir = path.dirname(exePath);
 
             const timestamp = Date.now();
-            const ps1Path = path.join(os.tmpdir(), `mychalsmp_update_${timestamp}.ps1`);
             const batPath = path.join(os.tmpdir(), `mychalsmp_update_${timestamp}.bat`);
 
-            // PowerShell skript: Čeká na ukončení PID a bezpečně atomicky přemístí soubor
-            const escapePs = (str) => (str || '').replace(/'/g, "''");
-            const ps1Lines = [
-                'param()',
-                `$targetPid = ${currentPid}`,
-                `$targetPath = '${escapePs(targetPath)}'`,
-                `$pendingPath = '${escapePs(pendingPath)}'`,
-                `$exePath = '${escapePs(exePath)}'`,
-                `$exeDir = '${escapePs(exeDir)}'`,
-                '',
-                '# 1. Počkáme na úplné ukončení hlavního Electron procesu',
-                'try {',
-                '    $proc = Get-Process -Id $targetPid -ErrorAction SilentlyContinue',
-                '    if ($proc) {',
-                '        $null = $proc.WaitForExit(15000)',
-                '    }',
-                '} catch {}',
-                '',
-                '# Bezpečnostní prodleva pro uvolnění kernel zámků Windows (NTFS)',
-                'Start-Sleep -Milliseconds 800',
-                '',
-                '# Ukončíme případné zbývající podprocesy launcheru (gpu, crashpad), které by držely zámek',
-                'try {',
-                '    $exeName = [System.IO.Path]::GetFileNameWithoutExtension($exePath)',
-                '    if ($exeName) {',
-                '        Get-Process -Name $exeName -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne $PID } | Stop-Process -Force -ErrorAction SilentlyContinue',
-                '    }',
-                '} catch {}',
-                'Start-Sleep -Milliseconds 400',
-                '',
-                '# 2. Výměna souborů s atomickým přejmenováním (až 30 pokusů, 500ms interval)',
-                '$swapped = $false',
-                'for ($i = 0; $i -lt 30; $i++) {',
-                '    try {',
-                '        if (-not (Test-Path -LiteralPath $pendingPath)) {',
-                '            break',
-                '        }',
-                '        if (Test-Path -LiteralPath $targetPath) {',
-                '            $bakPath = $targetPath + ".bak." + (Get-Date -UFormat %s)',
-                '            try {',
-                '                Rename-Item -LiteralPath $targetPath -NewName ([System.IO.Path]::GetFileName($bakPath)) -Force -ErrorAction Stop',
-                '                Remove-Item -LiteralPath $bakPath -Force -ErrorAction SilentlyContinue',
-                '            } catch {',
-                '                Remove-Item -LiteralPath $targetPath -Force -ErrorAction SilentlyContinue',
-                '            }',
-                '        }',
-                '        Move-Item -LiteralPath $pendingPath -Destination $targetPath -Force -ErrorAction Stop',
-                '        $swapped = $true',
-                '        break',
-                '    } catch {',
-                '        Start-Sleep -Milliseconds 500',
-                '    }',
-                '}',
-                '',
-                '# Fallback přes .NET File Copy, pokud Move-Item selhal',
-                'if (-not $swapped -and (Test-Path -LiteralPath $pendingPath)) {',
-                '    for ($i = 0; $i -lt 15; $i++) {',
-                '        try {',
-                '            [System.IO.File]::Copy($pendingPath, $targetPath, $true)',
-                '            Remove-Item -LiteralPath $pendingPath -Force -ErrorAction SilentlyContinue',
-                '            $swapped = $true',
-                '            break',
-                '        } catch {',
-                '            Start-Sleep -Milliseconds 500',
-                '        }',
-                '    }',
-                '}',
-                '',
-                '# 3. Spuštění aktualizovaného launcheru',
-                'try {',
-                '    Start-Process -FilePath $exePath -WorkingDirectory $exeDir',
-                '} catch {',
-                '    cmd.exe /c start "" "$exePath"',
-                '}',
-                '',
-                '# Úklid skriptu',
-                'try {',
-                '    Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue',
-                '} catch {}',
-                'exit 0'
-            ];
-            const ps1Content = ps1Lines.join('\r\n') + '\r\n';
-
-            // Escapování procent pro bezpečné použití v dávkovém souboru Windows cmd
             const cleanTarget = targetPath.replace(/%/g, '%%');
             const cleanPending = pendingPath.replace(/%/g, '%%');
             const cleanExe = exePath.replace(/%/g, '%%');
             const cleanExeDir = exeDir.replace(/%/g, '%%');
-            const cleanPs1 = ps1Path.replace(/%/g, '%%');
+            const cleanOldMask = isPortableSwap ? `${cleanTarget}.old.*` : path.join(path.dirname(cleanTarget), 'app.asar.old.*');
 
             const batLines = [
                 '@echo off',
-                'setlocal EnableExtensions',
+                'setlocal EnableExtensions EnableDelayedExpansion',
                 'chcp 65001 >nul',
                 '',
                 `set "TARGET=${cleanTarget}"`,
@@ -3312,81 +3274,105 @@ ipcMain.handle('restart-launcher', () => {
                 `set "EXE=${cleanExe}"`,
                 `set "EXE_DIR=${cleanExeDir}"`,
                 `set "PID=${currentPid}"`,
-                `set "PS1=${cleanPs1}"`,
                 '',
-                ':: 1. Primární spolehlivá metoda: PowerShell skript',
-                'if exist "%PS1%" powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%PS1%" >nul 2>&1',
-                'if not errorlevel 1 (',
-                '    if exist "%PS1%" del /f /q "%PS1%" >nul 2>&1',
-                '    (goto) 2>nul & del "%~f0" >nul 2>&1',
-                '    exit /b 0',
-                ')',
-                '',
-                ':: 2. Záložní CMD řešení pokud byl PowerShell blokován zásadami systému',
-                ':wait_proc',
-                'tasklist /fi "PID eq %PID%" 2>nul | findstr "%PID%" >nul',
+                ':: 1. Počkáme, až se původní proces launcheru úplně ukončí (max 20 sekund)',
+                'set WAIT_COUNT=0',
+                ':wait_loop',
+                'tasklist /fi "PID eq %PID%" 2>nul | findstr /c:"%PID%" >nul',
                 'if %ERRORLEVEL% equ 0 (',
-                '    ping 127.0.0.1 -n 2 >nul',
-                '    goto wait_proc',
+                '    set /a WAIT_COUNT+=1',
+                '    if !WAIT_COUNT! lss 20 (',
+                '        ping 127.0.0.1 -n 2 >nul',
+                '        goto wait_loop',
+                '    )',
                 ')',
+                '',
+                ':: Krátká prodleva pro úplné uvolnění NTFS zámků v systému Windows',
                 'ping 127.0.0.1 -n 2 >nul',
                 '',
-                ':: Smyčka pro výměnu souborů (až 30 pokusů, 1s interval přes ping)',
-                'set ATTEMPTS=0',
+                ':: 2. Atomická výměna souborů s ošetřením Windows zámků (až 30 pokusů)',
+                'set SWAP_ATTEMPTS=0',
                 ':swap_loop',
-                'set /a ATTEMPTS+=1',
+                'set /a SWAP_ATTEMPTS+=1',
                 '',
                 'if exist "%PENDING%" (',
                 '    if exist "%TARGET%" (',
                 '        del /f /q "%TARGET%" >nul 2>&1',
-                '    )',
-                '    if not exist "%TARGET%" (',
-                '        move /y "%PENDING%" "%TARGET%" >nul 2>&1',
-                '        if not exist "%PENDING%" (',
-                '            goto launch_app',
+                '        if exist "%TARGET%" (',
+                '            ren "%TARGET%" "app.asar.old.!RANDOM!" >nul 2>&1',
                 '        )',
                 '    )',
-                '    copy /y "%PENDING%" "%TARGET%" >nul 2>&1',
-                '    if exist "%TARGET%" (',
-                '        del /f /q "%PENDING%" >nul 2>&1',
+                '',
+                '    move /y "%PENDING%" "%TARGET%" >nul 2>&1',
+                '',
+                '    if exist "%PENDING%" (',
+                '        copy /y "%PENDING%" "%TARGET%" >nul 2>&1',
+                '        if exist "%TARGET%" (',
+                '            del /f /q "%PENDING%" >nul 2>&1',
+                '        )',
+                '    )',
+                '',
+                '    if not exist "%PENDING%" if exist "%TARGET%" (',
                 '        goto launch_app',
                 '    )',
                 ')',
                 '',
-                'if %ATTEMPTS% lss 30 (',
+                ':: Pokud move selhává kvůli administrátorským právům (např. Program Files):',
+                'if !SWAP_ATTEMPTS! equ 10 (',
+                '    if exist "%PENDING%" (',
+                '        powershell.exe -NoProfile -Command "Start-Process cmd.exe -ArgumentList \'/c move /y `"%PENDING%`" `"%TARGET%`"`" -Verb RunAs -WindowStyle Hidden" >nul 2>&1',
+                '        ping 127.0.0.1 -n 2 >nul',
+                '        if not exist "%PENDING%" if exist "%TARGET%" (',
+                '            goto launch_app',
+                '        )',
+                '    )',
+                ')',
+                '',
+                'if !SWAP_ATTEMPTS! lss 30 (',
                 '    ping 127.0.0.1 -n 2 >nul',
                 '    goto swap_loop',
                 ')',
                 '',
                 ':launch_app',
-                'cd /d "%EXE_DIR%"',
-                'start "" "%EXE%"',
+                'ping 127.0.0.1 -n 1 >nul',
                 '',
-                ':: Samomazání a čisté ukončení',
-                'if exist "%PS1%" del /f /q "%PS1%" >nul 2>&1',
+                ':: Vyčistíme případné staré zálohy v adresáři',
+                `del /f /q "${cleanOldMask}" >nul 2>&1`,
+                '',
+                ':: Spustíme aktualizovaný launcher',
+                'cd /d "%EXE_DIR%"',
+                'start "" "%EXE%" --no-sandbox',
+                '',
+                ':: Samomazání dávkového souboru a čisté ukončení',
                 '(goto) 2>nul & del "%~f0"',
                 'exit /b 0'
             ];
 
             const batContent = batLines.join('\r\n') + '\r\n';
             try {
-                fs.writeFileSync(ps1Path, ps1Content, 'utf8');
                 fs.writeFileSync(batPath, batContent, 'utf8');
             } catch (err) {
-                console.error('[UPDATER] Nelze zapsat Windows swap skripty:', err);
+                console.error('[UPDATER] Nelze zapsat Windows swap skript:', err);
                 app.relaunch();
                 app.exit(0);
                 return;
             }
 
             const { spawn } = require('child_process');
-            const child = spawn('cmd.exe', ['/c', batPath], {
+            const child = spawn('cmd.exe', ['/c', 'start', '""', '/min', batPath], {
                 detached: true,
                 stdio: 'ignore',
                 windowsHide: true
             });
             child.unref();
-            app.exit(0);
+
+            try {
+                app.releaseSingleInstanceLock();
+            } catch (_) {}
+
+            setTimeout(() => {
+                app.exit(0);
+            }, 450);
             return;
         }
 
@@ -3421,7 +3407,10 @@ ipcMain.handle('restart-launcher', () => {
         let exeToRun = process.execPath;
         let argsToRun = ['--no-sandbox'];
 
-        if (!app.isPackaged || process.execPath.includes('node_modules')) {
+        if (fs.existsSync(pendingAsar) && fs.existsSync(targetExe)) {
+            exeToRun = targetExe;
+            argsToRun = ['--no-sandbox'];
+        } else if (!app.isPackaged || process.execPath.includes('node_modules')) {
             exeToRun = process.execPath;
             argsToRun = [projectRoot, '--no-sandbox'];
         } else if (process.env.APPIMAGE && fs.existsSync(process.env.APPIMAGE)) {
@@ -3435,15 +3424,16 @@ ipcMain.handle('restart-launcher', () => {
             argsToRun = ['--no-sandbox'];
         }
 
-        // Spustíme oddělený bash proces na pozadí, který:
+        // Spustíme oddělený proces na pozadí v nezávislé session, který:
         // 1. Počká na úplné ukončení stávajícího procesu (uvolnění paměti a OS locku)
-        // 2. Provede atomickou výměnu app.asar.pending -> app.asar (pokud byl stažen update)
-        // 3. Spustí novou instanci launcheru
+        // 2. Provede atomickou výměnu app.asar.pending -> app.asar a odstraní stínící symlinky
+        // 3. Spustí novou instanci launcheru přes setsid a nohup (odolné vůči ukončení shellu)
         const bashScript = [
             '#!/bin/bash',
             `TARGET_PID=${currentPid}`,
             `TARGET_ASAR="${targetAsar}"`,
             `PENDING_ASAR="${pendingAsar}"`,
+            `RESOURCES_DIR="${resourcesDir}"`,
             `TARGET_EXE="${exeToRun}"`,
             '',
             '# 1. Počkáme na úplné ukončení běžícího procesu',
@@ -3452,16 +3442,21 @@ ipcMain.handle('restart-launcher', () => {
             'done',
             '',
             '# Bezpečnostní prodleva pro uvolnění Unix domain socketu singleton zámku v ~/.config',
-            'sleep 0.2',
+            'sleep 0.3',
             '',
             '# 2. Výměna app.asar.pending za app.asar v klidovém stavu',
             'if [ -f "$PENDING_ASAR" ]; then',
+            '    if [ -L "$RESOURCES_DIR/app" ]; then',
+            '        rm -f "$RESOURCES_DIR/app" 2>/dev/null || true',
+            '    fi',
             '    mv -f "$PENDING_ASAR" "$TARGET_ASAR" 2>/dev/null || cp -f "$PENDING_ASAR" "$TARGET_ASAR" 2>/dev/null',
             '    rm -f "$PENDING_ASAR" 2>/dev/null',
             'fi',
             '',
-            '# 3. Spuštění nové čisté instance launcheru',
-            `exec "$TARGET_EXE" ${argsToRun.map(a => `"${a}"`).join(' ')} >/dev/null 2>&1 &`,
+            '# 3. Spuštění nové čisté instance launcheru v nezávislé session',
+            `nohup setsid "$TARGET_EXE" ${argsToRun.map(a => `"${a}"`).join(' ')} </dev/null >/dev/null 2>&1 &`,
+            'disown -a 2>/dev/null || true',
+            'sleep 0.4',
             'exit 0'
         ].join('\n');
 
@@ -3479,7 +3474,9 @@ ipcMain.handle('restart-launcher', () => {
                 app.releaseSingleInstanceLock();
             } catch (_) {}
 
-            app.exit(0);
+            setTimeout(() => {
+                app.exit(0);
+            }, 300);
             return;
         } catch (err) {
             console.error('[UPDATER] Selhalo spuštění Linux bash restart runneru, použijeme fallback:', err);

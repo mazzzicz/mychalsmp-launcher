@@ -405,7 +405,42 @@ async function applyUpdate(assetUrl, onProgress) {
             fs.copyFileSync(tmpAsar, pendingAsar);
             try { fs.unlinkSync(tmpAsar); } catch (_) {}
 
-            const targetExe = process.execPath;
+            // Pokud existuje lokální symlink resources/app, který by blokoval načtení app.asar v Electronu:
+            try {
+                const appSymlink = path.join(resourcesDir, 'app');
+                if (fs.existsSync(appSymlink) && fs.lstatSync(appSymlink).isSymbolicLink()) {
+                    fs.unlinkSync(appSymlink);
+                }
+            } catch (_) {}
+
+            // Aktualizace desktop souborů na ploše a v menu aplikací na správný nainstalovaný spustitelný soubor s --no-sandbox
+            try {
+                const home = os.homedir();
+                let realTargetExe = path.join(home, '.local', 'share', 'mychalsmp-launcher', 'SMPClient');
+                if (!fs.existsSync(realTargetExe)) {
+                    realTargetExe = path.join(home, '.local', 'share', 'mychalsmp-launcher', 'mychalsmp-launcher');
+                }
+                const targetDesktopFiles = [
+                    path.join(home, '.local', 'share', 'applications', 'mychalsmp-launcher.desktop'),
+                    path.join(home, 'Desktop', 'SMPClient.desktop'),
+                    path.join(home, 'Plocha', 'SMPClient.desktop')
+                ];
+                for (const dFile of targetDesktopFiles) {
+                    if (fs.existsSync(dFile)) {
+                        let content = fs.readFileSync(dFile, 'utf8');
+                        content = content.replace(/Exec="?[^"\n]+"?/g, `Exec="${realTargetExe}" --no-sandbox %U`);
+                        fs.writeFileSync(dFile, content, 'utf8');
+                    }
+                }
+            } catch (_) {}
+
+            let targetExe = process.execPath;
+            const home = os.homedir();
+            const realInstalledExe = path.join(home, '.local', 'share', 'mychalsmp-launcher', 'mychalsmp-launcher');
+            if (fs.existsSync(realInstalledExe)) {
+                targetExe = realInstalledExe;
+            }
+
             return {
                 success: true,
                 applied: true,
