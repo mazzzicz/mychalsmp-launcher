@@ -1,6 +1,7 @@
 appId: xyz.mychalsmp.launcher
 productName: SMPClient
 copyright: Copyright © 2026 mychalVidea
+compression: "maximum"
 directories:
   output: dist
   buildResources: build
