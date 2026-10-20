@@ -6642,6 +6642,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btnSaveCharacter) {
         btnSaveCharacter.addEventListener('click', async () => {
             const nick = inputNick.value.trim() || 'Hráč';
+            // Pokud hráč zadá nick svého přihlášeného Microsoft účtu, automaticky přepneme na Microsoft
+            const msName = currentConfig.microsoftAccount?.name || currentConfig.microsoftAccount?.username;
+            if (msName && nick.toLowerCase() === msName.toLowerCase()) {
+                currentConfig.authType = 'microsoft';
+                currentConfig.username = msName;
+                await window.api.saveConfig({ authType: 'microsoft', username: msName });
+                updateUserUI(msName, 'microsoft', currentConfig.microsoftAccount.skinUrl);
+                temporaryButtonText(btnSaveCharacter, '<svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> <span>Uloženo</span>');
+                showToast(`Nick "${msName}" patří tvému oficiálnímu účtu. Přepnuto na Microsoft přihlášení.`, 'success');
+                return;
+            }
+
             currentConfig.offlineUsername = nick;
             currentConfig.username = nick;
             const res = await window.api.loginOffline(nick);
@@ -6707,12 +6719,39 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     if (authMicrosoftBtn) {
-        authMicrosoftBtn.addEventListener('click', loginWithMicrosoft);
+        authMicrosoftBtn.addEventListener('click', async () => {
+            if (currentConfig.authType === 'microsoft') {
+                return;
+            }
+            const msAcc = currentConfig.microsoftAccount;
+            const msName = msAcc?.name || msAcc?.username;
+            if (msAcc && msName) {
+                currentConfig.authType = 'microsoft';
+                currentConfig.username = msName;
+                await window.api.saveConfig({
+                    authType: 'microsoft',
+                    username: msName
+                });
+                updateUserUI(msName, 'microsoft', msAcc.skinUrl);
+                appendLog(`[AUTH] Přepnuto zpět na Microsoft účet: ${msName}`);
+                showToast(`Aktivován Microsoft účet: ${msName}`, 'success');
+                return;
+            }
+            await loginWithMicrosoft();
+        });
+    }
+
+    const btnSwitchMicrosoftAccount = document.getElementById('btnSwitchMicrosoftAccount');
+    if (btnSwitchMicrosoftAccount) {
+        btnSwitchMicrosoftAccount.addEventListener('click', loginWithMicrosoft);
     }
 
     // Offline Account Switcher
     if (authOfflineBtn) {
         authOfflineBtn.addEventListener('click', async () => {
+            if (currentConfig.authType === 'offline') {
+                return;
+            }
             const nick = currentConfig.offlineUsername || 'Hráč';
             if (inputNick) inputNick.value = nick;
             const res = await window.api.loginOffline(nick);
@@ -6720,7 +6759,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 currentConfig.username = nick;
                 currentConfig.offlineUsername = nick;
                 currentConfig.authType = 'offline';
-                currentConfig.microsoftAccount = null;
+                // Zachováme currentConfig.microsoftAccount v paměti pro okamžité přepnutí zpět!
                 updateUserUI(nick, 'offline', currentConfig.customSkinPath);
                 appendLog(`[AUTH] Přepnuto na offline mód pro nick: ${nick}`);
                 showToast(`Přepnuto na offline mód: ${nick}`, 'info');

@@ -252,6 +252,11 @@ function saveConfig(newConfig) {
             }
         }
 
+        // Nikdy nesmažeme uložený Microsoft účet omylem, pokud to caller výslovně nepožaduje přes clearMicrosoftAccount: true
+        if (cleanedNewConfig.microsoftAccount === null && !newConfig.clearMicrosoftAccount) {
+            delete cleanedNewConfig.microsoftAccount;
+        }
+
         // Pokud caller poskytuje microsoftAccount, zachováme citlivé tokeny z current, pokud je vynechal
         if (cleanedNewConfig.microsoftAccount && current.microsoftAccount) {
             const curAcc = current.microsoftAccount;

@@ -67,51 +67,20 @@ async function getValidMicrosoftSession(forceRefresh = false) {
             return { success: true, token: updatedAccount.access_token, account: updatedAccount };
         } else {
             console.warn('[AUTH] Automatické obnovení selhalo:', refreshRes.error);
-            if (msAcc.access_token || msAcc.name || msAcc.username) {
-                console.log('[AUTH] Aktivován 100% offline fallback pro Microsoft účet (spuštění offline bez pádu).');
-                const fallbackName = msAcc.name || msAcc.username || config.username || 'Hrac';
-                const fallbackUuid = msAcc.uuid || msAcc.id || getOfflineUUID(fallbackName);
-                const fallbackAccount = {
-                    ...msAcc,
-                    name: fallbackName,
-                    username: fallbackName,
-                    uuid: fallbackUuid,
-                    access_token: msAcc.access_token || ('offline_token_' + fallbackUuid),
-                    client_token: msAcc.client_token || ('offline_client_' + fallbackUuid),
-                    user_properties: msAcc.user_properties || '{}'
-                };
-                return {
-                    success: true,
-                    token: fallbackAccount.access_token,
-                    account: fallbackAccount,
-                    isOfflineFallback: true
-                };
-            }
             return {
                 success: false,
                 sessionExpired: true,
-                error: 'Platnost Microsoft účtu vypršela a nelze se připojit k internetu pro obnovení. Přihlas se prosím znovu ke svému účtu.'
+                error: `Platnost Microsoft účtu vypršela nebo selhalo ověření (${refreshRes.error || 'síťová chyba'}). Přihlas se prosím znovu kliknutím na Microsoft.`
             };
         }
     }
 
     if (!msAcc.access_token) {
-        if (msAcc.name || msAcc.username) {
-            console.log('[AUTH] Přístupový token chybí, ale hráč má profil – použit offline fallback.');
-            const fallbackName = msAcc.name || msAcc.username || config.username || 'Hrac';
-            const fallbackUuid = msAcc.uuid || msAcc.id || getOfflineUUID(fallbackName);
-            const fallbackAccount = {
-                ...msAcc,
-                name: fallbackName,
-                username: fallbackName,
-                uuid: fallbackUuid,
-                access_token: 'offline_token_' + fallbackUuid,
-                client_token: 'offline_client_' + fallbackUuid,
-                user_properties: '{}'
-            };
-            return { success: true, token: fallbackAccount.access_token, account: fallbackAccount, isOfflineFallback: true };
-        }
-        return { success: false, error: 'Chybí přístupový token Microsoft účtu.' };
+        return {
+            success: false,
+            sessionExpired: true,
+            error: 'Chybí platný přístupový token Microsoft účtu. Přihlas se prosím znovu kliknutím na Microsoft.'
+        };
     }
 
     return { success: true, token: msAcc.access_token, account: msAcc };

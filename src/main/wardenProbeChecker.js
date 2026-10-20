@@ -228,7 +228,7 @@ function getModsDirFingerprint(modsDir) {
                 try {
                     const st = fs.statSync(fullPath);
                     parts.push(`${f}:${st.size}:${Math.floor(st.mtimeMs)}`);
-                } catch (_) {}
+                } catch (_) { }
             }
         }
         return parts.join('|');
