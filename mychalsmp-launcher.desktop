@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=MYCHAL SMP Launcher
 Comment=Oficiální Minecraft launcher sítě MYCHAL SMP s 1-click připojením
-Exec=/opt/mychalsmp-launcher/mychalsmp-launcher %U
+Exec=sh -c 'if [ -x "$HOME/.local/share/mychalsmp-launcher/mychalsmp-launcher" ]; then exec "$HOME/.local/share/mychalsmp-launcher/mychalsmp-launcher" --no-sandbox "$@"; elif [ -x "/opt/mychalsmp-launcher/mychalsmp-launcher" ]; then exec "/opt/mychalsmp-launcher/mychalsmp-launcher" --no-sandbox "$@"; else exec mychalsmp-launcher --no-sandbox "$@"; fi' -- %U
 Icon=mychalsmp-launcher
 Terminal=false
 Type=Application

@@ -216,15 +216,26 @@ function cleanLauncherCache(baseDir, profiles = []) {
     let deletedCount = 0;
     let freedBytes = 0;
 
-    for (const item of scan.items) {
+    if (nativeLoader.isNativeActive() && scan.items.length > 0) {
         try {
-            if (fs.existsSync(item.path)) {
-                fs.unlinkSync(item.path);
-                deletedCount++;
-                freedBytes += item.size;
+            const paths = scan.items.map(i => i.path);
+            const delRes = nativeLoader.fastDeleteFilesBatch(paths);
+            if (delRes) {
+                deletedCount = delRes.deleted_count;
+                freedBytes = delRes.freed_bytes;
             }
-        } catch (e) {
-            console.warn(`[CLEANER] Nelze smazat soubor ${item.path}:`, e.message);
+        } catch (_) {}
+    } else {
+        for (const item of scan.items) {
+            try {
+                if (fs.existsSync(item.path)) {
+                    fs.unlinkSync(item.path);
+                    deletedCount++;
+                    freedBytes += item.size;
+                }
+            } catch (e) {
+                console.warn(`[CLEANER] Nelze smazat soubor ${item.path}:`, e.message);
+            }
         }
     }
 

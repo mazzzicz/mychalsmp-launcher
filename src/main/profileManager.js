@@ -414,7 +414,13 @@ async function upgradeProfile(sourceProfileId, targetVersion, baseDir, onProgres
             let modId = null;
             let modName = null;
 
-            if (AdmZip) {
+            if (nativeLoader.isNativeActive()) {
+                const meta = nativeLoader.fastReadFabricModMeta(path.join(srcModsDir, file));
+                if (meta) {
+                    if (meta.id) modId = String(meta.id).trim();
+                    if (meta.name) modName = String(meta.name).trim();
+                }
+            } else if (AdmZip) {
                 try {
                     const zip = new AdmZip(path.join(srcModsDir, file));
                     const fabEntry = zip.getEntry('fabric.mod.json');

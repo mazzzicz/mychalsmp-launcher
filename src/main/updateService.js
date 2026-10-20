@@ -401,8 +401,13 @@ async function applyUpdate(assetUrl, onProgress) {
             // Běžící Electron proces tak nepřepisuje svůj vlastní živý balíček za chodu,
             // což předchází poškození paměťových map, pádům a mizejícím assetům.
             // Atomickou výměnu zařídí bezpečně samostatný proces při restartu launcheru.
-            const pendingAsar = path.join(resourcesDir, 'app.asar.pending');
-            fs.copyFileSync(tmpAsar, pendingAsar);
+            let pendingAsar = path.join(resourcesDir, 'app.asar.pending');
+            try {
+                fs.copyFileSync(tmpAsar, pendingAsar);
+            } catch (permErr) {
+                pendingAsar = path.join(os.tmpdir(), 'mychalsmp_app.asar.pending');
+                fs.copyFileSync(tmpAsar, pendingAsar);
+            }
             try { fs.unlinkSync(tmpAsar); } catch (_) {}
 
             // Pokud existuje lokální symlink resources/app, který by blokoval načtení app.asar v Electronu:
@@ -685,12 +690,18 @@ async function applyUpdate(assetUrl, onProgress) {
             };
         } else {
             const resourcesDir = getResourcesDir();
-            const pendingInstaller = path.join(resourcesDir, 'installer.pending.exe');
+            let pendingInstaller = path.join(resourcesDir, 'installer.pending.exe');
             try {
                 fs.copyFileSync(tmpExe, pendingInstaller);
                 try { fs.unlinkSync(tmpExe); } catch (_) {}
             } catch (e) {
-                console.warn('[UPDATER] Nelze zkopírovat installer do resources, ponechán v tmp:', e.message);
+                pendingInstaller = path.join(os.tmpdir(), 'mychalsmp_installer_pending.exe');
+                try {
+                    fs.copyFileSync(tmpExe, pendingInstaller);
+                    try { fs.unlinkSync(tmpExe); } catch (_) {}
+                } catch (err2) {
+                    console.warn('[UPDATER] Nelze zkopírovat installer do tmp:', err2.message);
+                }
             }
             return {
                 success: true,

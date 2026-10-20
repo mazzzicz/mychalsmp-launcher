@@ -7,11 +7,18 @@
 const fs = require('fs');
 const path = require('path');
 const { downloadModOrPack } = require('./modrinth');
+const nativeLoader = require('./nativeLoader');
 
 /**
  * Ensures guiScale:2 in Minecraft's options.txt.
  */
 function ensureOptionsGuiScale(gameDir, scale = 2) {
+    if (nativeLoader.isNativeActive()) {
+        try {
+            return nativeLoader.fastEnsureGuiScale(gameDir, scale);
+        } catch (_) {}
+    }
+
     try {
         if (!fs.existsSync(gameDir)) {
             fs.mkdirSync(gameDir, { recursive: true });
@@ -256,6 +263,14 @@ function syncServersDat(gameDir, additionalServers = []) {
                     acceptTextures: 1
                 });
             }
+        }
+
+        if (nativeLoader.isNativeActive()) {
+            try {
+                if (nativeLoader.fastBuildServersDat(deduplicated, srvFile)) {
+                    return true;
+                }
+            } catch (_) {}
         }
 
         const buf = buildServersDatBuffer(deduplicated);

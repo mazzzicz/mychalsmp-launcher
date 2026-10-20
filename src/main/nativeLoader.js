@@ -518,6 +518,121 @@ function fastWaitForProcessExit(pid, timeoutMs = 0) {
     });
 }
 
+/**
+ * Parallel batch file deletion across all CPU cores in Rust
+ * @param {string[]} filePaths
+ * @returns {{ deleted_count: number, freed_bytes: number, elapsed_ms: number }}
+ */
+function fastDeleteFilesBatch(filePaths) {
+    if (isLoaded && nativeModule && typeof nativeModule.fastDeleteFilesBatch === 'function') {
+        try {
+            const raw = nativeModule.fastDeleteFilesBatch(JSON.stringify(filePaths));
+            return JSON.parse(raw);
+        } catch (e) {
+            console.warn('[RUST NATIVE] fastDeleteFilesBatch selhalo, fallback na JS:', e.message);
+        }
+    }
+
+    // JS Fallback
+    const start = Date.now();
+    let deleted_count = 0;
+    let freed_bytes = 0;
+    for (const p of filePaths) {
+        try {
+            if (fs.existsSync(p)) {
+                const s = fs.statSync(p);
+                fs.unlinkSync(p);
+                deleted_count++;
+                freed_bytes += s.size;
+            }
+        } catch (_) {}
+    }
+    return {
+        deleted_count,
+        freed_bytes,
+        elapsed_ms: Date.now() - start
+    };
+}
+
+/**
+ * High-speed atomic options.txt guiScale modifier in Rust
+ */
+function fastEnsureGuiScale(gameDir, scale = 2) {
+    if (isLoaded && nativeModule && typeof nativeModule.fastEnsureGuiScale === 'function') {
+        try {
+            return nativeModule.fastEnsureGuiScale(gameDir, scale);
+        } catch (_) {}
+    }
+
+    // JS Fallback
+    try {
+        if (!fs.existsSync(gameDir)) fs.mkdirSync(gameDir, { recursive: true });
+        const optionsPath = path.join(gameDir, 'options.txt');
+        let content = fs.existsSync(optionsPath) ? fs.readFileSync(optionsPath, 'utf8') : '';
+        const scaleRegex = /^guiScale:\s*\d+/m;
+        if (content.match(scaleRegex)) {
+            content = content.replace(scaleRegex, `guiScale:${scale}`);
+        } else {
+            content = (content ? content.trimEnd() + '\n' : '') + `guiScale:${scale}\n`;
+        }
+        fs.writeFileSync(optionsPath, content, 'utf8');
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
+/**
+ * High-speed uncompressed NBT servers.dat builder written natively in Rust
+ */
+function fastBuildServersDat(serversList, destPath) {
+    if (isLoaded && nativeModule && typeof nativeModule.fastBuildServersDat === 'function') {
+        try {
+            return nativeModule.fastBuildServersDat(JSON.stringify(serversList), destPath);
+        } catch (e) {
+            console.warn('[RUST NATIVE] fastBuildServersDat selhalo, fallback na JS:', e.message);
+        }
+    }
+    return false;
+}
+
+/**
+ * High-speed reader for fabric.mod.json inside mod jar files using Rust ZipArchive
+ */
+function fastReadFabricModMeta(jarPath) {
+    if (isLoaded && nativeModule && typeof nativeModule.fastReadFabricModMeta === 'function') {
+        try {
+            const raw = nativeModule.fastReadFabricModMeta(jarPath);
+            return JSON.parse(raw);
+        } catch (_) {}
+    }
+    return null;
+}
+
+/**
+ * Native Rayon classpath builder across all CPU cores
+ */
+function fastBuildClasspath(baseDir, relPaths, clientJar) {
+    if (isLoaded && nativeModule && typeof nativeModule.fastBuildClasspath === 'function') {
+        try {
+            return nativeModule.fastBuildClasspath(baseDir, relPaths, clientJar);
+        } catch (_) {}
+    }
+
+    const sep = process.platform === 'win32' ? ';' : ':';
+    const valid = [];
+    for (const rel of relPaths) {
+        const full = path.join(baseDir, 'libraries', rel);
+        if (fs.existsSync(full)) {
+            valid.push(full);
+        }
+    }
+    if (clientJar && fs.existsSync(clientJar)) {
+        valid.push(clientJar);
+    }
+    return valid.join(sep);
+}
+
 module.exports = {
     isNativeActive,
     fastVerifyModsDir,
@@ -533,5 +648,11 @@ module.exports = {
     fastScanCleanerCache,
     fastExtractArchive,
     fastVerifyFileHashesBatch,
-    fastWaitForProcessExit
+    fastWaitForProcessExit,
+    fastDeleteFilesBatch,
+    fastEnsureGuiScale,
+    fastBuildServersDat,
+    fastReadFabricModMeta,
+    fastBuildClasspath
 };
+

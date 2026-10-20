@@ -204,7 +204,7 @@ pub fn fast_verify_mods_dir(mods_dir: String) -> Result<String> {
             let sha256 = fast_hash_file_sha256(path.to_string_lossy().to_string())
                 .unwrap_or_else(|_| "hash_error".to_string());
 
-            // Check against prohibited patterns
+            // 1. Filename keyword check
             let lower_name = file_name.to_ascii_lowercase();
             let mut is_prohibited = false;
             let mut detection_reason = None;
@@ -214,6 +214,49 @@ pub fn fast_verify_mods_dir(mods_dir: String) -> Result<String> {
                     is_prohibited = true;
                     detection_reason = Some(reason.to_string());
                     break;
+                }
+            }
+
+            // 2. Deep ZIP & bytecode & fabric.mod.json inspection inside the JAR
+            if !is_prohibited {
+                if let Ok(file) = File::open(path) {
+                    if let Ok(mut archive) = zip::ZipArchive::new(file) {
+                        for i in 0..archive.len().min(120) {
+                            if let Ok(entry) = archive.by_index(i) {
+                                let entry_name = entry.name().to_ascii_lowercase();
+                                if entry_name.starts_with("baritone/")
+                                    || entry_name.starts_with("meteordevelopment/")
+                                    || entry_name.starts_with("net/wurstclient/")
+                                    || entry_name.starts_with("net/ccbluex/liquidbounce/")
+                                    || entry_name.starts_with("org/rusherhack/")
+                                    || entry_name.starts_with("com/matthewh/xray/")
+                                    || entry_name.starts_with("dev/rise/")
+                                    || entry_name.starts_with("com/vape/")
+                                    || entry_name.starts_with("bleachhack/")
+                                {
+                                    is_prohibited = true;
+                                    detection_reason = Some("Detekován nepovolený cheat balíček uvnitř JAR souboru".to_string());
+                                    break;
+                                }
+                            }
+                        }
+
+                        if !is_prohibited {
+                            if let Ok(mut fab) = archive.by_name("fabric.mod.json") {
+                                let mut content = String::new();
+                                if fab.read_to_string(&mut content).is_ok() {
+                                    let lower_fab = content.to_ascii_lowercase();
+                                    for (kw, reason) in PROHIBITED_KEYWORDS {
+                                        if lower_fab.contains(kw) {
+                                            is_prohibited = true;
+                                            detection_reason = Some(format!("{} (identifikováno uvnitř fabric.mod.json)", reason));
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -250,6 +293,9 @@ pub struct CrashScanResult {
     pub crash_type: Option<String>,
     pub summary_line: Option<String>,
     pub suspected_cause: Option<String>,
+    pub missing_dep_id: Option<String>,
+    pub missing_for_mod: Option<String>,
+    pub log_excerpt: Option<String>,
 }
 
 #[napi]
@@ -261,6 +307,9 @@ pub fn fast_scan_log_for_crashes(log_path: String) -> Result<String> {
             crash_type: None,
             summary_line: None,
             suspected_cause: None,
+            missing_dep_id: None,
+            missing_for_mod: None,
+            log_excerpt: None,
         };
         return serde_json::to_string(&empty)
             .map_err(|e| Error::new(Status::GenericFailure, e.to_string()));
@@ -275,40 +324,123 @@ pub fn fast_scan_log_for_crashes(log_path: String) -> Result<String> {
     let mut crash_type = None;
     let mut summary_line = None;
     let mut suspected_cause = None;
+    let mut missing_dep_id = None;
+    let mut missing_for_mod = None;
+    let mut recent_errors: Vec<String> = Vec::new();
 
     for line in reader.lines().filter_map(|l| l.ok()) {
-        if line.contains("java.lang.OutOfMemoryError") {
-            has_crash = true;
-            crash_type = Some("OUT_OF_MEMORY".to_string());
-            summary_line = Some(line.clone());
-            suspected_cause = Some("Nedostatek alokované RAM pro Minecraft".to_string());
-            break;
-        } else if line.contains("Minecraft has crashed!")
-            || line.contains("---- Minecraft Crash Report ----")
-        {
-            has_crash = true;
-            crash_type = Some("GAME_CRASH".to_string());
-            summary_line = Some(line.clone());
-            suspected_cause = Some("Kritický pád herního jádra Minecraftu".to_string());
-            break;
-        } else if line.contains("# A fatal error has been detected by the Java Runtime Environment")
-        {
-            has_crash = true;
-            crash_type = Some("JVM_FATAL_ERROR".to_string());
-            summary_line = Some(line.clone());
-            suspected_cause = Some("Pád JVM / grafického ovladače".to_string());
-            break;
+        let lower = line.to_ascii_lowercase();
+
+        // Check for false positive clean shutdown
+        if lower.contains("client shutdown from post-main") || lower.contains("clientshutdownwatchdog") {
+            let res = CrashScanResult {
+                has_crash: false,
+                crash_type: Some("CLEAN_SHUTDOWN".to_string()),
+                summary_line: Some(line),
+                suspected_cause: Some("Minecraft byl hráčem korektně ukončen.".to_string()),
+                missing_dep_id: None,
+                missing_for_mod: None,
+                log_excerpt: None,
+            };
+            return serde_json::to_string(&res).map_err(|e| Error::new(Status::GenericFailure, e.to_string()));
+        }
+
+        // Store relevant error lines for log excerpt
+        if line.contains("ERROR") || line.contains("FATAL") || line.contains("Exception") || line.contains("Error") {
+            if recent_errors.len() >= 20 {
+                recent_errors.remove(0);
+            }
+            recent_errors.push(line.clone());
+        }
+
+        if crash_type.is_none() {
+            if lower.contains("outofmemoryerror") || lower.contains("java heap space") || lower.contains("gc overhead limit") {
+                has_crash = true;
+                crash_type = Some("OUT_OF_MEMORY".to_string());
+                summary_line = Some(line);
+                suspected_cause = Some("Nedostatek alokované RAM paměti pro Minecraft".to_string());
+            } else if lower.contains("unsupportedclassversionerror") || lower.contains("compiled by a more recent version of the java runtime") {
+                has_crash = true;
+                crash_type = Some("JAVA_VERSION_MISMATCH".to_string());
+                summary_line = Some(line);
+                suspected_cause = Some("Nekompatibilní verze Javy. Mód vyžaduje novější verzi Javy.".to_string());
+            } else if lower.contains("glfw error 65542") || lower.contains("wgl: the driver does not appear to support opengl") || lower.contains("ig9ic64.dll") || lower.contains("nvoglv64.dll") {
+                has_crash = true;
+                crash_type = Some("OPENGL_DRIVER".to_string());
+                summary_line = Some(line);
+                suspected_cause = Some("Chyba grafického ovladače nebo nepodporovaný OpenGL ovladač".to_string());
+            } else if lower.contains("[hard_dep") || lower.contains("requires {") {
+                has_crash = true;
+                crash_type = Some("MISSING_DEPENDENCY".to_string());
+                summary_line = Some(line.clone());
+                suspected_cause = Some("Chybějící závislost nebo doplněk módu v profilu".to_string());
+
+                // Parse missing dependency
+                if let Some(dep_idx) = lower.find("depends ") {
+                    let after = &line[dep_idx + 8..];
+                    let dep = after.split_whitespace().next().unwrap_or("").trim_matches(|c: char| !c.is_alphanumeric() && c != '_' && c != '-');
+                    if !dep.is_empty() {
+                        missing_dep_id = Some(dep.to_string());
+                    }
+                }
+            } else if lower.contains("mixintransformererror") || lower.contains("critical injection failure") {
+                has_crash = true;
+                crash_type = Some("MIXIN_ERROR".to_string());
+                summary_line = Some(line);
+                suspected_cause = Some("Konflikt mixinů mezi nainstalovanými módy".to_string());
+            } else if lower.contains("minecraft has crashed!") || lower.contains("---- minecraft crash report ----") {
+                has_crash = true;
+                crash_type = Some("GAME_CRASH".to_string());
+                summary_line = Some(line);
+                suspected_cause = Some("Kritický pád herního jádra Minecraftu".to_string());
+            } else if lower.contains("# a fatal error has been detected by the java runtime environment") {
+                has_crash = true;
+                crash_type = Some("JVM_FATAL_ERROR".to_string());
+                summary_line = Some(line);
+                suspected_cause = Some("Pád virtuálního stroje Java nebo grafického ovladače".to_string());
+            }
         }
     }
 
+    let excerpt = if !recent_errors.is_empty() {
+        Some(recent_errors.join("\n"))
+    } else {
+        None
+    };
+
     let res = CrashScanResult {
-        has_crash,
+        has_crash: has_crash || crash_type.is_some(),
         crash_type,
         summary_line,
         suspected_cause,
+        missing_dep_id,
+        missing_for_mod,
+        log_excerpt: excerpt,
     };
 
     serde_json::to_string(&res).map_err(|e| Error::new(Status::GenericFailure, e.to_string()))
+}
+
+#[napi]
+pub fn fast_build_classpath(base_dir: String, rel_paths: Vec<String>, client_jar: String) -> String {
+    let separator = if cfg!(windows) { ";" } else { ":" };
+    let mut valid_paths: Vec<String> = rel_paths
+        .par_iter()
+        .filter_map(|rel| {
+            let full = Path::new(&base_dir).join("libraries").join(rel);
+            if full.exists() {
+                Some(full.to_string_lossy().to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if Path::new(&client_jar).exists() {
+        valid_paths.push(client_jar);
+    }
+
+    valid_paths.join(separator)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -1223,3 +1355,179 @@ pub fn fast_wait_for_process_exit(
         timeout_ms: timeout_ms.unwrap_or(0),
     })
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct BatchDeleteResult {
+    pub deleted_count: usize,
+    pub freed_bytes: u64,
+    pub elapsed_ms: f64,
+}
+
+#[napi]
+pub fn fast_delete_files_batch(file_paths_json: String) -> Result<String> {
+    let start = std::time::Instant::now();
+    let paths: Vec<String> = serde_json::from_str(&file_paths_json)
+        .map_err(|e| Error::new(Status::InvalidArg, format!("Chybný JSON: {}", e)))?;
+
+    let (deleted_count, freed_bytes): (usize, u64) = paths
+        .par_iter()
+        .map(|path_str| {
+            let p = Path::new(path_str);
+            if p.exists() {
+                let size = std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
+                if std::fs::remove_file(p).is_ok() {
+                    return (1usize, size);
+                }
+            }
+            (0usize, 0u64)
+        })
+        .reduce(|| (0, 0), |(c1, s1), (c2, s2)| (c1 + c2, s1 + s2));
+
+    let res = BatchDeleteResult {
+        deleted_count,
+        freed_bytes,
+        elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
+    };
+    serde_json::to_string(&res).map_err(|e| Error::new(Status::GenericFailure, e.to_string()))
+}
+
+#[napi]
+pub fn fast_ensure_gui_scale(game_dir: String, scale: u32) -> Result<bool> {
+    let p = Path::new(&game_dir).join("options.txt");
+    if let Some(parent) = p.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let target_needle = format!("guiScale:{}", scale);
+    if p.exists() {
+        if let Ok(content) = std::fs::read_to_string(&p) {
+            for line in content.lines() {
+                if line.trim() == target_needle {
+                    return Ok(true); // Již nastaveno
+                }
+            }
+            let mut new_lines = Vec::new();
+            let mut replaced = false;
+            for line in content.lines() {
+                if line.starts_with("guiScale:") {
+                    new_lines.push(target_needle.clone());
+                    replaced = true;
+                } else {
+                    new_lines.push(line.to_string());
+                }
+            }
+            if !replaced {
+                new_lines.push(target_needle);
+            }
+            let _ = std::fs::write(&p, new_lines.join("\n") + "\n");
+            return Ok(true);
+        }
+    }
+    let _ = std::fs::write(&p, format!("{}\n", target_needle));
+    Ok(true)
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ServerEntryItem {
+    pub name: Option<String>,
+    pub ip: Option<String>,
+    pub address: Option<String>,
+}
+
+#[napi]
+pub fn fast_build_servers_dat(servers_json: String, dest_path: String) -> Result<bool> {
+    let servers: Vec<ServerEntryItem> = serde_json::from_str(&servers_json)
+        .map_err(|e| Error::new(Status::InvalidArg, format!("Chybný JSON: {}", e)))?;
+
+    let mut buf = Vec::new();
+    // Root TAG_Compound (id 0x0A, name length 0)
+    buf.extend_from_slice(&[0x0a, 0x00, 0x00]);
+
+    // TAG_List "servers"
+    let list_name = b"servers";
+    buf.push(0x09);
+    buf.extend_from_slice(&(list_name.len() as u16).to_be_bytes());
+    buf.extend_from_slice(list_name);
+    buf.push(0x0a); // TAG_Compound items
+    buf.extend_from_slice(&(servers.len() as i32).to_be_bytes());
+
+    for srv in servers {
+        let srv_name = srv.name.unwrap_or_else(|| "Minecraft Server".to_string());
+        let srv_ip = srv.ip.or(srv.address).unwrap_or_else(|| "mychalsmp.xyz".to_string());
+
+        // TAG_String "name"
+        let key_name = b"name";
+        buf.push(0x08);
+        buf.extend_from_slice(&(key_name.len() as u16).to_be_bytes());
+        buf.extend_from_slice(key_name);
+        let name_bytes = srv_name.as_bytes();
+        buf.extend_from_slice(&(name_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(name_bytes);
+
+        // TAG_String "ip"
+        let key_ip = b"ip";
+        buf.push(0x08);
+        buf.extend_from_slice(&(key_ip.len() as u16).to_be_bytes());
+        buf.extend_from_slice(key_ip);
+        let ip_bytes = srv_ip.as_bytes();
+        buf.extend_from_slice(&(ip_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(ip_bytes);
+
+        // TAG_Byte "acceptTextures" = 1
+        let key_tex = b"acceptTextures";
+        buf.push(0x01);
+        buf.extend_from_slice(&(key_tex.len() as u16).to_be_bytes());
+        buf.extend_from_slice(key_tex);
+        buf.push(0x01);
+
+        // TAG_End of compound
+        buf.push(0x00);
+    }
+    // TAG_End of root
+    buf.push(0x00);
+
+    let dest = Path::new(&dest_path);
+    if let Some(parent) = dest.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    std::fs::write(dest, buf)
+        .map_err(|e| Error::new(Status::GenericFailure, format!("Nelze zapsat servers.dat: {}", e)))?;
+    Ok(true)
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct FabricModMeta {
+    pub id: Option<String>,
+    pub name: Option<String>,
+    pub version: Option<String>,
+}
+
+#[napi]
+pub fn fast_read_fabric_mod_meta(jar_path: String) -> Result<String> {
+    let file = File::open(&jar_path).map_err(|e| {
+        Error::new(Status::GenericFailure, format!("Nelze otevřít jar {}: {}", jar_path, e))
+    })?;
+
+    let mut zip = zip::ZipArchive::new(file).map_err(|e| {
+        Error::new(Status::GenericFailure, format!("Neplatný zip {}: {}", jar_path, e))
+    })?;
+
+    let mut meta = FabricModMeta {
+        id: None,
+        name: None,
+        version: None,
+    };
+
+    if let Ok(mut entry) = zip.by_name("fabric.mod.json") {
+        let mut content = String::new();
+        if entry.read_to_string(&mut content).is_ok() {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                meta.id = val.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
+                meta.name = val.get("name").and_then(|v| v.as_str()).map(|s| s.to_string());
+                meta.version = val.get("version").and_then(|v| v.as_str()).map(|s| s.to_string());
+            }
+        }
+    }
+
+    serde_json::to_string(&meta).map_err(|e| Error::new(Status::GenericFailure, e.to_string()))
+}
+

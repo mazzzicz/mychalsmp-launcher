@@ -577,9 +577,7 @@ StartupWMClass=xyz.mychalsmp.launcher
     }
 }
 
-if (!gotTheLock) {
-    app.quit();
-} else {
+function startMainApplication() {
     app.on('second-instance', () => {
         if (mainWindow && !mainWindow.isDestroyed()) {
             restoreAndFocusMainWindow();
@@ -649,6 +647,18 @@ if (!gotTheLock) {
             }
         });
     });
+}
+
+if (!gotTheLock) {
+    setTimeout(() => {
+        if (app.requestSingleInstanceLock()) {
+            startMainApplication();
+        } else {
+            app.quit();
+        }
+    }, 600);
+} else {
+    startMainApplication();
 }
 
 app.on('before-quit', () => {
@@ -3176,7 +3186,13 @@ ipcMain.handle('apply-update', async (event, assetUrl) => {
 ipcMain.handle('restart-launcher', () => {
     if (process.platform === 'win32') {
         const resourcesDir = getResourcesDir();
-        const pendingAsar = path.join(resourcesDir, 'app.asar.pending');
+        let pendingAsar = path.join(resourcesDir, 'app.asar.pending');
+        if (!fs.existsSync(pendingAsar)) {
+            const tmpPending = path.join(os.tmpdir(), 'mychalsmp_app.asar.pending');
+            if (fs.existsSync(tmpPending)) {
+                pendingAsar = tmpPending;
+            }
+        }
         const targetAsar = path.join(resourcesDir, 'app.asar');
 
         // Kontrola přenosné (portable) verze launcheru
@@ -3187,7 +3203,13 @@ ipcMain.handle('restart-launcher', () => {
         const hasAsarPending = fs.existsSync(pendingAsar);
 
         // Kontrola případného instalačního balíčku .exe
-        const pendingInstaller = path.join(resourcesDir, 'installer.pending.exe');
+        let pendingInstaller = path.join(resourcesDir, 'installer.pending.exe');
+        if (!fs.existsSync(pendingInstaller)) {
+            const tmpInstaller = path.join(os.tmpdir(), 'mychalsmp_installer_pending.exe');
+            if (fs.existsSync(tmpInstaller)) {
+                pendingInstaller = tmpInstaller;
+            }
+        }
         const hasInstallerPending = fs.existsSync(pendingInstaller);
 
         if (hasInstallerPending) {
@@ -3262,6 +3284,7 @@ ipcMain.handle('restart-launcher', () => {
             const cleanPending = pendingPath.replace(/%/g, '%%');
             const cleanExe = exePath.replace(/%/g, '%%');
             const cleanExeDir = exeDir.replace(/%/g, '%%');
+            const cleanExeName = path.basename(exePath).replace(/%/g, '%%');
             const cleanOldMask = isPortableSwap ? `${cleanTarget}.old.*` : path.join(path.dirname(cleanTarget), 'app.asar.old.*');
 
             const batLines = [
@@ -3334,14 +3357,19 @@ ipcMain.handle('restart-launcher', () => {
                 ')',
                 '',
                 ':launch_app',
-                'ping 127.0.0.1 -n 1 >nul',
+                'ping 127.0.0.1 -n 2 >nul',
                 '',
                 ':: Vyčistíme případné staré zálohy v adresáři',
                 `del /f /q "${cleanOldMask}" >nul 2>&1`,
                 '',
-                ':: Spustíme aktualizovaný launcher',
+                ':: Ukončíme případné visící zombie podprocesy staré instance před novým startem',
+                `taskkill /f /im "${cleanExeName}" >nul 2>&1`,
+                'ping 127.0.0.1 -n 2 >nul',
+                '',
+                ':: Spustíme aktualizovaný launcher ve správném adresáři',
                 'cd /d "%EXE_DIR%"',
-                'start "" "%EXE%" --no-sandbox',
+                'start "" /d "%EXE_DIR%" "%EXE%" --no-sandbox',
+                'ping 127.0.0.1 -n 2 >nul',
                 '',
                 ':: Samomazání dávkového souboru a čisté ukončení',
                 '(goto) 2>nul & del "%~f0"',
@@ -3453,10 +3481,16 @@ ipcMain.handle('restart-launcher', () => {
             '    rm -f "$PENDING_ASAR" 2>/dev/null',
             'fi',
             '',
-            '# 3. Spuštění nové čisté instance launcheru v nezávislé session',
-            `nohup setsid "$TARGET_EXE" ${argsToRun.map(a => `"${a}"`).join(' ')} </dev/null >/dev/null 2>&1 &`,
-            'disown -a 2>/dev/null || true',
+            '# 3. Úklid singleton zámků a přechod do adresáře aplikace',
+            'rm -rf "$HOME/.config/mychalsmp-launcher/Singleton"* 2>/dev/null || true',
+            'rm -rf "$HOME/.config/SMPClient/Singleton"* 2>/dev/null || true',
             'sleep 0.4',
+            'cd "$(dirname "$TARGET_EXE")" || true',
+            '',
+            '# 4. Spuštění nové čisté instance launcheru',
+            `nohup "$TARGET_EXE" ${argsToRun.map(a => `"${a}"`).join(' ')} </dev/null >/dev/null 2>&1 &`,
+            'disown -a 2>/dev/null || true',
+            'sleep 0.6',
             'exit 0'
         ].join('\n');
 

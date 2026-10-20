@@ -320,6 +320,9 @@ Handler.prototype.getNatives = async function () {
  */
 function getFileSha1(filePath) {
     try {
+        if (nativeLoader.isNativeActive()) {
+            return nativeLoader.fastHashFileSha1(filePath);
+        }
         const buffer = fs.readFileSync(filePath);
         return crypto.createHash('sha1').update(buffer).digest('hex');
     } catch (e) {
@@ -601,11 +604,173 @@ function linkOrShareExistingMinecraftData(targetRootDir, onLog) {
  */
 Handler.prototype.downloadToDirectory = async function (directory, libraries, eventName) {
     const libs = [];
-    if (!Array.isArray(libraries)) return libs;
+    if (!Array.isArray(libraries) || libraries.length === 0) return libs;
 
     const candidates = getExistingMinecraftBaseDirs();
     let counter = 0;
 
+    // Připravit knihovny a cesty
+    const parsedLibs = [];
+    for (const library of libraries) {
+        if (!library) continue;
+        if (this.parseRule(library)) continue;
+        const lib = library.name.split(':');
+
+        let jarPath;
+        let name;
+        let relPath;
+        if (library.downloads && library.downloads.artifact && library.downloads.artifact.path) {
+            relPath = library.downloads.artifact.path;
+            name = path.basename(relPath);
+            jarPath = path.join(directory, path.dirname(relPath));
+        } else {
+            relPath = `${lib[0].replace(/\./g, '/')}/${lib[1]}/${lib[2]}/${lib[1]}-${lib[2]}${lib[3] ? '-' + lib[3] : ''}.jar`;
+            name = path.basename(relPath);
+            jarPath = path.join(directory, path.dirname(relPath));
+        }
+
+        const destFile = path.join(jarPath, name);
+        let downloadUrl = null;
+        if (library.downloads && library.downloads.artifact && library.downloads.artifact.url) {
+            downloadUrl = library.downloads.artifact.url;
+        } else if (library.url) {
+            downloadUrl = `${library.url}${relPath}`;
+        } else {
+            downloadUrl = `https://libraries.minecraft.net/${relPath}`;
+        }
+
+        parsedLibs.push({
+            library,
+            relPath,
+            name,
+            jarPath,
+            destFile,
+            downloadUrl,
+            sha1: library.downloads?.artifact?.sha1 || null,
+            size: library.downloads?.artifact?.size || null
+        });
+    }
+
+    // ⚡ 1. Rust Native High-Speed Batch Verification across all CPU cores
+    if (nativeLoader.isNativeActive() && parsedLibs.length > 0) {
+        const verifyItems = parsedLibs
+            .filter(item => item.sha1)
+            .map(item => ({
+                path: item.destFile,
+                expected_sha1: item.sha1,
+                expected_size: item.size
+            }));
+
+        let invalidSet = new Set();
+        if (verifyItems.length > 0) {
+            try {
+                const batchRes = nativeLoader.fastVerifyFileHashesBatch(verifyItems);
+                if (batchRes && Array.isArray(batchRes.invalid_files)) {
+                    invalidSet = new Set(batchRes.invalid_files);
+                    this.client.emit('debug', `[RUST NATIVE]: ⚡ Paralelně ověřeno ${verifyItems.length} knihoven za ${batchRes.elapsed_ms.toFixed(1)} ms (${batchRes.valid} platných).`);
+                }
+            } catch (err) {
+                invalidSet = new Set(verifyItems.map(i => i.path));
+            }
+        }
+
+        const missingOrCorrupt = [];
+        for (const item of parsedLibs) {
+            if (item.sha1) {
+                if (!invalidSet.has(item.destFile)) {
+                    libs.push(item.destFile);
+                    counter++;
+                    continue;
+                }
+            } else {
+                if (fs.existsSync(item.destFile) && isJarFileValid(item.destFile)) {
+                    libs.push(item.destFile);
+                    counter++;
+                    continue;
+                }
+            }
+
+            // Pokud neexistuje nebo je poškozená, zkusit převzít z kandidátů na disku
+            let foundInCandidate = false;
+            for (const cand of candidates) {
+                const candLib = path.join(cand, 'libraries', item.relPath);
+                if (fs.existsSync(candLib)) {
+                    try {
+                        const candValid = item.sha1
+                            ? verifyFileSha1(candLib, item.sha1)
+                            : (item.name.endsWith('.jar') ? isJarFileValid(candLib) : fs.statSync(candLib).size > 0);
+                        if (candValid) {
+                            fs.mkdirSync(item.jarPath, { recursive: true });
+                            fs.copyFileSync(candLib, item.destFile);
+                            libs.push(item.destFile);
+                            counter++;
+                            foundInCandidate = true;
+                            break;
+                        }
+                    } catch (_) {}
+                }
+            }
+
+            if (!foundInCandidate) {
+                missingOrCorrupt.push(item);
+            }
+        }
+
+        // ⚡ 2. Rust Native High-Speed Parallel Batch Download pro chybějící knihovny
+        if (missingOrCorrupt.length > 0) {
+            this.client.emit('debug', `[RUST NATIVE]: Paralelně stahuji ${missingOrCorrupt.length} chybějících knihoven...`);
+            const batchDownloadItems = missingOrCorrupt.map(item => ({
+                url: item.downloadUrl,
+                dest_path: item.destFile
+            }));
+
+            try {
+                const dlResult = await nativeLoader.fastDownloadBatch(batchDownloadItems);
+                const successfulDls = new Set();
+                if (dlResult && Array.isArray(dlResult.items)) {
+                    for (const di of dlResult.items) {
+                        if (di.success) successfulDls.add(di.dest_path);
+                    }
+                }
+
+                for (const item of missingOrCorrupt) {
+                    if (successfulDls.has(item.destFile)) {
+                        libs.push(item.destFile);
+                        counter++;
+                    } else {
+                        // Fallback na Mojang Maven pokud původní selhalo
+                        let recovered = false;
+                        if (!item.downloadUrl.includes('libraries.minecraft.net')) {
+                            const mojangUrl = `https://libraries.minecraft.net/${item.relPath}`;
+                            try {
+                                await nativeLoader.fastDownloadFile(mojangUrl, item.destFile);
+                                if (fs.existsSync(item.destFile) && (item.sha1 ? verifyFileSha1(item.destFile, item.sha1) : fs.statSync(item.destFile).size > 0)) {
+                                    libs.push(item.destFile);
+                                    counter++;
+                                    recovered = true;
+                                }
+                            } catch (_) {}
+                        }
+                        if (!recovered) {
+                            this.client.emit('debug', `[MCLC]: ⚠ Knihovna ${item.library.name} nebyla nalezena (${item.destFile})`);
+                        }
+                    }
+                }
+            } catch (dlErr) {
+                this.client.emit('debug', `[RUST NATIVE] Batch download selhal: ${dlErr.message}`);
+            }
+        }
+
+        this.client.emit('progress', {
+            type: eventName,
+            task: counter,
+            total: libraries.length
+        });
+
+        return libs;
+    }
+
+    // ── JS Fallback Pool ────────────────────────────────────────────────────
     const concurrency = 20;
     let idx = 0;
 
@@ -629,13 +794,11 @@ Handler.prototype.downloadToDirectory = async function (directory, libraries, ev
 
         const destFile = path.join(jarPath, name);
 
-        // 1. Zkontrolovat, zda soubor existuje a má platnou velikost i platný obsah
         let exists = false;
         try {
             if (fs.existsSync(destFile)) {
                 const stat = fs.statSync(destFile);
                 if (stat.size > 0) {
-                    // ⚡ Blesková kontrola velikosti: namísto drahého čtení a SHA1 hešování desítek JARů při každém spuštění
                     if (library.downloads?.artifact?.size && stat.size === library.downloads.artifact.size) {
                         exists = true;
                     } else if (library.downloads?.artifact?.sha1) {
@@ -654,7 +817,6 @@ Handler.prototype.downloadToDirectory = async function (directory, libraries, ev
             exists = false;
         }
 
-        // 2. Pokud neexistuje, zkusit bleskově převzít z existujících launcherů na disku
         if (!exists) {
             for (const cand of candidates) {
                 const candLib = path.join(cand, 'libraries', relPath);
@@ -674,7 +836,6 @@ Handler.prototype.downloadToDirectory = async function (directory, libraries, ev
             }
         }
 
-        // 3. Pokud stále neexistuje, stáhnout přes náš downloadAsync
         if (!exists) {
             let downloadUrl = null;
             if (library.downloads && library.downloads.artifact && library.downloads.artifact.url) {
@@ -704,7 +865,6 @@ Handler.prototype.downloadToDirectory = async function (directory, libraries, ev
                 this.client.emit('debug', `[MCLC]: Knihovnu ${name} nelze stáhnout z ${downloadUrl}, zkouším Mojang Maven...`);
             }
 
-            // Fallback na Mojang Maven pokud původní selhalo
             if (!exists && !downloadUrl.includes('libraries.minecraft.net')) {
                 try {
                     await this.downloadAsync(`https://libraries.minecraft.net/${relPath}`, jarPath, name, 3, eventName);

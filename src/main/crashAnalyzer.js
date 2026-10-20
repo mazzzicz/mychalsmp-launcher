@@ -723,10 +723,29 @@ async function analyzeCrash(gameDir, exitCode = 1, recentMemoryLogs = [], launch
     }
 
     let nativeScan = null;
-    if (reportPath && nativeLoader.isNativeActive()) {
+    const latestLogFile = path.join(gameDir, 'logs', 'latest.log');
+    if (nativeLoader.isNativeActive()) {
         try {
-            nativeScan = nativeLoader.fastScanLogForCrashes(reportPath);
+            if (reportPath && fs.existsSync(reportPath)) {
+                nativeScan = nativeLoader.fastScanLogForCrashes(reportPath);
+            }
+            if ((!nativeScan || !nativeScan.has_crash) && fs.existsSync(latestLogFile)) {
+                nativeScan = nativeLoader.fastScanLogForCrashes(latestLogFile);
+            }
         } catch (_) {}
+    }
+
+    if (nativeScan && nativeScan.crash_type === 'CLEAN_SHUTDOWN') {
+        return {
+            hasCrash: false,
+            isCleanShutdown: true,
+            exitCode,
+            reportPath: null,
+            title: 'Hra ukončena',
+            severity: 'info',
+            description: 'Minecraft byl hráčem úspěšně ukončen.',
+            recommendation: ''
+        };
     }
 
     const logTail = readLatestLogTail(gameDir);
@@ -739,19 +758,17 @@ async function analyzeCrash(gameDir, exitCode = 1, recentMemoryLogs = [], launch
     ].join('\n\n');
 
     // Extract relevant stack trace or exception snippet
-    let logExcerpt = '';
-    if (reportContent) {
+    let logExcerpt = (nativeScan && nativeScan.log_excerpt) ? nativeScan.log_excerpt : '';
+    if (!logExcerpt && reportContent) {
         const lines = reportContent.split('\n');
-        // Take first 35 lines of crash report which contain description and head stacktrace
         logExcerpt = lines.slice(0, 35).join('\n');
-    } else if (logTail) {
+    } else if (!logExcerpt && logTail) {
         const errorLines = logTail.split('\n').filter(l =>
             l.includes('FATAL') || l.includes('ERROR') || l.includes('Exception') || l.includes('Error')
         );
         logExcerpt = errorLines.slice(-15).join('\n') || logTail.split('\n').slice(-15).join('\n');
     }
     
-    // Pokud logTail neobsahoval žádnou chybu nebo byl prázdný, vytáhneme chyby přímo z paměťových logů (stdout/stderr)
     if (!logExcerpt && memoryLogText) {
         const memLines = memoryLogText.split('\n').map(l => l.trim()).filter(Boolean);
         const errorLines = memLines.filter(l =>
