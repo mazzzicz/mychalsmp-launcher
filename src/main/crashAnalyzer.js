@@ -1199,6 +1199,14 @@ async function analyzeCrash(gameDir, exitCode = 1, recentMemoryLogs = [], launch
                     }
                 }
             } catch (_) {}
+
+            if (!corruptJarPath && /net\.minecraft\./i.test(combinedText)) {
+                const targetVer = launchConfig?.version?.number || '26.2';
+                const vJar = path.join(baseDir, 'versions', targetVer, `${targetVer}.jar`);
+                if (fs.existsSync(vJar)) {
+                    corruptJarPath = vJar;
+                }
+            }
         }
 
         const isVersionJar = corruptJarPath && corruptJarPath.includes('/versions/');
@@ -1553,18 +1561,40 @@ async function executeCrashFix(autoFix, gameDir, config, saveConfigFn, detectJav
             let deletedList = [];
             const cleanJarAndBackups = (filePath) => {
                 if (!filePath) return;
-                try {
-                    if (fs.existsSync(filePath)) {
-                        fs.unlinkSync(filePath);
-                        deletedList.push(path.basename(filePath));
+                const vBak = filePath.replace(/\.jar$/, '.vanilla.jar');
+                if (fs.existsSync(vBak) && isJarFileValid(vBak)) {
+                    try {
+                        fs.copyFileSync(vBak, filePath);
+                        deletedList.push(`${path.basename(filePath)} (obnoveno ze zálohy)`);
+                    } catch (_) {
+                        try {
+                            if (fs.existsSync(filePath)) {
+                                fs.unlinkSync(filePath);
+                                deletedList.push(path.basename(filePath));
+                            }
+                        } catch (_) {}
                     }
-                } catch (_) {}
+                } else {
+                    try {
+                        if (fs.existsSync(filePath)) {
+                            fs.unlinkSync(filePath);
+                            deletedList.push(path.basename(filePath));
+                        }
+                    } catch (_) {}
+                    try { if (fs.existsSync(vBak)) fs.unlinkSync(vBak); } catch (_) {}
+                }
                 try { if (fs.existsSync(`${filePath}.skin_sig`)) fs.unlinkSync(`${filePath}.skin_sig`); } catch (_) {}
                 try { if (fs.existsSync(`${filePath}.brand_sig`)) fs.unlinkSync(`${filePath}.brand_sig`); } catch (_) {}
                 try { if (fs.existsSync(`${filePath}.vanilla_bak`)) fs.unlinkSync(`${filePath}.vanilla_bak`); } catch (_) {}
-                const vBak = filePath.replace(/\.jar$/, '.vanilla.jar');
-                try { if (fs.existsSync(vBak)) fs.unlinkSync(vBak); } catch (_) {}
             };
+
+            // Vyčisti remapped cache Fabricu, která mohla vzniknout z poškozeného jádra
+            try {
+                const remappedDir = path.join(gameDir, '.fabric', 'remappedJars');
+                if (fs.existsSync(remappedDir)) {
+                    fs.rmSync(remappedDir, { recursive: true, force: true });
+                }
+            } catch (_) {}
 
             if (targetFile) {
                 cleanJarAndBackups(targetFile);

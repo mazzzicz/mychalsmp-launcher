@@ -79,21 +79,36 @@ function isJarFileValid(filePath) {
 
                 if (cenSize > 0) {
                     if (cenOffset >= stats.size) return false;
-                    const cenSigBuf = Buffer.alloc(46);
-                    fs.readSync(fd, cenSigBuf, 0, 46, cenOffset);
-                    // CEN signature musí být přesně 0x02014b50 (PK\1\2)
+                    const readCenLen = Math.min(cenSize, 1024 * 1024);
+                    const cenSigBuf = Buffer.alloc(readCenLen);
+                    fs.readSync(fd, cenSigBuf, 0, readCenLen, cenOffset);
+                    // CEN signature prvního záznamu musí být přesně 0x02014b50 (PK\1\2)
                     if (cenSigBuf[0] !== 0x50 || cenSigBuf[1] !== 0x4b || cenSigBuf[2] !== 0x01 || cenSigBuf[3] !== 0x02) {
                         return false;
                     }
 
-                    // Ověření prvního LOC headeru z CEN pro prevenci invalid LOC header (bad signature)
-                    const firstLocOffset = cenSigBuf.readUInt32LE(42);
-                    if (firstLocOffset < stats.size) {
-                        const locBuf = Buffer.alloc(4);
-                        fs.readSync(fd, locBuf, 0, 4, firstLocOffset);
-                        if (locBuf[0] !== 0x50 || locBuf[1] !== 0x4b || locBuf[2] !== 0x03 || locBuf[3] !== 0x04) {
-                            return false;
+                    // Hloubkové ověření vzorku LOC hlaviček napříč archivem pro prevenci ZipFile invalid LOC header (bad signature)
+                    let p = 0;
+                    let checkedLocs = 0;
+                    const locBuf = Buffer.alloc(4);
+                    while (p + 46 <= readCenLen && checkedLocs < 30) {
+                        if (cenSigBuf[p] !== 0x50 || cenSigBuf[p + 1] !== 0x4b || cenSigBuf[p + 2] !== 0x01 || cenSigBuf[p + 3] !== 0x02) {
+                            break;
                         }
+                        const nameLen = cenSigBuf.readUInt16LE(p + 28);
+                        const extraLen = cenSigBuf.readUInt16LE(p + 30);
+                        const commentLen = cenSigBuf.readUInt16LE(p + 32);
+                        const locOffset = cenSigBuf.readUInt32LE(p + 42);
+
+                        if (locOffset < stats.size && locOffset !== 0xFFFFFFFF) {
+                            fs.readSync(fd, locBuf, 0, 4, locOffset);
+                            if (locBuf[0] !== 0x50 || locBuf[1] !== 0x4b || locBuf[2] !== 0x03 || locBuf[3] !== 0x04) {
+                                return false; // Nalezena vadná LOC hlavička -> soubor je poškozený!
+                            }
+                            checkedLocs++;
+                        }
+                        const entrySize = 46 + nameLen + extraLen + commentLen;
+                        p += (checkedLocs === 1) ? entrySize : (entrySize * 8);
                     }
                 }
             }
@@ -2071,19 +2086,11 @@ function injectRawSkinIntoJar(jarPath, activeSkinPath, activeCapePath, onLog = c
         try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) { }
         success = true;
     } catch (cliErr) {
-        // B) Multiplatformní fallback (AdmZip)
-        try {
-            const AdmZip = require('adm-zip');
-            const zip = new AdmZip(jarPath);
-
-            for (const entry of entriesToUpdate) {
-                zip.addFile(entry.path, entry.buf);
-            }
-            zip.writeZip(jarPath);
-            success = true;
-        } catch (admErr) {
-            onLog(`[POSTAVA] ⚠ RAW injekce do ${path.basename(jarPath)} selhala: ${admErr.message}`);
-        }
+        // Nativní 'zip' CLI není na Windows dostupné.
+        // DŮLEŽITÉ: AdmZip.writeZip() NIKDY nesmí přepisovat 40MB herní jádro s desetitisíci třídami,
+        // protože způsobuje fatální ZipException: ZipFile invalid LOC header (bad signature).
+        // Jádro proto ponecháme v bezpečném, originálním stavu.
+        onLog(`[POSTAVA] ℹ Nativní zip nástroj není dostupný, herní jádro ${path.basename(jarPath)} ponecháno v bezpečném originálním stavu.`);
     }
 
     if (success && isJarFileValid(jarPath)) {
@@ -2091,11 +2098,12 @@ function injectRawSkinIntoJar(jarPath, activeSkinPath, activeCapePath, onLog = c
         onLog(`[POSTAVA] ✓ Textury skinu hráče RAW přepsány přímo v jádru hry (${path.basename(jarPath)}). Žádný texture pack ani mód není potřeba!`);
         return true;
     }
-    // Pokud došlo k chybě integrity nebo AdmZip poškodil soubor, okamžitě obnovíme nepoškozenou zálohu
+    // Pokud došlo k chybě integrity nebo soubor selhal ve validaci, okamžitě obnovíme nepoškozenou zálohu
     if (fs.existsSync(backupPath) && isJarFileValid(backupPath)) {
         try {
             fs.copyFileSync(backupPath, jarPath);
-            onLog(`[POSTAVA] ⚠ Obnoven původní funkční soubor ${path.basename(jarPath)} ze zálohy po neúspěšné modifikaci.`);
+            try { if (fs.existsSync(sigPath)) fs.unlinkSync(sigPath); } catch (_) { }
+            onLog(`[POSTAVA] ⚠ Obnoven původní funkční soubor ${path.basename(jarPath)} ze zálohy.`);
         } catch (_) { }
     }
     return false;
@@ -2114,11 +2122,19 @@ function restoreVanillaJars(baseDir, targetVer, onLog = console.log) {
                 const jarPath = path.join(versionsDir, d, `${d}.jar`);
                 const backupPath = path.join(versionsDir, d, `${d}.vanilla.jar`);
                 const sigPath = `${jarPath}.skin_sig`;
-                if (fs.existsSync(backupPath) && fs.existsSync(sigPath) && isJarFileValid(backupPath)) {
+                if (fs.existsSync(backupPath) && isJarFileValid(backupPath)) {
+                    if (!fs.existsSync(jarPath) || !isJarFileValid(jarPath) || fs.existsSync(sigPath)) {
+                        try {
+                            fs.copyFileSync(backupPath, jarPath);
+                            try { if (fs.existsSync(sigPath)) fs.unlinkSync(sigPath); } catch (_) { }
+                            onLog(`[POSTAVA] 🔄 Obnoveno výchozí vanilla jádro bez úprav: ${d}.jar`);
+                        } catch (_) { }
+                    }
+                } else if (fs.existsSync(jarPath) && !isJarFileValid(jarPath)) {
                     try {
-                        fs.copyFileSync(backupPath, jarPath);
-                        fs.unlinkSync(sigPath);
-                        onLog(`[POSTAVA] 🔄 Obnoveno výchozí vanilla jádro bez úprav: ${d}.jar`);
+                        fs.unlinkSync(jarPath);
+                        try { if (fs.existsSync(sigPath)) fs.unlinkSync(sigPath); } catch (_) { }
+                        onLog(`[POSTAVA] 🧹 Odstraněno poškozené herní jádro pro automatické znovustažení: ${d}.jar`);
                     } catch (_) { }
                 }
             }
