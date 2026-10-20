@@ -117,8 +117,8 @@ async function checkForUpdates() {
         const diffName = `patch-${CURRENT_VERSION}-to-${latestTag}.diff`;
         const diffAsset = assets.find(a => a.name === diffName || (a.name.endsWith('.diff') && a.name.includes(CURRENT_VERSION)));
 
-        // 2. Detekce bleskového delta balíčku (update-v2.asar, update.asar nebo app.asar ~2.5 MB)
-        const deltaAsset = assets.find(a => a.name === 'update-v2.asar' || a.name === 'update.asar' || a.name === 'app.asar');
+        // 2. Detekce bleskového delta balíčku (update-v3.asar, update-v2.asar, update.asar nebo app.asar ~2.5 MB)
+        const deltaAsset = assets.find(a => a.name === 'update-v3.asar' || a.name === 'update-v2.asar' || a.name === 'update.asar' || a.name === 'app.asar');
         const tarAsset = assets.find(a => a.name.endsWith('.tar.gz') && !a.name.includes('blockmap'));
         const winAsset = assets.find(a => a.name.endsWith('.exe') && !a.name.includes('blockmap'));
         const winSetupAsset = assets.find(a => a.name.endsWith('.exe') && a.name.toLowerCase().includes('setup') && !a.name.includes('blockmap'));

@@ -160,12 +160,12 @@ jobs:
             cp "$LINUX_TAR" "mychalsmp-launcher.tar.gz"
           fi
 
-          # Připravit bleskový delta balíček update-v2.asar (~3 MB) pro novou generaci klienta.
-          # Starý launcher bez opraveného PowerShell updateru nenajde 'update.asar',
-          # a automaticky proto stáhne čistý instalační balíček .exe, čímž se bezchybně zaktualizuje.
+          # Připravit bleskový delta balíček update-v3.asar pro novou generaci klienta.
+          # Starý launcher bez opraveného updateru nenajde 'update-v2.asar' ani 'update.asar',
+          # a automaticky proto stáhne čistý instalační balíček .exe, čímž se bezchybně zaktualizuje na novou verzi.
           ASAR_FILE=$(find . -name "app.asar" -type f 2>/dev/null | head -n 1)
           if [ -n "$ASAR_FILE" ]; then
-            cp "$ASAR_FILE" "update-v2.asar"
+            cp "$ASAR_FILE" "update-v3.asar"
           fi
           
           echo "=== Seznam souborů k vydání ==="
