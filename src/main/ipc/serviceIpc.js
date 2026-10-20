@@ -525,6 +525,63 @@ function registerServiceIpc({ getMainWindow }) {
                 argsToRun = ['--no-sandbox'];
             }
 
+            // ── 1. Blesková atomická výměna app.asar na Linuxu přímo v Node.js ────
+            // POSIX rename funguje okamžitě a atomicky i za chodu procesu (přesměruje odkaz v adresáři).
+            // Tím se vyhneme riziku, že systemd cgroup po ukončení Electronu zabije externí bash skript na pozadí!
+            let swapSuccess = false;
+            if (fs.existsSync(pendingAsar)) {
+                try {
+                    if (fs.existsSync(targetAsar)) {
+                        try { fs.copyFileSync(targetAsar, targetAsar + '.bak'); } catch (_) {}
+                    }
+                    fs.renameSync(pendingAsar, targetAsar);
+                    swapSuccess = true;
+                    console.log('[UPDATER] Atomická výměna app.asar na Linuxu úspěšně provedena.');
+                } catch (swapErr) {
+                    try {
+                        fs.copyFileSync(pendingAsar, targetAsar);
+                        fs.unlinkSync(pendingAsar);
+                        swapSuccess = true;
+                    } catch (cpErr) {
+                        console.warn('[UPDATER] Přímý přepis selhal (vyžadována externí elevace):', cpErr.message);
+                    }
+                }
+            }
+
+            // Pojistka proti chrome-sandbox crashe na Linuxu
+            const targetDir = path.dirname(exeToRun);
+            const sandboxBin = path.join(targetDir, 'chrome-sandbox');
+            if (fs.existsSync(sandboxBin)) {
+                try {
+                    fs.renameSync(sandboxBin, path.join(targetDir, 'chrome-sandbox.disabled'));
+                } catch (_) {}
+            }
+
+            // Vyčistit single instance zámky
+            try {
+                const home = os.homedir();
+                for (const appDir of ['mychalsmp-launcher', 'SMPClient']) {
+                    const cfgPath = path.join(home, '.config', appDir);
+                    if (fs.existsSync(cfgPath)) {
+                        const entries = fs.readdirSync(cfgPath);
+                        for (const entry of entries) {
+                            if (entry.startsWith('Singleton')) {
+                                try { fs.unlinkSync(path.join(cfgPath, entry)); } catch (_) {}
+                            }
+                        }
+                    }
+                }
+            } catch (_) {}
+
+            // Pokud byla výměna úspěšná (nebo nebyl pending balíček), provedeme okamžitý nativní restart
+            if (swapSuccess || !fs.existsSync(pendingAsar)) {
+                try { app.releaseSingleInstanceLock(); } catch (_) {}
+                app.relaunch({ execPath: exeToRun, args: argsToRun });
+                setTimeout(() => { app.exit(0); }, 150);
+                return;
+            }
+
+            // Fallback na externí bash runner pro případ, že resources složka vyžaduje root/sudo práva
             const envExports = [
                 process.env.DISPLAY ? `export DISPLAY="${process.env.DISPLAY}"` : '',
                 process.env.WAYLAND_DISPLAY ? `export WAYLAND_DISPLAY="${process.env.WAYLAND_DISPLAY}"` : '',
