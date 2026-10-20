@@ -944,13 +944,7 @@ Handler.prototype.getClasses = async function (classJson) {
     } catch (_) { }
 
     const combinedLibraries = [];
-    const seenArtifacts = new Set();
-
-    const getArtifactKey = (lib) => {
-        if (!lib || !lib.name) return null;
-        const parts = lib.name.split(':');
-        return `${parts[0]}:${parts[1]}`;
-    };
+    const customArtifactKeys = new Set();
 
     // a) Custom mavenFiles (např. ForgeWrapper)
     if (classJson && Array.isArray(classJson.mavenFiles)) {
@@ -962,22 +956,47 @@ Handler.prototype.getClasses = async function (classJson) {
     if (Array.isArray(customLibs)) {
         for (const lib of customLibs) {
             if (!lib || this.parseRule(lib)) continue;
-            const key = getArtifactKey(lib);
-            if (key) seenArtifacts.add(key);
+            if (lib.name) {
+                const parts = lib.name.split(':');
+                if (parts[0] && parts[1]) {
+                    const classifier = parts[3] || '';
+                    customArtifactKeys.add(`${parts[0]}:${parts[1]}:${classifier}`);
+                    if (!classifier) {
+                        customArtifactKeys.add(`${parts[0]}:${parts[1]}`);
+                    }
+                }
+            }
             combinedLibraries.push(lib);
         }
     }
 
-    // c) Knihovny z Vanilla manifestu (fastutil, log4j, netty, guava...) - doplníme vše, co loader nenahradil
+    // c) Knihovny z Vanilla manifestu (fastutil, log4j, netty, guava, lwjgl...)
+    // Doplníme vše z vanilkového manifestu, co loader nenahradil.
+    // POZOR: Vanilkové knihovny se NESMÍ deduplikovat navzájem mezi sebou podle groupId:artifactId,
+    // protože např. u LWJGL Mojang používá natives jar (org.lwjgl:lwjgl:3.4.1:natives-windows)
+    // i kódový jar (org.lwjgl:lwjgl:3.4.1:unsafe) pod stejným artifactId lwjgl!
     const vanillaLibs = vanillaJson?.libraries || (this.version?.inheritsFrom ? null : this.version?.libraries) || [];
     if (Array.isArray(vanillaLibs)) {
         for (const lib of vanillaLibs) {
             if (!lib || this.parseRule(lib)) continue;
-            const key = getArtifactKey(lib);
-            if (key && seenArtifacts.has(key)) {
-                continue; // Custom knihovna má přednost
+
+            if (lib.name) {
+                const parts = lib.name.split(':');
+                const baseKey = `${parts[0]}:${parts[1]}`;
+                const classifier = parts[3] || '';
+                const exactKey = `${parts[0]}:${parts[1]}:${classifier}`;
+
+                // Pokud custom loader (Fabric/Forge) dodal vlastní přímou náhradu téže knihovny,
+                // přeskočíme vanilkovou verzi. Nativní knihovny a specifické klasifikátory (např. unsafe u lwjgl)
+                // však nikdy custom loader nenahrazuje.
+                if (!classifier && customArtifactKeys.has(baseKey)) {
+                    continue; // Custom knihovna bez klasifikátoru má přednost
+                }
+                if (classifier && customArtifactKeys.has(exactKey)) {
+                    continue; // Custom knihovna s přesným klasifikátorem má přednost
+                }
             }
-            if (key) seenArtifacts.add(key);
+
             combinedLibraries.push(lib);
         }
     }
@@ -2323,11 +2342,9 @@ function injectSMPClientBrandIntoJars(baseDir, targetVersion = null, versionOpts
                 try {
                     execFileSync('zip', ['-u', tempJar, 'net/minecraft/client/ClientBrandRetriever.class'], { cwd: tmpDir, stdio: 'ignore' });
                 } catch (_) {
-                    // Metoda 3: Multiplatformní adm-zip zápis jedné třídy
-                    const AdmZip = require('adm-zip');
-                    const zip = new AdmZip(tempJar);
-                    zip.addFile('net/minecraft/client/ClientBrandRetriever.class', classBuf);
-                    zip.writeZip(tempJar);
+                    // DŮLEŽITÉ: AdmZip NIKDY nesmí zapisovat do 40MB herního jádra (způsobuje Invalid LOC header corruption).
+                    // Brand je již 100% spolehlivě injektován přes JVM argument -Xbootclasspath/a:smpclient-brand.jar.
+                    onLog(`[KLIENT] ℹ Nativní jar/zip CLI není dostupné, herní jádro ${path.basename(jarPath)} ponecháno v originálním stavu (brand zajištěn přes -Xbootclasspath).`);
                 }
             }
 
@@ -2351,6 +2368,11 @@ function injectSMPClientBrandIntoJars(baseDir, targetVersion = null, versionOpts
         } else if (fs.existsSync(backupPath) && isJarFileValid(backupPath)) {
             try { fs.copyFileSync(backupPath, jarPath); } catch (_) { }
             onLog(`[KLIENT] ⚠ Obnoveno původní jádro ${path.basename(jarPath)} ze zálohy.`);
+        } else if (!isJarFileValid(jarPath)) {
+            try { fs.unlinkSync(jarPath); } catch (_) { }
+            try { if (fs.existsSync(backupPath)) fs.unlinkSync(backupPath); } catch (_) { }
+            try { if (fs.existsSync(sigPath)) fs.unlinkSync(sigPath); } catch (_) { }
+            onLog(`[KLIENT] ⚠ Detekován neopravitelně poškozený soubor ${path.basename(jarPath)}. Odstraněn pro čisté stažení.`);
         }
     }
 }
@@ -2684,6 +2706,25 @@ async function ensureFabricProfile(centralRootDir, targetVersion, onLog = consol
                             loaderJarValid = false;
                         }
                     }
+
+                    // ⚡ Ověřit také, že existující JAR soubory (vanilla i fabric) nejsou poškozené
+                    const vJar = path.join(versionsDir, targetVersion, `${targetVersion}.jar`);
+                    const fJar = path.join(versionsDir, existing, `${existing}.jar`);
+                    if (fs.existsSync(vJar) && !isJarFileValid(vJar)) {
+                        onLog(`[FABRIC] ⚠ Nalezen poškozený ${targetVersion}.jar. Mažu pro čisté znovustažení...`);
+                        try { fs.unlinkSync(vJar); } catch (_) { }
+                        try { fs.unlinkSync(`${vJar}.skin_sig`); } catch (_) { }
+                        try { fs.unlinkSync(`${vJar}.brand_sig`); } catch (_) { }
+                        loaderJarValid = false;
+                    }
+                    if (fs.existsSync(fJar) && !isJarFileValid(fJar)) {
+                        onLog(`[FABRIC] ⚠ Nalezen poškozený ${existing}.jar. Mažu pro čistou obnovu...`);
+                        try { fs.unlinkSync(fJar); } catch (_) { }
+                        try { fs.unlinkSync(`${fJar}.skin_sig`); } catch (_) { }
+                        try { fs.unlinkSync(`${fJar}.brand_sig`); } catch (_) { }
+                        loaderJarValid = false;
+                    }
+
                     if (loaderJarValid) {
                         onLog(`[FABRIC] Nalezen kompletní Fabric profil: ${existing}`);
                         return existing;

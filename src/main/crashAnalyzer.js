@@ -900,11 +900,31 @@ async function analyzeCrash(gameDir, exitCode = 1, recentMemoryLogs = [], launch
         }
     }
 
+    // ── Diagnostic Rule: Missing LWJGL Core Classes ────────────────────────────
+    if (
+        /NoClassDefFoundError:\s*org[\/\.]lwjgl/i.test(combinedText) ||
+        /ClassNotFoundException:\s*org[\/\.]lwjgl/i.test(combinedText)
+    ) {
+        return {
+            hasCrash: true,
+            exitCode,
+            reportPath,
+            fixed: false,
+            title: 'Chybějící knihovna LWJGL',
+            severity: 'critical',
+            description: 'Minecraft nemohl nastartovat, protože chybí základní kódová knihovna LWJGL (org.lwjgl.Version / MathUtil). Launcher v nové verzi tuto chybu v sestavení classpath plně opravuje.',
+            recommendation: 'Spusť hru znovu – launcher automaticky zahrne všechny LWJGL knihovny do spuštění.',
+            logExcerpt: extractRelevantStack(combinedText, /org[\/\.]lwjgl/i) || logExcerpt
+        };
+    }
+
     // ── Diagnostic Rule: Sodium Graphics PreLaunch Crash ───────────────────────
     const isSodiumPreLaunch =
         (/Could not execute entrypoint stage 'preLaunch' due to errors, provided by 'sodium'/i.test(combinedText) ||
          /SodiumPreLaunch/i.test(combinedText)) &&
-        !combinedText.includes('Incompatible mods found!');
+        !combinedText.includes('Incompatible mods found!') &&
+        !/NoClassDefFoundError:\s*org[\/\.]lwjgl/i.test(combinedText) &&
+        !/ClassNotFoundException:\s*org[\/\.]lwjgl/i.test(combinedText);
 
     if (isSodiumPreLaunch) {
         let sodiumExcerpt = '';
@@ -1102,7 +1122,8 @@ async function analyzeCrash(gameDir, exitCode = 1, recentMemoryLogs = [], launch
     // ── Diagnostic Rule: Could not find or load main class (Corrupted Client JAR) ──
     if (
         /Could not find or load main class net\.minecraft\.client\.main\.Main/i.test(combinedText) ||
-        /ClassNotFoundException: net\.minecraft\.client\.main\.Main/i.test(combinedText)
+        /ClassNotFoundException: net\.minecraft\.client\.main\.Main/i.test(combinedText) ||
+        /Failed to load class file for 'net\.minecraft/i.test(combinedText)
     ) {
         return {
             hasCrash: true,
