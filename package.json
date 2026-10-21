@@ -1,6 +1,6 @@
 {
   "name": "voldex-client",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Voldex Client by Voldex Studios – High-Performance Minecraft Client pro server voldex.zasemazi.cz (VoldexSMP)",
   "main": "src/main/index.js",
   "scripts": {

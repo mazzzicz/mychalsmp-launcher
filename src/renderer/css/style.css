@@ -677,13 +677,14 @@ body.is-maximized {
 .tab-pane {
     display: none;
     height: 100%;
-    opacity: 0;
-    transform: translateY(4px);
-    transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    opacity: 1;
+    transform: translateY(0);
 }
 
 .tab-pane.active {
     display: block;
+    opacity: 1;
+    transform: translateY(0);
     animation: tabPaneFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     will-change: transform, opacity, filter;
 }
@@ -9588,7 +9589,18 @@ body {
 }
 
 .tab-pane.active {
-    animation: voldexTabEnter 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    display: block !important;
+    opacity: 1 !important;
+    transform: translateY(0) !important;
+    filter: none !important;
+    animation: voldexTabEnter 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+}
+
+#tab-play.active {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    opacity: 1 !important;
 }
 
 @keyframes voldexTabEnter {
@@ -9607,6 +9619,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: 12px;
+    flex: 1 1 auto;
     height: 100%;
     min-height: 0;
 }
@@ -9839,8 +9852,11 @@ body {
     display: grid !important;
     grid-template-columns: 1fr 295px !important;
     gap: 14px !important;
-    flex: 1;
-    min-height: 0;
+    padding: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
 }
 
 .dash-left {
