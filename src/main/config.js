@@ -6,11 +6,11 @@ const { protectAccount, unprotectAccount } = require('./cryptoVault');
 function getBaseDirectory() {
     if (process.platform === 'win32') {
         const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
-        return path.join(appData, '.mychalsmp');
+        return path.join(appData, '.voldexclient');
     } else if (process.platform === 'darwin') {
-        return path.join(os.homedir(), 'Library', 'Application Support', 'mychalsmp');
+        return path.join(os.homedir(), 'Library', 'Application Support', 'voldexclient');
     } else {
-        return path.join(os.homedir(), '.mychalsmp');
+        return path.join(os.homedir(), '.voldexclient');
     }
 }
 
@@ -24,7 +24,7 @@ const DEFAULT_PROFILES = [
         version: '26.3',
         loader: 'fabric',
         optimizedChosen: 'optimized',
-        desc: 'Minecraft 26.3',
+        desc: 'VoldexSMP • Minecraft 26.3',
         icon: 'latest',
         lastPlayed: null,
         playtimeSeconds: 0
@@ -35,7 +35,7 @@ const DEFAULT_PROFILES = [
         version: '26.2',
         loader: 'fabric',
         optimizedChosen: 'optimized',
-        desc: 'Minecraft 26.2',
+        desc: 'VoldexSMP • Minecraft 26.2',
         icon: 'sword',
         lastPlayed: null,
         playtimeSeconds: 0
@@ -46,7 +46,7 @@ const DEFAULT_PROFILES = [
         version: '26.1.2',
         loader: 'fabric',
         optimizedChosen: 'optimized',
-        desc: 'Minecraft 26.1.2',
+        desc: 'VoldexSMP • Minecraft 26.1.2',
         icon: 'chest',
         lastPlayed: null,
         playtimeSeconds: 0
@@ -57,7 +57,7 @@ const DEFAULT_PROFILES = [
         version: '1.21.11',
         loader: 'fabric',
         optimizedChosen: 'optimized',
-        desc: 'Minecraft 1.21.11',
+        desc: 'VoldexSMP • Minecraft 1.21.11',
         icon: 'shield',
         lastPlayed: null,
         playtimeSeconds: 0
@@ -66,10 +66,9 @@ const DEFAULT_PROFILES = [
 
 const DEFAULT_SERVERS = [
     {
-        id: 'mychalsmp',
-        name: 'MYCHAL SMP',
-        ip: 'mychalsmp.xyz',
-        backupIp: '130.61.89.37',
+        id: 'voldexsmp',
+        name: 'VoldexSMP',
+        ip: 'voldex.zasemazi.cz',
         port: 25565,
         pinned: true,
         lastJoined: Date.now()
@@ -95,7 +94,9 @@ const DEFAULT_CONFIG = {
     profiles: DEFAULT_PROFILES,
     servers: DEFAULT_SERVERS,
     autoConnectServer: false,
-    serverIp: 'mychalsmp.xyz',
+    autoConnectTarget: 'voldex.zasemazi.cz',
+    autoFaithful64: true,
+    serverIp: 'voldex.zasemazi.cz',
     serverPort: 25565,
     customJvmArgs: '-XX:+UseZGC -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC',
     enableGameMode: true,
@@ -194,11 +195,27 @@ function loadConfig() {
             if (!merged.servers || merged.servers.length === 0) {
                 merged.servers = DEFAULT_SERVERS;
             } else {
-                merged.servers.forEach(s => {
-                    if (s.id === 'mychalsmp' || s.ip === 'mychalsmp.xyz') {
-                        s.backupIp = '130.61.89.37';
+                merged.servers = merged.servers.map(s => {
+                    const rawIp = String(s.ip || '').toLowerCase();
+                    const rawId = String(s.id || '').toLowerCase();
+                    if (rawId === 'voldexsmp' || rawIp.includes('voldex.zasemazi.cz') || rawIp === '130.61.89.37') {
+                        return {
+                            ...s,
+                            id: 'voldexsmp',
+                            name: 'VoldexSMP',
+                            ip: 'voldex.zasemazi.cz',
+                            port: 25565,
+                            pinned: true
+                        };
                     }
+                    return s;
                 });
+                if (!merged.servers.some(s => s.id === 'voldexsmp' || String(s.ip || '').toLowerCase().includes('voldex.zasemazi.cz'))) {
+                    merged.servers.unshift(DEFAULT_SERVERS[0]);
+                }
+            }
+            if (!merged.serverIp || !String(merged.serverIp).toLowerCase().includes('voldex.zasemazi.cz')) {
+                merged.serverIp = 'voldex.zasemazi.cz';
             }
             if (merged.ramMax !== undefined || merged.ramMin !== undefined) {
                 let max = parseInt(merged.ramMax, 10);

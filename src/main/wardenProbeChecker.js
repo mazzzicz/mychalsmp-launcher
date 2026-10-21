@@ -3,7 +3,7 @@ const path = require('path');
 const nativeLoader = require('./nativeLoader');
 
 /**
- * Mod Safety Checker for MYCHAL SMP Launcher
+ * Mod Safety Checker for Voldex Client
  * Ensures players don't join with prohibited modifications.
  */
 

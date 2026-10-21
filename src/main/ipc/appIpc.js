@@ -27,7 +27,7 @@ function registerAppIpc({ getMainWindow, setupTray }) {
                 const activeProfile = (saved.profiles || []).find(p => p.id === saved.activeProfileId);
                 discordRpc.updateActivity({
                     username: saved.username || 'Hráč',
-                    server: saved.serverIp || 'mychalsmp.xyz',
+                    server: saved.serverIp || 'voldex.zasemazi.cz',
                     profileName: activeProfile ? activeProfile.name : 'Minecraft 26.2',
                     isPlaying: false
                 });
@@ -65,7 +65,7 @@ function registerAppIpc({ getMainWindow, setupTray }) {
         } : saved;
     });
 
-    ipcMain.handle('ping-server', async (event, ip = 'mychalsmp.xyz', port = 25565) => {
+    ipcMain.handle('ping-server', async (event, ip = 'voldex.zasemazi.cz', port = 25565) => {
         return await pingServer(ip, port);
     });
 

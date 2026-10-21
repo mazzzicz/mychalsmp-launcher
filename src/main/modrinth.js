@@ -1,5 +1,5 @@
 /**
- * Modrinth Catalog Integration for MYCHAL SMP Launcher
+ * Modrinth Catalog Integration for Voldex Client (Voldex Studios)
  */
 const nativeLoader = require('./nativeLoader');
 
@@ -108,13 +108,26 @@ const crypto = require('crypto');
 
 const CURATED_PACKS = [
     {
+        id: 'faithful-64x',
+        title: 'Faithful 64x',
+        author: 'Faithful Pack Team',
+        downloads: 42000000,
+        follows: 48000,
+        icon_url: 'assets/server-icon.png',
+        description: 'Detailní 64x64 rozlišení všech bloků a předmětů při zachování autentického stylu Minecraftu. Automaticky předinstalováno ve Voldex Clientu.',
+        project_type: 'resourcepack',
+        categories: [],
+        loaders: [],
+        installed: true
+    },
+    {
         id: 'complementary-reimagined',
         title: 'Complementary Reimagined',
         author: 'EminGT',
         downloads: 28000000,
         follows: 31000,
         icon_url: 'https://cdn.modrinth.com/data/R2DWtGli/icon.png',
-        description: 'Vizuálně dechberoucí shadery s perfektním osvětlením, reálnou vodou a vysokou optimalizací pro síť MYCHAL SMP.',
+        description: 'Vizuálně dechberoucí shadery s perfektním osvětlením, reálnou vodou a vysokou optimalizací pro server VoldexSMP.',
         project_type: 'shader',
         categories: [],
         loaders: [],
@@ -186,7 +199,7 @@ async function searchModrinth(query = '', version = '26.2', loader = 'fabric', c
         const url = `https://api.modrinth.com/v2/search?${params.toString()}&facets=${encodeURIComponent(JSON.stringify(facets))}`;
         const res = await fetch(url, {
             headers: {
-                'User-Agent': 'mychalVidea/mychalsmp-launcher/1.0.0 (admin@mychalsmp.xyz)'
+                'User-Agent': 'VoldexStudios/voldex-client/1.0.0 (info@zasemazi.cz)'
             },
             signal: AbortSignal.timeout(4000)
         });
@@ -205,7 +218,7 @@ async function searchModrinth(query = '', version = '26.2', loader = 'fabric', c
             if (versionIds.length > 0) {
                 try {
                     const vRes = await fetch(`https://api.modrinth.com/v2/versions?ids=${encodeURIComponent(JSON.stringify(versionIds))}`, {
-                        headers: { 'User-Agent': 'mychalVidea/mychalsmp-launcher' },
+                        headers: { 'User-Agent': 'VoldexStudios/voldex-client' },
                         signal: AbortSignal.timeout(3000)
                     });
                     if (vRes.ok) {
@@ -271,7 +284,7 @@ async function downloadToFileWithProgress(url, destPath, onProgress) {
         } catch (_) {}
     }
     const dlRes = await fetch(url, {
-        headers: { 'User-Agent': 'mychalVidea/mychalsmp-launcher' }
+        headers: { 'User-Agent': 'VoldexStudios/voldex-client' }
     });
     if (!dlRes.ok) throw new Error(`Chyba stahování: HTTP ${dlRes.status}`);
 
@@ -315,7 +328,7 @@ async function resolveModrinthProject(rawId) {
     for (const c of candidates) {
         try {
             const res = await fetch(`https://api.modrinth.com/v2/project/${encodeURIComponent(c)}`, {
-                headers: { 'User-Agent': 'mychalVidea/mychalsmp-launcher' },
+                headers: { 'User-Agent': 'VoldexStudios/voldex-client' },
                 signal: AbortSignal.timeout(4000)
             });
             if (res.ok) {
@@ -334,7 +347,7 @@ async function resolveModrinthProject(rawId) {
         const query = clean.replace(/[_-]/g, ' ');
         const sUrl = `https://api.modrinth.com/v2/search?query=${encodeURIComponent(query)}&limit=3`;
         const sRes = await fetch(sUrl, {
-            headers: { 'User-Agent': 'mychalVidea/mychalsmp-launcher' },
+            headers: { 'User-Agent': 'VoldexStudios/voldex-client' },
             signal: AbortSignal.timeout(4000)
         });
         if (sRes.ok) {
@@ -501,7 +514,7 @@ async function downloadModOrPack(options, targetDir) {
         try {
             const verUrl = `https://api.modrinth.com/v2/project/${encodeURIComponent(id)}/version?loaders=${encodeURIComponent(JSON.stringify([normLoader]))}&game_versions=${encodeURIComponent(JSON.stringify([version]))}`;
             const vRes = await fetch(verUrl, {
-                headers: { 'User-Agent': 'mychalVidea/mychalsmp-launcher' }
+                headers: { 'User-Agent': 'VoldexStudios/voldex-client' }
             });
             if (vRes.ok) {
                 const list = await vRes.json();
@@ -516,7 +529,7 @@ async function downloadModOrPack(options, targetDir) {
             try {
                 const ldrUrl = `https://api.modrinth.com/v2/project/${encodeURIComponent(id)}/version?loaders=${encodeURIComponent(JSON.stringify([normLoader]))}`;
                 const lRes = await fetch(ldrUrl, {
-                    headers: { 'User-Agent': 'mychalVidea/mychalsmp-launcher' }
+                    headers: { 'User-Agent': 'VoldexStudios/voldex-client' }
                 });
                 if (lRes.ok) {
                     const list = await lRes.json();
@@ -536,7 +549,7 @@ async function downloadModOrPack(options, targetDir) {
         // Resourcepacky, shadery nebo vanilla profily
         const directUrl = `https://api.modrinth.com/v2/project/${encodeURIComponent(id)}/version`;
         const res = await fetch(directUrl, {
-            headers: { 'User-Agent': 'mychalVidea/mychalsmp-launcher' }
+            headers: { 'User-Agent': 'VoldexStudios/voldex-client' }
         });
         if (!res.ok) throw new Error(`Projekt ${id} nebyl nalezen na Modrinthu.`);
         versions = await res.json();
@@ -804,7 +817,7 @@ async function checkProfileModUpdates({ profileId, gameDir, version = '26.2', lo
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'User-Agent': 'mychalVidea/mychalsmp-launcher (support@mychalsmp.xyz)'
+                'User-Agent': 'VoldexStudios/voldex-client (support@voldex.zasemazi.cz)'
             },
             body: JSON.stringify({
                 hashes: hashes,

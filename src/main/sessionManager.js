@@ -111,8 +111,8 @@ function saveSessionTick(session, forceDiskFlush = false, onPlaytimeUpdated = nu
                     const ip = (s.ip || '').toLowerCase();
                     const sub = (s.subdomain || '').toLowerCase();
                     const backup = (s.backupIp || '').toLowerCase();
-                    const isMychal = (cleanTarget.includes('mychalsmp') || cleanTarget === '130.61.89.37') && (s.id === 'mychalsmp' || s.ip === 'mychalsmp.xyz');
-                    if (ip === cleanTarget || sub === cleanTarget || backup === cleanTarget || isMychal) {
+                    const isVoldex = (cleanTarget.includes('voldexsmp') || cleanTarget === 'voldex.zasemazi.cz') && (s.id === 'voldexsmp' || s.ip === 'voldex.zasemazi.cz');
+                    if (ip === cleanTarget || sub === cleanTarget || backup === cleanTarget || isVoldex) {
                         return {
                             ...s,
                             playtimeSeconds: (Number(s.playtimeSeconds) || 0) + flushSec
@@ -223,7 +223,7 @@ function endSessionTracking(exitCode = 0, callbacks = {}) {
                 const activeProfile = (cfg.profiles || []).find(p => p.id === cfg.activeProfileId);
                 discordRpc.updateActivity({
                     username: cfg.username || 'Hráč',
-                    server: cfg.serverIp || 'mychalsmp.xyz',
+                    server: cfg.serverIp || 'voldex.zasemazi.cz',
                     profileName: activeProfile ? activeProfile.name : 'Minecraft 26.2',
                     isPlaying: false
                 });

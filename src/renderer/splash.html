@@ -1,243 +1,242 @@
 <!DOCTYPE html>
 <html lang="cs">
-
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MYCHAL SMP</title>
+    <title>Voldex Client — Voldex Studios</title>
     <style>
+        @font-face {
+            font-family: 'Monocraft';
+            src: url('assets/fonts/Monocraft.ttf') format('truetype');
+            font-weight: 400;
+            font-style: normal;
+        }
+        @font-face {
+            font-family: 'Monocraft';
+            src: url('assets/fonts/Monocraft-Bold.ttf') format('truetype');
+            font-weight: 700;
+            font-style: normal;
+        }
+
         * {
-            box-sizing: border-box;
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
             user-select: none;
-            -webkit-user-select: none;
-            -webkit-app-region: drag;
+            -webkit-user-drag: none;
         }
 
         body {
             width: 100vw;
             height: 100vh;
+            overflow: hidden;
             background: transparent;
+            font-family: 'Monocraft', system-ui, -apple-system, sans-serif;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-            overflow: hidden;
-            -webkit-app-region: drag;
         }
 
         .splash-card {
-            width: 290px;
-            height: 330px;
-            background: #12141f;
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            position: relative;
+            width: 390px;
+            height: 450px;
+            background:
+                linear-gradient(180deg, rgba(6, 12, 20, 0.88) 0%, rgba(4, 8, 14, 0.96) 100%),
+                url('assets/keyarts/26.2.jpg') center/cover no-repeat;
             border-radius: 18px;
-            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7), 0 0 35px rgba(10, 103, 229, 0.2);
+            border: 1px solid rgba(34, 211, 238, 0.28);
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            position: relative;
+            justify-content: space-between;
+            padding: 34px 28px 28px;
+            box-shadow:
+                0 28px 70px rgba(0, 0, 0, 0.92),
+                inset 0 1px 0 rgba(255, 255, 255, 0.08);
             overflow: hidden;
-            animation: splashAppear 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            -webkit-app-region: drag;
+            animation: splashEnter 0.55s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
-        @keyframes splashAppear {
-            0% {
-                opacity: 0;
-                transform: scale(0.95);
-            }
-
-            100% {
-                opacity: 1;
-                transform: scale(1);
-            }
+        @keyframes splashEnter {
+            from { opacity: 0; transform: scale(0.95) translateY(8px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
         }
 
-        .splash-glow {
+        .splash-card::before {
+            content: '';
             position: absolute;
-            top: 15%;
-            width: 180px;
-            height: 180px;
-            background: radial-gradient(circle, rgba(10, 103, 229, 0.3) 0%, transparent 70%);
-            border-radius: 50%;
+            inset: 0;
+            background: radial-gradient(circle at 50% 28%, rgba(34, 211, 238, 0.16), transparent 65%);
             pointer-events: none;
-            animation: pulseGlow 2.5s ease-in-out infinite alternate;
+        }
+
+        .studio-tag {
+            position: relative;
+            z-index: 2;
+            font-size: 10px;
+            letter-spacing: 2.5px;
+            color: #67e8f9;
+            background: rgba(8, 22, 34, 0.82);
+            border: 1px solid rgba(34, 211, 238, 0.25);
+            padding: 5px 12px;
+            border-radius: 6px;
+            text-transform: uppercase;
+        }
+
+        .center-emblem {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .icon-frame {
+            position: relative;
+            width: 132px;
+            height: 132px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .icon-glow {
+            position: absolute;
+            inset: -12px;
+            border-radius: 28px;
+            background: radial-gradient(circle, rgba(34, 211, 238, 0.32) 0%, transparent 70%);
+            animation: pulseGlow 3s ease-in-out infinite;
         }
 
         @keyframes pulseGlow {
-            0% {
-                transform: scale(0.9);
-                opacity: 0.6;
-            }
-
-            100% {
-                transform: scale(1.15);
-                opacity: 1;
-            }
+            0%, 100% { transform: scale(0.96); opacity: 0.65; }
+            50% { transform: scale(1.06); opacity: 1; }
         }
 
-        .logo-box {
+        .client-icon {
             position: relative;
-            width: 76px;
-            height: 76px;
-            margin-bottom: 18px;
-            z-index: 2;
+            width: 120px;
+            height: 120px;
+            image-rendering: pixelated;
+            filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.85));
+            animation: iconFloat 3.6s ease-in-out infinite;
         }
 
-        .logo-img {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            border-radius: 16px;
-            filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.6));
-            animation: floatLogo 3s ease-in-out infinite;
+        @keyframes iconFloat {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-5px); }
         }
 
-        @keyframes floatLogo {
-
-            0%,
-            100% {
-                transform: translateY(0);
-            }
-
-            50% {
-                transform: translateY(-4px);
-            }
+        .title-block {
+            text-align: center;
         }
 
-        .splash-title {
-            font-size: 20px;
-            font-weight: 800;
+        .client-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #f8fafc;
             letter-spacing: 2px;
-            color: #0a67e5;
-            margin-bottom: 6px;
-            z-index: 2;
+            text-shadow: 0 3px 0 #042f2e, 0 8px 20px rgba(0, 0, 0, 0.8);
         }
 
-        .splash-title span {
-            color: #ffffff;
+        .client-server {
+            margin-top: 6px;
+            font-size: 11px;
+            color: #22d3ee;
+            letter-spacing: 1.5px;
         }
 
-        .splash-status {
-            font-size: 12px;
-            font-weight: 500;
-            color: #94a3b8;
-            letter-spacing: 0.3px;
-            margin-bottom: 22px;
-            z-index: 2;
-        }
-
-        .progress-box {
-            width: 180px;
-            height: 4px;
-            background: rgba(255, 255, 255, 0.08);
-            border-radius: 999px;
-            overflow: hidden;
+        .loader-footer {
             position: relative;
-            border: 1px solid rgba(255, 255, 255, 0.04);
             z-index: 2;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
         }
 
-        .progress-line {
-            position: absolute;
-            top: 0;
-            left: 0;
+        .status-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 10px;
+            color: #94a3b8;
+            letter-spacing: 0.5px;
+        }
+
+        .status-text {
+            color: #e2e8f0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 260px;
+        }
+
+        .status-pct {
+            color: #22d3ee;
+            font-weight: 700;
+        }
+
+        .progress-track {
+            width: 100%;
+            height: 6px;
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid rgba(34, 211, 238, 0.22);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
             height: 100%;
-            width: 35%;
-            background: linear-gradient(90deg, #0a67e5, #21DE00);
-            border-radius: 999px;
-            box-shadow: 0 0 10px #21DE00;
-            animation: indeterminate 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-        }
-
-        @keyframes indeterminate {
-            0% {
-                left: -35%;
-                width: 30%;
-            }
-
-            50% {
-                width: 45%;
-            }
-
-            100% {
-                left: 100%;
-                width: 20%;
-            }
+            width: 18%;
+            background: linear-gradient(90deg, #0d9488 0%, #22d3ee 60%, #a5f3fc 100%);
+            box-shadow: 0 0 12px rgba(34, 211, 238, 0.6);
+            transition: width 0.28s cubic-bezier(0.22, 1, 0.36, 1);
         }
     </style>
 </head>
-
 <body>
     <div class="splash-card">
-        <div class="splash-glow"></div>
-        <div class="logo-box">
-            <img src="assets/logo.png" alt="SMPClient" class="logo-img">
+        <div class="studio-tag">VOLDEX STUDIOS</div>
+
+        <div class="center-emblem">
+            <div class="icon-frame">
+                <div class="icon-glow"></div>
+                <img src="assets/server-icon.png" alt="Voldex Client" class="client-icon">
+            </div>
+            <div class="title-block">
+                <div class="client-title">VOLDEX CLIENT</div>
+                <div class="client-server">voldex.zasemazi.cz</div>
+            </div>
         </div>
-        <h1 class="splash-title">SMP<span>Client</span></h1>
-        <div class="splash-status" id="splashStatus">Spouštění launcheru...</div>
-        <div class="progress-box">
-            <div class="progress-line"></div>
+
+        <div class="loader-footer">
+            <div class="status-row">
+                <span class="status-text" id="statusText">Inicializace Voldex Engine...</span>
+                <span class="status-pct" id="statusPct">18%</span>
+            </div>
+            <div class="progress-track">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
         </div>
     </div>
+
     <script>
-        const SPLASH_QUOTES = [
-            "Nikdy nekopej přímo pod sebe. Fakt nikdy.",
-            "Herobrine byl z bezpečnostních důvodů odstraněn. Snad.",
-            "Dneska je ideální počasí na hledání netheritu v lávě.",
-            "Tvoji vlci doma čekají. Už tři měsíce sedí na stejném bloku.",
-            "Připoj se na mychalsmp.xyz a ukaž jim svůj nejlepší build.",
-            "Pozor na creepery za zády... tsssss.",
-            "Slyšíš ten divný zvuk? To tě právě obklíčil Warden ve tmě.",
-            "Máš dost jídla? Zlatá mrkev ti v boji zachrání život.",
-            "Legenda praví, že na souřadnicích 0, 0 někdo nechal plný shulker box.",
-            "Beacon zapnut, síla II a regenerace připraveny k akci.",
-            "Když spadneš do lávy, nezapomeň vypít fire resistance.",
-            "Enderman se na tebe dívá. Radši zklop zrak a dívej se do země.",
-            "PVPConnect hlásí: v aréně to právě vře.",
-            "Stavíš základnu? Nezapomeň na tajnou podzemní skrýš.",
-            "Lektvary navařeny, netheritové meče nabroušeny.",
-            "Nether fortress je vždycky přesně na opačné straně, než se vydáš.",
-            "Žádný ping, žádný lag. Jen čistá radost z kostiček.",
-            "Diamanty těží jen ti trpěliví. Nebo ti s Fortune III.",
-            "Dneska neponocuj... počkat, v Minecraftu se noce nepočítají.",
-            "Elytra natankována raketami, letíme nad oblaky!",
-            "Věděl jsi, že vesničané nikdy nespí, když je v okolí zombie?",
-            "Jeden blok sem, jeden blok tam a za hodinu je z toho hrad.",
-            "Kdo neclaimuje, ten pláče. Zabezpeč si své území!",
-            "Generational ZGC čistí paměť rychleji než voda lávu.",
-            "Mychal SMP: Místo, kde i obyčejný dirtový domek má styl.",
-            "Ztracený v jeskyni bez loučí? Klasický páteční večer.",
-            "Netheritový armor ti dodá respekt. A odolnost proti odhození.",
-            "Nepřátelé vidí tvůj ping, ale nevidí tvoje komba.",
-            "Totem nesmrtelnosti v levé ruce je nejlepší pojištění.",
-            "Vesničan nabízí 1 smaragd za 32 emeraldů... chci říct pšenice.",
-            "Optifine je minulost, Sodium a Iris vládnou modernímu světu.",
-            "Postav automatickou farmu dřív, než tě předběhnou sousedi.",
-            "Redstone obvody: 10 % logika, 90 % zkoušení proč to nefunguje.",
-            "Každý správný horník nosí v kapse alespoň jeden kyblík vody.",
-            "Nezapomeň si nastavit spawn v posteli, než skočíš do Endu.",
-            "Když tě honí baby zombie, je čas začít sprintovat.",
-            "Dneska padne drak v Endu. Připrav si luk a šípy.",
-            "Maringotka u řeky nebo megazákladna v horách? Volba je na tobě.",
-            "Wither se právě spawnuje... vezmi nohy na ramena!",
-            "Základní pravidlo přežití: Nikdy nepodceňuj kostlivce s lukem.",
-            "Complementary shadery zapnuty, voda se třpytí a slunce hřeje.",
-            "V inventáři máš plno hlíny a zapomněl jsi doma krumpáč. Klasika.",
-            "Hráč vedle tebe právě vycraftil první netherite meč.",
-            "Zlato v Netheru nesbírej bez zlaté boty, piglini tě sledují.",
-            "Přežít první noc je jen začátek tvého impéria.",
-            "Když dojdou torche, uhlí je vždycky na stropě, kam nedosáhneš.",
-            "Na serveru tě čekají noví přátelé i staří rivalové.",
-            "Uvidíme se na mychalsmp.xyz!"
-        ];
-        const statusEl = document.getElementById('splashStatus');
-        if (statusEl) {
-            statusEl.textContent = SPLASH_QUOTES[Math.floor(Math.random() * SPLASH_QUOTES.length)];
-        }
+        const { ipcRenderer } = require('electron');
+        const statusText = document.getElementById('statusText');
+        const statusPct = document.getElementById('statusPct');
+        const progressFill = document.getElementById('progressFill');
+
+        ipcRenderer.on('splash-status', (event, data) => {
+            if (data.text) statusText.textContent = data.text;
+            if (typeof data.progress === 'number') {
+                const pct = Math.min(100, Math.max(5, Math.round(data.progress)));
+                progressFill.style.width = pct + '%';
+                if (statusPct) statusPct.textContent = pct + '%';
+            }
+        });
     </script>
 </body>
-
 </html>

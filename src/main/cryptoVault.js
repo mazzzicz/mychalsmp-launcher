@@ -66,7 +66,7 @@ function getDeviceFingerprint() {
     return `${platform}::${machineId}::${userInfo}::${cpuModel}::${arch}`;
 }
 
-const VAULT_SALT = 'MychalSMP_Vault_HardwareBound_Salt_v2_2026';
+const VAULT_SALT = 'VoldexSMP_Vault_HardwareBound_Salt_v2_2026';
 let cachedKey = null;
 
 function getDerivedKey() {

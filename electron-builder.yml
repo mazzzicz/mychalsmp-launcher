@@ -1,6 +1,6 @@
-appId: xyz.mychalsmp.launcher
-productName: SMPClient
-copyright: Copyright © 2026 mychalVidea
+appId: cz.zasemazi.voldex.client
+productName: VoldexClient
+copyright: Copyright © 2026 Voldex Studios
 compression: "maximum"
 directories:
   output: dist
@@ -24,21 +24,21 @@ win:
         - x64
   icon: build/icon.ico
   signtoolOptions:
-    publisherName: "mychalVidea"
+    publisherName: "Voldex Studios"
   verifyUpdateCodeSignature: false
 
 nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
-  shortcutName: SMPClient
-  uninstallDisplayName: SMPClient
+  shortcutName: Voldex Client
+  uninstallDisplayName: Voldex Client (Voldex Studios)
   installerIcon: build/icon.ico
   uninstallerIcon: build/icon.ico
   installerHeaderIcon: build/icon.ico
 
 linux:
-  maintainer: "mychalVidea <admin@mychalsmp.xyz>"
+  maintainer: "Voldex Studios <info@zasemazi.cz>"
   target:
     - target: tar.gz
       arch:

@@ -17,7 +17,7 @@ const { pipeline } = require('stream/promises');
 const packageJson = require('../../package.json');
 const nativeLoader = require('./nativeLoader');
 
-const GITHUB_REPO = 'mychalVidea/mychalsmp-launcher';
+const GITHUB_REPO = 'mazzzicz/Voldex-Client';
 const CURRENT_VERSION = packageJson.version || '1.0.0';
 
 /**
@@ -43,7 +43,7 @@ async function fetchCommitChangelogFallback() {
     try {
         const commitsRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/commits?per_page=5&t=${Date.now()}`, {
             headers: {
-                'User-Agent': 'mychalsmp-launcher-updater',
+                'User-Agent': 'Voldex-Client-updater',
                 'Accept': 'application/vnd.github.v3+json'
             }
         });
@@ -84,7 +84,7 @@ async function checkForUpdates() {
     try {
         const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest?t=${Date.now()}`, {
             headers: {
-                'User-Agent': 'mychalsmp-launcher-updater',
+                'User-Agent': 'Voldex-Client-updater',
                 'Accept': 'application/vnd.github.v3+json',
                 'Cache-Control': 'no-cache, no-store, must-revalidate',
                 'Pragma': 'no-cache'
@@ -238,11 +238,11 @@ function getResourcesDir() {
     const candidates = [
         process.resourcesPath,
         path.join(exeDir, 'resources'),
-        path.join(os.homedir(), '.local', 'share', 'mychalsmp-launcher', 'resources')
+        path.join(os.homedir(), '.local', 'share', 'Voldex-Client', 'resources')
     ];
 
     for (const cand of candidates) {
-        if (cand && fs.existsSync(cand) && (fs.existsSync(path.join(cand, 'app.asar')) || fs.existsSync(path.join(path.dirname(cand), 'mychalsmp-launcher')) || fs.existsSync(path.join(path.dirname(cand), 'mychalsmp-launcher.exe')) || fs.existsSync(path.join(path.dirname(cand), 'SMPClient.exe')) || fs.existsSync(path.join(path.dirname(cand), 'SMPClient')))) {
+        if (cand && fs.existsSync(cand) && (fs.existsSync(path.join(cand, 'app.asar')) || fs.existsSync(path.join(path.dirname(cand), 'Voldex-Client')) || fs.existsSync(path.join(path.dirname(cand), 'Voldex-Client.exe')) || fs.existsSync(path.join(path.dirname(cand), 'SMPClient.exe')) || fs.existsSync(path.join(path.dirname(cand), 'SMPClient')))) {
             return cand;
         }
     }
@@ -271,16 +271,16 @@ async function applyUpdate(assetUrl, onProgress) {
             const resourcesDir = getResourcesDir();
             const targetAsar = path.join(resourcesDir, 'app.asar');
             // Použijeme .download příponu během streamu, aby Electron nezkoušel balíček parsovat
-            const tmpAsar = path.join(os.tmpdir(), `mychalsmp-update-${Date.now()}.download`);
+            const tmpAsar = path.join(os.tmpdir(), `VoldexSMP-update-${Date.now()}.download`);
             let receivedBytes = 0;
             let totalBytes = 0;
 
             if (assetUrl.endsWith('.diff')) {
                 // Cesta B: Binární Diff Patch přes Rust engine
-                const tmpDiff = path.join(os.tmpdir(), `mychalsmp-diff-${Date.now()}.diff`);
+                const tmpDiff = path.join(os.tmpdir(), `VoldexSMP-diff-${Date.now()}.diff`);
                 
                 const res = await fetch(assetUrl, {
-                    headers: { 'User-Agent': 'mychalsmp-launcher-updater' }
+                    headers: { 'User-Agent': 'Voldex-Client-updater' }
                 });
                 if (!res.ok) throw new Error(`Chyba stahování aktualizačního balíčku: HTTP ${res.status}`);
 
@@ -331,7 +331,7 @@ async function applyUpdate(assetUrl, onProgress) {
             } else {
                 // Cesta A: Delta ASAR balíček
                 const res = await fetch(assetUrl, {
-                    headers: { 'User-Agent': 'mychalsmp-launcher-updater' }
+                    headers: { 'User-Agent': 'Voldex-Client-updater' }
                 });
                 if (!res.ok) throw new Error(`Chyba stahování delta balíčku: HTTP ${res.status}`);
 
@@ -405,7 +405,7 @@ async function applyUpdate(assetUrl, onProgress) {
             try {
                 fs.copyFileSync(tmpAsar, pendingAsar);
             } catch (permErr) {
-                pendingAsar = path.join(os.tmpdir(), 'mychalsmp_app.asar.pending');
+                pendingAsar = path.join(os.tmpdir(), 'VoldexSMP_app.asar.pending');
                 fs.copyFileSync(tmpAsar, pendingAsar);
             }
             try { fs.unlinkSync(tmpAsar); } catch (_) {}
@@ -421,12 +421,12 @@ async function applyUpdate(assetUrl, onProgress) {
             // Aktualizace desktop souborů na ploše a v menu aplikací na správný nainstalovaný spustitelný soubor s --no-sandbox
             try {
                 const home = os.homedir();
-                let realTargetExe = path.join(home, '.local', 'share', 'mychalsmp-launcher', 'SMPClient');
+                let realTargetExe = path.join(home, '.local', 'share', 'Voldex-Client', 'SMPClient');
                 if (!fs.existsSync(realTargetExe)) {
-                    realTargetExe = path.join(home, '.local', 'share', 'mychalsmp-launcher', 'mychalsmp-launcher');
+                    realTargetExe = path.join(home, '.local', 'share', 'Voldex-Client', 'Voldex-Client');
                 }
                 const targetDesktopFiles = [
-                    path.join(home, '.local', 'share', 'applications', 'mychalsmp-launcher.desktop'),
+                    path.join(home, '.local', 'share', 'applications', 'Voldex-Client.desktop'),
                     path.join(home, 'Desktop', 'SMPClient.desktop'),
                     path.join(home, 'Plocha', 'SMPClient.desktop')
                 ];
@@ -441,7 +441,7 @@ async function applyUpdate(assetUrl, onProgress) {
 
             let targetExe = process.execPath;
             const home = os.homedir();
-            const realInstalledExe = path.join(home, '.local', 'share', 'mychalsmp-launcher', 'mychalsmp-launcher');
+            const realInstalledExe = path.join(home, '.local', 'share', 'Voldex-Client', 'Voldex-Client');
             if (fs.existsSync(realInstalledExe)) {
                 targetExe = realInstalledExe;
             }
@@ -459,21 +459,21 @@ async function applyUpdate(assetUrl, onProgress) {
     }
 
     // ── 2. Plná instalace archivu .tar.gz (Linux) se souborovým diff-syncem ───
-    const defaultInstallDir = path.join(os.homedir(), '.local', 'share', 'mychalsmp-launcher');
+    const defaultInstallDir = path.join(os.homedir(), '.local', 'share', 'Voldex-Client');
     let installDir = defaultInstallDir;
 
     if (process.platform === 'linux') {
         const exeDir = path.dirname(process.execPath);
-        if (!exeDir.startsWith('/tmp') && (fs.existsSync(path.join(exeDir, 'mychalsmp-launcher')) || fs.existsSync(path.join(exeDir, 'resources')))) {
+        if (!exeDir.startsWith('/tmp') && (fs.existsSync(path.join(exeDir, 'Voldex-Client')) || fs.existsSync(path.join(exeDir, 'resources')))) {
             installDir = exeDir;
         }
     }
 
     if (process.platform === 'linux' && assetUrl.endsWith('.tar.gz')) {
-        const tmpTar = path.join(os.tmpdir(), `mychalsmp-update-${Date.now()}.tar.gz`);
+        const tmpTar = path.join(os.tmpdir(), `VoldexSMP-update-${Date.now()}.tar.gz`);
 
         const res = await fetch(assetUrl, {
-            headers: { 'User-Agent': 'mychalsmp-launcher-updater' }
+            headers: { 'User-Agent': 'Voldex-Client-updater' }
         });
         if (!res.ok) throw new Error(`Chyba stahování: HTTP ${res.status}`);
 
@@ -515,7 +515,7 @@ async function applyUpdate(assetUrl, onProgress) {
             });
         }
 
-        const tmpExtractDir = path.join(os.tmpdir(), `mychalsmp-extract-${Date.now()}`);
+        const tmpExtractDir = path.join(os.tmpdir(), `VoldexSMP-extract-${Date.now()}`);
         fs.mkdirSync(tmpExtractDir, { recursive: true });
 
         // Asynchronní rozbalení - nezamrzne hlavní proces ani okno
@@ -525,14 +525,14 @@ async function applyUpdate(assetUrl, onProgress) {
         await execAsync(`tar -xzf "${tmpTar}" -C "${tmpExtractDir}"`);
 
         function findBinaryDir(dir) {
-            if (fs.existsSync(path.join(dir, 'mychalsmp-launcher'))) {
+            if (fs.existsSync(path.join(dir, 'Voldex-Client'))) {
                 return dir;
             }
             try {
                 const subdirs = fs.readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory());
                 for (const sub of subdirs) {
                     const subPath = path.join(dir, sub.name);
-                    if (fs.existsSync(path.join(subPath, 'mychalsmp-launcher'))) {
+                    if (fs.existsSync(path.join(subPath, 'Voldex-Client'))) {
                         return subPath;
                     }
                 }
@@ -621,14 +621,14 @@ async function applyUpdate(assetUrl, onProgress) {
 
         let targetExe = path.join(installDir, 'SMPClient');
         if (!fs.existsSync(targetExe)) {
-            targetExe = path.join(installDir, 'mychalsmp-launcher');
+            targetExe = path.join(installDir, 'Voldex-Client');
         }
         try { fs.chmodSync(targetExe, 0o755); } catch (e) {}
 
         try {
             const home = os.homedir();
             const targetDesktopFiles = [
-                path.join(home, '.local', 'share', 'applications', 'mychalsmp-launcher.desktop'),
+                path.join(home, '.local', 'share', 'applications', 'Voldex-Client.desktop'),
                 path.join(home, 'Desktop', 'SMPClient.desktop'),
                 path.join(home, 'Plocha', 'SMPClient.desktop')
             ];
@@ -653,9 +653,9 @@ async function applyUpdate(assetUrl, onProgress) {
             message: 'Aktualizace byla úspěšně nainstalována.'
         };
     } else if (process.platform === 'win32' && assetUrl.endsWith('.exe')) {
-        const tmpExe = path.join(os.tmpdir(), `mychalsmp-update-${Date.now()}.exe`);
+        const tmpExe = path.join(os.tmpdir(), `VoldexSMP-update-${Date.now()}.exe`);
         const res = await fetch(assetUrl, {
-            headers: { 'User-Agent': 'mychalsmp-launcher-updater' }
+            headers: { 'User-Agent': 'Voldex-Client-updater' }
         });
         if (!res.ok) throw new Error(`Chyba stahování instalačního balíčku: HTTP ${res.status}`);
 
@@ -714,7 +714,7 @@ async function applyUpdate(assetUrl, onProgress) {
                 fs.copyFileSync(tmpExe, pendingInstaller);
                 try { fs.unlinkSync(tmpExe); } catch (_) {}
             } catch (e) {
-                pendingInstaller = path.join(os.tmpdir(), 'mychalsmp_installer_pending.exe');
+                pendingInstaller = path.join(os.tmpdir(), 'VoldexSMP_installer_pending.exe');
                 try {
                     fs.copyFileSync(tmpExe, pendingInstaller);
                     try { fs.unlinkSync(tmpExe); } catch (_) {}

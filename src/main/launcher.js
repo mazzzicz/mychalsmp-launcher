@@ -285,6 +285,49 @@ Handler.prototype.downloadAsync = async function (url, directory, name, retry = 
     }
 };
 
+Handler.prototype.checkJava = async function (java) {
+    const testBin = resolveJavaConsoleBinary(java || 'java');
+    return new Promise((resolve) => {
+        const { execFile } = require('child_process');
+        execFile(testBin, ['-version'], { timeout: 6000, windowsHide: true }, (error, stdout, stderr) => {
+            const combined = `${stderr || ''}\n${stdout || ''}`;
+            if (error && !combined.toLowerCase().includes('version')) {
+                if (java && fs.existsSync(java)) {
+                    this.client.emit('debug', `[MCLC]: Běhové prostředí Java ověřeno na disku: ${java}`);
+                    return resolve({ run: true });
+                }
+                return resolve({ run: false, message: error.message || String(error) });
+            }
+            const verMatch = combined.match(/"(.*?)"/);
+            const verStr = verMatch ? verMatch[1] : '25';
+            this.client.emit('debug', `[MCLC]: Using Java version ${verStr} 64-bit`);
+            resolve({ run: true });
+        });
+    });
+};
+
+Handler.prototype.getVersion = async function () {
+    const versionJsonPath = this.options.overrides?.versionJson || path.join(this.options.directory, `${this.options.version.number}.json`);
+    if (fs.existsSync(versionJsonPath)) {
+        try {
+            this.version = JSON.parse(fs.readFileSync(versionJsonPath, 'utf8'));
+            if (this.version && (this.version.libraries || this.version.mainClass)) {
+                return this.version;
+            }
+        } catch (_) {}
+    }
+    const fetched = await getOrFetchVanillaVersionJson(this.options.root, this.options.version.number);
+    if (fetched) {
+        this.version = fetched;
+        try {
+            fs.mkdirSync(this.options.directory, { recursive: true });
+            fs.writeFileSync(path.join(this.options.directory, `${this.options.version.number}.json`), JSON.stringify(fetched, null, 2), 'utf8');
+        } catch (_) {}
+        return this.version;
+    }
+    throw new Error(`Nepodařilo se načíst manifest verze ${this.options.version.number}`);
+};
+
 const origStartMinecraft = Client.prototype.startMinecraft;
 Client.prototype.startMinecraft = function (launchArguments) {
     if (this._isCancelled) {
@@ -292,12 +335,45 @@ Client.prototype.startMinecraft = function (launchArguments) {
         return null;
     }
     try {
-        const proc = origStartMinecraft.call(this, launchArguments);
+        let effectiveArgs = Array.isArray(launchArguments) ? [...launchArguments] : launchArguments;
+        // Ochrana proti Windows CreateProcessW limitu 32 767 znaků (ENAMETOOLONG) pomocí Java 9+ @argfile
+        if (process.platform === 'win32' && Array.isArray(effectiveArgs)) {
+            // Odstranit případný chybný log4j2_112-116.xml argument u Fabric 0.16.x profilů
+            effectiveArgs = effectiveArgs.filter(a => !String(a).includes('log4j2_112-116.xml') && !String(a).includes('log4j2_17-111.xml'));
+            const cpIdx = effectiveArgs.indexOf('-cp');
+            const totalChars = effectiveArgs.reduce((sum, a) => sum + String(a).length + 3, 0);
+            if (cpIdx !== -1 && cpIdx + 1 < effectiveArgs.length && totalChars > 24000) {
+                try {
+                    const cpVal = String(effectiveArgs[cpIdx + 1]).replace(/\\/g, '\\\\');
+                    const argFileDir = path.join(this.options.root || BASE_DIR, 'natives_extract');
+                    fs.mkdirSync(argFileDir, { recursive: true });
+                    const argFilePath = path.join(argFileDir, 'voldex_cp.args');
+                    fs.writeFileSync(argFilePath, `-cp\n"${cpVal}"\n`, 'utf8');
+                    effectiveArgs.splice(cpIdx, 2, `@${argFilePath}`);
+                    this.emit('debug', `[WINDOWS]: Použit @argfile pro dlouhou classpath (${totalChars} znaků).`);
+                } catch (_) {}
+            }
+        }
+
+        const spawnBin = process.platform === 'win32'
+            ? resolveJavaConsoleBinary(this.options.javaPath || 'java')
+            : (this.options.javaPath || 'java');
+
+        const { spawn } = require('child_process');
+        const proc = spawn(spawnBin, effectiveArgs, {
+            cwd: this.options.overrides?.cwd || this.options.root,
+            detached: Boolean(this.options.overrides?.detached),
+            windowsHide: true
+        });
+
         if (this._isCancelled && proc) {
             try { proc.kill(); } catch (e) { }
             return null;
         }
         if (proc) {
+            if (proc.stdout) proc.stdout.on('data', (data) => this.emit('data', data.toString('utf-8')));
+            if (proc.stderr) proc.stderr.on('data', (data) => this.emit('data', data.toString('utf-8')));
+            proc.on('close', (code) => this.emit('close', code));
             proc.on('error', (err) => {
                 this.emit('debug', `[MCLC]: Chyba při spuštění procesu Minecraftu: ${err.message}`);
                 this.emit('close', 1);
@@ -1540,7 +1616,7 @@ function getRequiredJavaVersion(gameVersion) {
     if (/^1\.(1[67])/.test(str)) return 16;
     if (/^1\.(1[89]|20\.[0-4])/.test(str)) return 17;
     if (/^1\./.test(str) && !/^1\.(2[1-9])/.test(str)) return 8;
-    // Výchozí standard pro celou síť MYCHAL SMP je moderní Java 25
+    // Výchozí standard pro celou síť VoldexSMP je moderní Java 25
     return 25;
 }
 
@@ -1599,7 +1675,7 @@ async function downloadAndInstallJava(targetVersion = 25, onLog = console.log, o
     const apiUrl = `https://api.adoptium.net/v3/binary/latest/${targetVersion}/ga/${osType}/${arch}/jre/hotspot/normal/eclipse`;
 
     const resp = await fetch(apiUrl, {
-        headers: { 'User-Agent': 'mychalVidea/mychalsmp-launcher' },
+        headers: { 'User-Agent': 'VoldexStudios/voldex-client' },
         redirect: 'follow'
     });
 
@@ -1980,25 +2056,25 @@ function cleanupLegacyCharacterPacks(gameDir, baseDir) {
     for (const d of new Set(dirs)) {
         try {
             const rpDir = path.join(d, 'resourcepacks');
-            const legacyZip = path.join(rpDir, 'mychalsmp-character.zip');
-            const legacyDir = path.join(rpDir, 'mychalsmp-character');
+            const legacyZip = path.join(rpDir, 'VoldexSMP-character.zip');
+            const legacyDir = path.join(rpDir, 'VoldexSMP-character');
             if (fs.existsSync(legacyZip)) { try { fs.unlinkSync(legacyZip); } catch (_) { } }
             if (fs.existsSync(legacyDir)) { try { fs.rmSync(legacyDir, { recursive: true, force: true }); } catch (_) { } }
 
             const optFile = path.join(d, 'options.txt');
             if (fs.existsSync(optFile)) {
                 let content = fs.readFileSync(optFile, 'utf8');
-                if (content.includes('mychalsmp-character')) {
+                if (content.includes('VoldexSMP-character')) {
                     content = content.replace(/resourcePacks:\[(.*?)\]/, (match, inner) => {
                         let packs = [];
                         try { packs = JSON.parse(`[${inner}]`); } catch (_) { packs = inner.split(',').map(s => s.trim().replace(/^"|"$/g, '')).filter(Boolean); }
-                        packs = packs.filter(p => !p.includes('mychalsmp-character'));
+                        packs = packs.filter(p => !p.includes('VoldexSMP-character'));
                         return `resourcePacks:[${packs.map(p => JSON.stringify(p)).join(',')}]`;
                     });
                     content = content.replace(/incompatibleResourcePacks:\[(.*?)\]/, (match, inner) => {
                         let packs = [];
                         try { packs = JSON.parse(`[${inner}]`); } catch (_) { packs = inner.split(',').map(s => s.trim().replace(/^"|"$/g, '')).filter(Boolean); }
-                        packs = packs.filter(p => !p.includes('mychalsmp-character'));
+                        packs = packs.filter(p => !p.includes('VoldexSMP-character'));
                         return `incompatibleResourcePacks:[${packs.map(p => JSON.stringify(p)).join(',')}]`;
                     });
                     fs.writeFileSync(optFile, content, 'utf8');
@@ -2086,7 +2162,7 @@ function injectRawSkinIntoJar(jarPath, activeSkinPath, activeCapePath, onLog = c
     try {
         const { execFileSync } = require('child_process');
         const os = require('os');
-        const tmpDir = path.join(os.tmpdir(), `mychalsmp_skin_${Date.now()}`);
+        const tmpDir = path.join(os.tmpdir(), `VoldexSMP_skin_${Date.now()}`);
         fs.mkdirSync(path.join(tmpDir, 'assets/minecraft/textures/entity/player/wide'), { recursive: true });
         fs.mkdirSync(path.join(tmpDir, 'assets/minecraft/textures/entity/player/slim'), { recursive: true });
         if (capeBuf) {
@@ -2417,7 +2493,7 @@ async function setupOfflineCustomSkinAndCape(gameDir, config, onLog = console.lo
             try {
                 const dest = path.join(baseDir, 'custom_skin.png');
                 const resp = await fetch(url, {
-                    headers: { 'User-Agent': 'mychalVidea/mychalsmp-launcher' },
+                    headers: { 'User-Agent': 'VoldexStudios/voldex-client' },
                     signal: AbortSignal.timeout(3000)
                 });
                 if (resp.ok) {
@@ -2442,7 +2518,7 @@ async function setupOfflineCustomSkinAndCape(gameDir, config, onLog = console.lo
             try {
                 const destCape = path.join(baseDir, 'custom_cape.png');
                 const resp = await fetch(config.customCapePath, {
-                    headers: { 'User-Agent': 'mychalVidea/mychalsmp-launcher' },
+                    headers: { 'User-Agent': 'VoldexStudios/voldex-client' },
                     signal: AbortSignal.timeout(3000)
                 });
                 if (resp.ok) {
@@ -2739,7 +2815,7 @@ async function ensureFabricProfile(centralRootDir, targetVersion, onLog = consol
         let loaders = [];
         let effectiveGameVersion = targetVersion;
         const metaRes = await fetch(`https://meta.fabricmc.net/v2/versions/loader/${targetVersion}`, {
-            headers: { 'User-Agent': 'MYCHALSMP-Launcher' },
+            headers: { 'User-Agent': 'Voldex-Client' },
             signal: AbortSignal.timeout(10000)
         });
         if (metaRes.ok) {
@@ -2747,7 +2823,7 @@ async function ensureFabricProfile(centralRootDir, targetVersion, onLog = consol
         }
         if ((!Array.isArray(loaders) || loaders.length === 0) && targetVersion === '1.21.11') {
             const fallbackRes = await fetch(`https://meta.fabricmc.net/v2/versions/loader/1.21.1`, {
-                headers: { 'User-Agent': 'MYCHALSMP-Launcher' },
+                headers: { 'User-Agent': 'Voldex-Client' },
                 signal: AbortSignal.timeout(10000)
             });
             if (fallbackRes.ok) {
@@ -2768,7 +2844,7 @@ async function ensureFabricProfile(centralRootDir, targetVersion, onLog = consol
         onLog(`[FABRIC] Stahuji profil pro Fabric loader ${loaderVersion}...`);
 
         const profileRes = await fetch(`https://meta.fabricmc.net/v2/versions/loader/${effectiveGameVersion}/${loaderVersion}/profile/json`, {
-            headers: { 'User-Agent': 'MYCHALSMP-Launcher' },
+            headers: { 'User-Agent': 'Voldex-Client' },
             signal: AbortSignal.timeout(12000)
         });
         if (!profileRes.ok) throw new Error(`Fabric profile JSON HTTP ${profileRes.status}`);
@@ -2835,7 +2911,7 @@ async function ensureFabricProfile(centralRootDir, targetVersion, onLog = consol
                 onLog(`[FABRIC] Stahuji jádro zavaděče fabric-loader-${loaderVersion}.jar...`);
                 fs.mkdirSync(flDir, { recursive: true });
                 const flRes = await fetch(`https://maven.fabricmc.net/net/fabricmc/fabric-loader/${loaderVersion}/fabric-loader-${loaderVersion}.jar`, {
-                    headers: { 'User-Agent': 'MYCHALSMP-Launcher' },
+                    headers: { 'User-Agent': 'Voldex-Client' },
                     signal: AbortSignal.timeout(20000)
                 });
                 if (flRes.ok) {
@@ -3370,6 +3446,16 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
     // ⚡ Vynucená kontrola a instalace módu Self Nametag (F5) před každým spuštěním pro tento profil/instanci
     ensureSelfNametagModInstalled(gameInstanceDir, onLog);
 
+    // ⚡ Automatické stažení a aktivace resource packu Faithful 64x
+    if (config.autoFaithful64 !== false) {
+        try {
+            const { ensureFaithful64Installed } = require('./optimizer');
+            await ensureFaithful64Installed(gameInstanceDir, targetVersion, onLog);
+        } catch (fErr) {
+            onLog(`[FAITHFUL 64x] ⚠ Automatická kontrola Faithful 64x: ${fErr.message}`);
+        }
+    }
+
     // ⚡ Blesková online kontrola zda Mojang nevydal nový patch/hotfix pro cílovou verzi (např. 1.8.9, 1.12.2, 26.2)
     await ensureMojangVersionUpToDate(BASE_DIR, targetVersion, onLog);
 
@@ -3444,19 +3530,10 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
     // POZNÁMKA: NIKDY nepřidávat -Djava.library.path směřující na prázdnou složku!
     // Na Windows i Linuxu to přepisuje systémový mechanismus hledání dynamických knihoven a způsobí pád LWJGL.
 
-    // Direct Quick Play multiplayer connection (with automatic fallback to backup IP 130.61.89.37)
+    // Direct Quick Play multiplayer connection for VoldexSMP (voldex.zasemazi.cz)
     let quickPlay = null;
-    let serverToJoin = customServer || (config.autoConnectServer ? config.serverIp : null);
+    let serverToJoin = customServer || (config.autoConnectServer ? (config.autoConnectTarget || config.serverIp || 'voldex.zasemazi.cz') : null);
     if (serverToJoin) {
-        if (serverToJoin.toLowerCase().includes('mychalsmp')) {
-            const hostOnly = serverToJoin.includes(':') ? serverToJoin.split(':')[0] : serverToJoin;
-            const isResolvable = await isServerHostResolvable(hostOnly);
-            if (!isResolvable) {
-                const portOnly = serverToJoin.includes(':') ? serverToJoin.split(':')[1] : '25565';
-                onLog(`[SÍŤ] Doména mychalsmp.xyz je nedostupná (Unknown host). Přepínám na záložní IP: 130.61.89.37:${portOnly}`);
-                serverToJoin = `130.61.89.37:${portOnly}`;
-            }
-        }
         quickPlay = {
             type: 'multiplayer',
             identifier: serverToJoin.includes(':') ? serverToJoin : `${serverToJoin}:25565`
@@ -3573,7 +3650,7 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
     // 🎭 Aplikace vlastního RAW offline skinu a pláště pro warez / offline režim přímo do jádra
     await setupOfflineCustomSkinAndCape(gameInstanceDir, config, onLog, targetVersion, versionOpts);
 
-    // 🏷️ Brand klienta pro síť MYCHAL SMP: smpclient/<version>-<loader>-<gameVersion>
+    // 🏷️ Brand klienta pro síť VoldexSMP: smpclient/<version>-<loader>-<gameVersion>
     // např. smpclient/1.3.10-fabric-26.2, smpclient/1.3.10-vanilla-26.2, smpclient/1.3.10-forge-26.2, smpclient/1.3.10-neoforge-26.2
     let launcherVersion = '1.3.10';
     try {
@@ -3683,6 +3760,8 @@ async function launchGame(config, authData, customServer, onProgress, onLog, onE
         ];
         for (const optPath of optPaths) {
             if (fs.existsSync(optPath)) {
+                let optText = fs.readFileSync(optPath, 'utf8');
+                let changed = false;
                 const targetBackend = config.graphicsBackend || 'default';
                 if (optText.includes('preferredGraphicsBackend:')) {
                     optText = optText.replace(/preferredGraphicsBackend:"[^"]*"/g, `preferredGraphicsBackend:"${targetBackend}"`);
@@ -4535,7 +4614,16 @@ async function prewarmLaunchEnvironment(centralRootDir, targetVersion = '26.2', 
     } catch (_) { }
 
     try {
-        isServerHostResolvable('mychalsmp.xyz').catch(() => {});
+        isServerHostResolvable('voldex.zasemazi.cz').catch(() => {});
+    } catch (_) { }
+
+    try {
+        if (!config || config.autoFaithful64 !== false) {
+            const { ensureFaithful64Installed } = require('./optimizer');
+            const activeId = config?.activeProfileId || 'minecraft-26.2';
+            const profDir = path.join(centralRootDir || BASE_DIR, 'profiles', activeId);
+            ensureFaithful64Installed(profDir, targetVersion, () => {}).catch(() => {});
+        }
     } catch (_) { }
 }
 

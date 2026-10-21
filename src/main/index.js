@@ -62,7 +62,7 @@ try {
 
 // ⚡ Windows AppUserModelId pro ikonu na hlavním panelu a v nabídce Start
 if (process.platform === 'win32') {
-    app.setAppUserModelId('xyz.mychalsmp.launcher');
+    app.setAppUserModelId('cz.zasemazi.voldex.client');
 }
 
 function getAppIconPath() {
@@ -99,7 +99,7 @@ function restoreAndFocusMainWindow() {
                     const activeProfile = (cfg.profiles || []).find(p => p.id === cfg.activeProfileId);
                     discordRpc.updateActivity({
                         username: cfg.username || 'Hráč',
-                        server: cfg.serverIp || 'mychalsmp.xyz',
+                        server: cfg.serverIp || 'voldex.zasemazi.cz',
                         profileName: activeProfile ? activeProfile.name : 'Minecraft 26.2',
                         isPlaying: false
                     });
@@ -178,11 +178,11 @@ function updateTrayMenu() {
         const isGame = isGameRunning();
         const isWinVisible = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible();
         const session = getActiveSessionData();
-        const profileName = session ? (session.profileName || 'Minecraft') : 'SMPClient';
+        const profileName = session ? (session.profileName || 'Minecraft') : 'Voldex Client';
 
         const menuTemplate = [
             {
-                label: isGame ? `🟢 Hra běží: ${profileName}` : 'SMPClient • V liště',
+                label: isGame ? `🟢 Hra běží: ${profileName}` : 'Voldex Client • V liště',
                 enabled: false
             },
             { type: 'separator' },
@@ -220,7 +220,7 @@ function updateTrayMenu() {
 
         const contextMenu = Menu.buildFromTemplate(menuTemplate);
         appTray.setContextMenu(contextMenu);
-        appTray.setToolTip(isGame ? `SMPClient • Hra běží (${profileName})` : 'SMPClient - MYCHAL SMP');
+        appTray.setToolTip(isGame ? `Voldex Client • Hra běží (${profileName})` : 'Voldex Client - Custom Minecraft Launcher');
     } catch (_) { }
 }
 
@@ -385,7 +385,7 @@ function createWindow() {
                         const activeProfile = (cfg.profiles || []).find(p => p.id === cfg.activeProfileId);
                         discordRpc.updateActivity({
                             username: cfg.username || 'Hráč',
-                            server: cfg.serverIp || 'mychalsmp.xyz',
+                            server: cfg.serverIp || 'voldex.zasemazi.cz',
                             profileName: activeProfile ? activeProfile.name : 'Minecraft 26.2',
                             isPlaying: false
                         });
@@ -424,7 +424,7 @@ function createWindow() {
                         const activeProfile = (cfg.profiles || []).find(p => p.id === cfg.activeProfileId);
                         discordRpc.updateActivity({
                             username: cfg.username || 'Hráč',
-                            server: cfg.serverIp || 'mychalsmp.xyz',
+                            server: cfg.serverIp || 'voldex.zasemazi.cz',
                             profileName: activeProfile ? activeProfile.name : 'Minecraft 26.2',
                             isPlaying: false
                         });
@@ -489,13 +489,13 @@ function ensureLinuxDesktopShortcut() {
 
         const iconDir = path.join(homeDir, '.local', 'share', 'icons', 'hicolor', '512x512', 'apps');
         if (!fs.existsSync(iconDir)) fs.mkdirSync(iconDir, { recursive: true });
-        const iconDest = path.join(iconDir, 'mychalsmp-launcher.png');
+        const iconDest = path.join(iconDir, 'Voldex-Client.png');
         if (fs.existsSync(iconSource)) {
             try { fs.copyFileSync(iconSource, iconDest); } catch (e) { }
         }
 
         let execCommand = '';
-        const installedBin = path.join(homeDir, '.local', 'share', 'mychalsmp-launcher', 'mychalsmp-launcher');
+        const installedBin = path.join(homeDir, '.local', 'share', 'Voldex-Client', 'Voldex-Client');
         const projectRoot = path.resolve(__dirname, '../..');
 
         if (!app.isPackaged || execPath.includes('node_modules')) {
@@ -508,18 +508,18 @@ function ensureLinuxDesktopShortcut() {
 
         const desktopContent = `[Desktop Entry]
 Name=SMPClient
-Comment=Oficiální Minecraft klient sítě MYCHAL SMP
+Comment=Oficiální Minecraft klient sítě VoldexSMP
 Exec=${execCommand}
-Icon=${fs.existsSync(iconDest) ? iconDest : 'mychalsmp-launcher'}
+Icon=${fs.existsSync(iconDest) ? iconDest : 'Voldex-Client'}
 Terminal=false
 Type=Application
 Categories=Game;ActionGame;AdventureGame;
-StartupWMClass=xyz.mychalsmp.launcher
+StartupWMClass=cz.zasemazi.voldex.client
 `;
 
         const appsDir = path.join(homeDir, '.local', 'share', 'applications');
         if (!fs.existsSync(appsDir)) fs.mkdirSync(appsDir, { recursive: true });
-        const appDesktopFile = path.join(appsDir, 'mychalsmp-launcher.desktop');
+        const appDesktopFile = path.join(appsDir, 'Voldex-Client.desktop');
         fs.writeFileSync(appDesktopFile, desktopContent, 'utf-8');
         try { fs.chmodSync(appDesktopFile, 0o755); } catch (e) { }
 
@@ -596,7 +596,7 @@ function startMainApplication() {
                 const activeProfile = (config.profiles || []).find(p => p.id === config.activeProfileId);
                 discordRpc.updateActivity({
                     username: config.username || 'Hráč',
-                    server: config.serverIp || 'mychalsmp.xyz',
+                    server: config.serverIp || 'voldex.zasemazi.cz',
                     profileName: activeProfile ? activeProfile.name : 'Minecraft 26.2',
                     isPlaying: false
                 });

@@ -1,7 +1,7 @@
 {
-  "name": "mychalsmp-launcher",
-  "version": "1.5.21",
-  "description": "Oficiální multiplatformní launcher pro síť MYCHAL SMP s optimalizovaným klientem pro Windows 11 a Linux",
+  "name": "voldex-client",
+  "version": "3.0.0",
+  "description": "Voldex Client by Voldex Studios – High-Performance Minecraft Client pro server voldex.zasemazi.cz (VoldexSMP)",
   "main": "src/main/index.js",
   "scripts": {
     "start": "electron . --no-sandbox",
@@ -9,11 +9,11 @@
     "build:win": "electron-builder --win nsis portable",
     "build:all": "electron-builder -wl",
     "pack": "electron-builder --dir",
-    "build:native": "cd native && cargo build --release && (cp target/release/libmychalsmp_native.so mychalsmp_native.node 2>/dev/null || cp target/release/mychalsmp_native.dll mychalsmp_native.node 2>/dev/null || true) && cp mychalsmp_native.node ../src/main/mychalsmp_native.node 2>/dev/null || true",
+    "build:native": "cd native && cargo build --release && (cp target/release/libvoldex_native.so voldex_native.node 2>/dev/null || cp target/release/voldex_native.dll voldex_native.node 2>/dev/null || true) && cp voldex_native.node ../src/main/voldex_native.node 2>/dev/null || true",
     "release": "bash release.sh"
   },
-  "homepage": "https://mychalsmp.xyz",
-  "author": "mychalVidea <admin@mychalsmp.xyz>",
+  "homepage": "https://voldex.zasemazi.cz",
+  "author": "Voldex Studios <info@zasemazi.cz>",
   "license": "MIT",
   "dependencies": {
     "minecraft-launcher-core": "^3.18.2",

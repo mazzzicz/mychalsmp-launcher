@@ -4,486 +4,204 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SMPClient</title>
+    <title>Voldex Client — Voldex Studios</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css?v=1.5.2">
+    <link rel="stylesheet" href="css/style.css?v=3.0.0">
 </head>
 
 <body>
-    <!-- Top Frameless Titlebar / Header -->
+    <!-- Unified Top Command Bar (Frameless Header + Navigation) -->
     <header class="titlebar">
         <div class="titlebar-drag">
-            <div class="brand">
-                <img src="assets/logo.png" alt="SMPClient Logo" class="server-pixel-icon"
-                    style="image-rendering: auto; object-fit: contain;">
-                <span class="brand-title">SMP<span>Client</span></span>
-            </div>
-
-            <!-- Network Status Chip -->
-            <div class="network-status-chip" id="networkChip">
-                <span class="status-dot" id="networkDot"></span>
-                <span class="status-text" id="networkText">mychalsmp.xyz • Připojuji...</span>
-            </div>
-
-            <!-- Auto Update Chip -->
-            <div class="update-status-chip" id="updateChip" style="display: none;">
-                <span class="update-dot"></span>
-                <span class="update-text" id="updateText">Nová verze k dispozici</span>
-                <button type="button" class="btn-update-chip" id="btnUpdateChip">Aktualizovat</button>
-            </div>
-
-            <!-- Global Game Launch / Download Progress Chip (Visible across all tabs) -->
-            <div class="download-status-chip" id="globalDownloadChip" style="display: none;" title="Stahování">
-                <span class="download-chip-spinner">
-                    <svg class="ui-icon-svg ui-icon-svg--xs ui-icon-spin" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" stroke-width="2.5">
-                        <circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="12" />
-                    </svg>
-                </span>
-                <span class="download-chip-label" id="globalDownloadText">Stahuji verzi... 0%</span>
-                <div class="download-chip-track">
-                    <div class="download-chip-fill" id="globalDownloadBar"></div>
+            <div class="brand" id="sidebarVoldexCrest" title="Voldex Client by Voldex Studios">
+                <div class="brand-logo-frame">
+                    <img src="assets/server-icon.png" alt="Voldex Client" class="server-pixel-icon">
                 </div>
-                <button type="button" class="btn-cancel-chip" id="btnCancelGlobalDownload" title="Zrušit stahování">
-                    <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                <div class="brand-text-col">
+                    <span class="brand-title">VOLDEX <span>CLIENT</span></span>
+                    <span class="brand-sub-pixel">VOLDEX STUDIOS</span>
+                </div>
+            </div>
+
+            <!-- Horizontal Primary Navigation inside Command Bar -->
+            <nav class="top-command-nav" aria-label="Hlavní navigace">
+                <button class="nav-icon-btn active" data-tab="play" title="Domů & Hrát">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
                     </svg>
+                    <span class="nav-btn-label">HRÁT</span>
+                </button>
+                <button class="nav-icon-btn" data-tab="mods" title="Módy, Shadery & Faithful 64x">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                        <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                        <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                    </svg>
+                    <span class="nav-btn-label">DOPLŇKY</span>
+                </button>
+                <button class="nav-icon-btn" data-tab="character" title="3D Postava, Skin & Plášť">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                    <span class="nav-btn-label">POSTAVA</span>
+                </button>
+                <button class="nav-icon-btn" data-tab="servers" title="VoldexSMP & Servery">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="2" y1="12" x2="22" y2="12"></line>
+                        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                    </svg>
+                    <span class="nav-btn-label">SERVERY</span>
+                </button>
+                <button class="nav-icon-btn" data-tab="settings" title="Nastavení výkonu a klienta">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                    <span class="nav-btn-label">NASTAVENÍ</span>
+                </button>
+            </nav>
+
+            <div class="titlebar-right-cluster">
+                <!-- Live VoldexSMP Status Chip -->
+                <div class="network-status-chip" id="networkChip" title="Stav serveru voldex.zasemazi.cz">
+                    <span class="status-dot" id="networkDot"></span>
+                    <span class="status-text" id="networkText">voldex.zasemazi.cz • Připojuji...</span>
+                </div>
+
+                <!-- Auto Update Chip -->
+                <div class="update-status-chip" id="updateChip" style="display: none;">
+                    <span class="update-dot"></span>
+                    <span class="update-text" id="updateText">Nová verze k dispozici</span>
+                    <button type="button" class="btn-update-chip" id="btnUpdateChip">Aktualizovat</button>
+                </div>
+
+                <!-- Global Game Launch / Download Progress Chip -->
+                <div class="download-status-chip" id="globalDownloadChip" style="display: none;" title="Stahování">
+                    <span class="download-chip-spinner">
+                        <svg class="ui-icon-svg ui-icon-svg--xs ui-icon-spin" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2.5">
+                            <circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="12" />
+                        </svg>
+                    </span>
+                    <span class="download-chip-label" id="globalDownloadText">Stahuji verzi... 0%</span>
+                    <div class="download-chip-track">
+                        <div class="download-chip-fill" id="globalDownloadBar"></div>
+                    </div>
+                    <button type="button" class="btn-cancel-chip" id="btnCancelGlobalDownload" title="Zrušit stahování">
+                        <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Header Master Launch Button (Contains required <span> for startLaunch state updates) -->
+                <button class="sidebar-quick-play-btn" id="sidebarPlayBtn" title="Okamžitě spustit aktivní profil">
+                    <span>
+                        <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" fill="currentColor">
+                            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                        </svg>
+                        HRÁT
+                    </span>
                 </button>
             </div>
         </div>
 
         <div class="window-controls">
             <button class="win-btn win-min" id="btnMinimize" title="Minimalizovat">
-                <svg width="10" height="1" viewBox="0 0 10 1">
-                    <rect width="10" height="1" fill="currentColor" />
+                <svg width="10" height="2" viewBox="0 0 10 2">
+                    <rect width="10" height="2" rx="1" fill="currentColor" />
                 </svg>
             </button>
             <button class="win-btn win-max" id="btnMaximize" title="Maximalizovat">
                 <svg width="10" height="10" viewBox="0 0 10 10">
-                    <rect width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.2" />
+                    <rect x="0.7" y="0.7" width="8.6" height="8.6" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5" />
                 </svg>
             </button>
             <button class="win-btn win-close" id="btnClose" title="Zavřít">
                 <svg width="10" height="10" viewBox="0 0 10 10">
-                    <path d="M1 1 L9 9 M9 1 L1 9" stroke="currentColor" stroke-width="1.2" />
+                    <path d="M1 1 L9 9 M9 1 L1 9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
                 </svg>
             </button>
         </div>
     </header>
 
-    <!-- Main Compact Shell -->
+    <!-- Main Full-Width Workspace -->
     <div class="app-layout">
-        <!-- Compact Vertical Icon Sidebar (Inspired by Dawn Client) -->
-        <aside class="sidebar-compact">
-            <div class="sidebar-nav-top">
-                <button class="nav-icon-btn active" data-tab="play" title="Domů">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                        <polyline points="9 22 9 12 15 12 15 22"></polyline>
-                    </svg>
-                </button>
-                <button class="nav-icon-btn" data-tab="mods" title="Módy">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path
-                            d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
-                        </path>
-                    </svg>
-                </button>
-                <button class="nav-icon-btn" data-tab="character" title="Postava">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                        <circle cx="12" cy="7" r="4"></circle>
-                    </svg>
-                </button>
-                <button class="nav-icon-btn" data-tab="servers" title="Servery">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="2" y1="12" x2="22" y2="12"></line>
-                        <path
-                            d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
-                        </path>
-                    </svg>
-                </button>
-            </div>
-
-            <!-- Bottom Sidebar: Settings -->
-            <div class="sidebar-nav-bottom">
-                <button class="nav-icon-btn" data-tab="settings" title="Nastavení">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="3"></circle>
-                        <path
-                            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
-                        </path>
-                    </svg>
-                </button>
-            </div>
-        </aside>
-
-        <!-- Main Viewport -->
         <main class="content-viewport">
 
             <!-- ══════════════════════════════════════════════════════════════════
-                 TAB 1: PLAY (DASHBOARD & LAST PLAYED PROFILES)
+                 TAB 1: PLAY (CLEAN VOLDEXSMP COMMAND STAGE & PROFILES GRID)
             ══════════════════════════════════════════════════════════════════ -->
             <section class="tab-pane active" id="tab-play">
-                <div class="dashboard-split">
-                    <!-- Left Area: Hero & Profiles -->
-                    <div class="dash-left">
-                        <!-- Hero Stage Banner -->
-                        <div class="hero-character-stage">
-                            <div class="stage-keyart-container" id="heroKeyartContainer">
-                                <div class="stage-keyart-layer stage-keyart-active" id="heroKeyartBg"
-                                    style="background-image: url('assets/keyarts/26.2.jpg');"></div>
-                            </div>
-                            <div class="stage-keyart-overlay"></div>
-                            <div class="stage-bg-overlay"></div>
-                            <div class="stage-caption">
-                                <h1 class="stage-title">Vítej zpět, <span id="heroPlayerNick">Hráč</span>!</h1>
-                                <p class="stage-subtitle" id="heroPlayerSubtitle">Vyber profil a vyraz na server.</p>
-                                <div class="hero-live-stats" id="heroLiveStats">
-                                    <div class="hero-stat-chip" id="heroStatActiveProfile" title="Aktivní profil">
-                                        <svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--blue" viewBox="0 0 24 24">
-                                            <rect x="2" y="6" width="20" height="12" rx="4"></rect>
-                                            <line x1="6" y1="12" x2="10" y2="12"></line>
-                                            <line x1="8" y1="10" x2="8" y2="14"></line>
-                                            <line x1="15" y1="11" x2="15.01" y2="11"></line>
-                                            <line x1="18" y1="13" x2="18.01" y2="13"></line>
-                                        </svg>
-                                        <span class="hero-stat-label">Profil:</span>
-                                        <span class="hero-stat-val" id="heroActiveProfileName">Minecraft 26.2</span>
-                                    </div>
-                                    <div class="hero-stat-chip" id="heroStatPlaytime" title="Odehraný čas">
-                                        <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"
-                                            style="color: #94a3b8;">
-                                            <circle cx="12" cy="12" r="10"></circle>
-                                            <polyline points="12 6 12 12 16 14"></polyline>
-                                        </svg>
-                                        <span class="hero-stat-label">Odehráno:</span>
-                                        <span class="hero-stat-val" id="heroTotalPlaytimeVal">Zatím nehráno</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="stage-character">
-                                <div class="stage-skin-wrapper" id="heroSkinWrapper" title="3D náhled">
-                                    <canvas id="heroSkinCanvas3D" class="hero-3d-canvas" width="220"
-                                        height="280"></canvas>
-                                    <img src="assets/default_steve.png" alt="Skin" id="heroSkinImg" class="stage-skin">
-                                    <!-- Levitující průhledná deska a stín pod postavou -->
-                                    <div class="hero-pedestal-platform" aria-hidden="true">
-                                        <div class="pedestal-shadow-soft"></div>
-                                        <div class="pedestal-glass-disc">
-                                            <div class="pedestal-glass-glow"></div>
-                                        </div>
-                                        <div class="pedestal-contact-shadow"></div>
-                                    </div>
-                                </div>
-                                <div class="stage-nick-pill" id="stageNickPill">
-                                    <span id="heroNickLabel">Hráč</span>
-                                    <button class="stage-edit-btn" id="btnEditNickFromHero" title="Změnit postavu">
-                                        <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
-                                            <path d="M12 20h9"></path>
-                                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-                                        </svg>
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="stage-showcase-spacer" aria-hidden="true"></div>
+                <div class="voldex-workspace">
+
+                    <!-- TOP COMMAND BANNER: Hero Keyart + VoldexSMP Direct Connect + 3D Character -->
+                    <div class="hero-character-stage">
+                        <div class="stage-keyart-container" id="heroKeyartContainer">
+                            <div class="stage-keyart-layer stage-keyart-active" id="heroKeyartBg"
+                                style="background-image: url('assets/keyarts/26.2.jpg');"></div>
                         </div>
+                        <div class="stage-keyart-overlay"></div>
+                        <div class="stage-bg-overlay"></div>
 
-                        <!-- Launch / Download Progress Bar (Directly between Hero and Profiles) -->
-                        <div class="progress-container" id="progressContainer" style="display: none;">
-                            <div class="progress-info">
-                                <span class="progress-status" id="progressText">Příprava herních souborů...</span>
-                                <div class="progress-right-side">
-                                    <span class="progress-percent" id="progressPercent">0%</span>
-                                    <button class="btn-cancel-progress" id="btnCancelDownload"
-                                        title="Zrušit stahování / spuštění">
-                                        <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
-                                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                                        </svg>
-                                        Zrušit
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="progress-track">
-                                <div class="progress-bar" id="progressBar"></div>
-                            </div>
-                        </div>
-
-                        <!-- Quick Launcher Tools / Shortcuts Toolbar -->
-                        <!-- Quick Launcher Tools / Shortcuts Toolbar -->
-                        <div class="dash-quick-actions" id="dashQuickActions">
-                            <button class="mc-btn mc-btn-primary dash-action-chip" id="btnQuickMods"
-                                title="Správa verzí a módů">
-                                <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
-                                    <path
-                                        d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
-                                    </path>
-                                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                                    <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                                </svg>
-                                <span class="action-btn-label">Módy</span>
-                            </button>
-                            <button class="mc-btn mc-btn-secondary dash-action-chip" id="btnOpenScreenshotsModal"
-                                title="Galerie screenshotů ze hry">
-                                <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
-                                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                                    <circle cx="8.5" cy="8.5" r="1.5" />
-                                    <polyline points="21 15 16 10 5 21" />
-                                </svg>
-                                <span class="action-btn-label">Screenshoty</span>
-                            </button>
-                            <button class="mc-btn mc-btn-secondary dash-action-chip" id="btnOpenKeybindEditor"
-                                title="Editor herních kláves a ovládání">
-                                <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
-                                    <rect x="2" y="4" width="20" height="16" rx="2.5" ry="2.5" />
-                                    <line x1="6" y1="8" x2="6.01" y2="8" />
-                                    <line x1="10" y1="8" x2="10.01" y2="8" />
-                                    <line x1="14" y1="8" x2="14.01" y2="8" />
-                                    <line x1="18" y1="8" x2="18.01" y2="8" />
-                                    <line x1="6" y1="12" x2="6.01" y2="12" />
-                                    <line x1="10" y1="12" x2="10.01" y2="12" />
-                                    <line x1="14" y1="12" x2="14.01" y2="12" />
-                                    <line x1="18" y1="12" x2="18.01" y2="12" />
-                                    <line x1="7" y1="16" x2="17" y2="16" />
-                                </svg>
-                                <span class="action-btn-label">Klávesy</span>
-                            </button>
-                            <button class="mc-btn mc-btn-secondary dash-action-chip" id="btnImportProfileModalOpen"
-                                title="Importovat profil ze ZIP / složky">
-                                <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
-                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                    <polyline points="7 10 12 15 17 10"></polyline>
-                                    <line x1="12" y1="15" x2="12" y2="1"></line>
-                                </svg>
-                                <span class="action-btn-label">Import profilu</span>
-                            </button>
-                        </div>
-
-                        <!-- Last Played Profiles List (Dawn Client Inspiration) -->
-                        <div class="profiles-section">
-                            <div class="section-title-row">
-                                <div class="section-heading" id="profilesSectionHeading">
-                                    <span class="clock-icon" id="profilesSectionIcon">
-                                        <svg class="ui-icon-svg" viewBox="0 0 24 24">
-                                            <line x1="6" y1="12" x2="10" y2="12"></line>
-                                            <line x1="8" y1="10" x2="8" y2="14"></line>
-                                            <line x1="15" y1="13" x2="15.01" y2="13"></line>
-                                            <line x1="18" y1="11" x2="18.01" y2="11"></line>
-                                            <rect x="2" y="6" width="20" height="12" rx="6"></rect>
-                                        </svg>
-                                    </span>
-                                    <span id="profilesSectionTitle">Dostupné herní profily</span>
-                                </div>
-                                <div class="section-header-actions">
-                                    <button type="button" class="btn-create-profile-main"
-                                        id="btnOpenCreateProfileModal">
-                                        <span>
-                                            <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
-                                                <line x1="12" y1="5" x2="12" y2="19"></line>
-                                                <line x1="5" y1="12" x2="19" y2="12"></line>
-                                            </svg>
-                                            Vytvořit profil
-                                        </span>
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div class="profile-cards-list" id="profileCardsList">
-                                <!-- Profile Card 1: Minecraft 26.3 -->
-                                <div class="profile-row-card" data-profile-id="minecraft-26.3">
-                                    <div class="profile-card-keyart-bg"
-                                        style="background-image: url('assets/keyarts/card-26.3.webp');"></div>
-                                    <div class="profile-card-keyart-overlay"></div>
-                                    <div class="profile-icon-box">
-                                        <img src="assets/icons/newest.png" class="profile-3d-float-icon" alt="Minecraft 26.3" draggable="false" />
-                                    </div>
-                                    <div class="profile-details">
-                                        <div class="profile-title-line">
-                                            <span class="p-name">Minecraft 26.3</span>
-                                        </div>
-                                        <div class="p-meta">26.3 • Zatím nehráno</div>
-                                    </div>
-                                    <div class="profile-actions">
-                                        <button class="mc-btn mc-btn-primary btn-launch-profile"
-                                            data-profile-id="minecraft-26.3">
-                                            <span>
-                                                <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
-                                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                                    <polyline points="7 10 12 15 17 10"></polyline>
-                                                    <line x1="12" y1="15" x2="12" y2="1"></line>
-                                                </svg>
-                                                Stáhnout
-                                            </span>
-                                        </button>
-                                        <button class="mc-btn mc-btn-secondary btn-profile-settings"
-                                            title="Nastavení profilu">
-                                            <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
-                                                <circle cx="12" cy="12" r="3"></circle>
-                                                <path
-                                                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
-                                                </path>
-                                            </svg>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <!-- Profile Card 2: Minecraft 26.2 -->
-                                <div class="profile-row-card active-profile" data-profile-id="minecraft-26.2">
-                                    <div class="profile-card-keyart-bg"
-                                        style="background-image: url('assets/keyarts/card-26.2.webp');"></div>
-                                    <div class="profile-card-keyart-overlay"></div>
-                                    <div class="profile-icon-box">
-                                        <img src="assets/icons/mostplayed.png" class="profile-3d-float-icon" alt="Minecraft 26.2" draggable="false" />
-                                    </div>
-                                    <div class="profile-details">
-                                        <div class="profile-title-line">
-                                            <span class="p-name">Minecraft 26.2</span>
-                                        </div>
-                                        <div class="p-meta">26.2 • Zatím nehráno</div>
-                                    </div>
-                                    <div class="profile-actions">
-                                        <button class="mc-btn mc-btn-primary btn-launch-profile"
-                                            data-profile-id="minecraft-26.2">
-                                            <span>
-                                                <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24"
-                                                    fill="currentColor">
-                                                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                                                </svg>
-                                                Hrát
-                                            </span>
-                                        </button>
-                                        <button class="mc-btn mc-btn-secondary btn-profile-settings"
-                                            title="Nastavení profilu">
-                                            <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
-                                                <circle cx="12" cy="12" r="3"></circle>
-                                                <path
-                                                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
-                                                </path>
-                                            </svg>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <!-- Profile Card 3: Minecraft 26.1.2 -->
-                                <div class="profile-row-card" data-profile-id="minecraft-26.1.2">
-                                    <div class="profile-card-keyart-bg"
-                                        style="background-image: url('assets/keyarts/card-26.1.webp');"></div>
-                                    <div class="profile-card-keyart-overlay"></div>
-                                    <div class="profile-icon-box">
-                                        <img src="assets/icons/old.png" class="profile-3d-float-icon" alt="Minecraft 26.1.2" draggable="false" />
-                                    </div>
-                                    <div class="profile-details">
-                                        <div class="profile-title-line">
-                                            <span class="p-name">Minecraft 26.1.2</span>
-                                        </div>
-                                        <div class="p-meta">26.1.2 • Zatím nehráno</div>
-                                    </div>
-                                    <div class="profile-actions">
-                                        <button class="mc-btn mc-btn-primary btn-launch-profile"
-                                            data-profile-id="minecraft-26.1.2">
-                                            <span>
-                                                <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
-                                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                                    <polyline points="7 10 12 15 17 10"></polyline>
-                                                    <line x1="12" y1="15" x2="12" y2="1"></line>
-                                                </svg>
-                                                Stáhnout
-                                            </span>
-                                        </button>
-                                        <button class="mc-btn mc-btn-secondary btn-profile-settings"
-                                            title="Nastavení profilu">
-                                            <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
-                                                <circle cx="12" cy="12" r="3"></circle>
-                                                <path
-                                                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
-                                                </path>
-                                            </svg>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <!-- Profile Card 4: Minecraft 1.21.11 -->
-                                <div class="profile-row-card" data-profile-id="minecraft-1.21.11">
-                                    <div class="profile-card-keyart-bg"
-                                        style="background-image: url('assets/keyarts/card-1.21.11.webp');"></div>
-                                    <div class="profile-card-keyart-overlay"></div>
-                                    <div class="profile-icon-box">
-                                        <img src="assets/icons/old.png" class="profile-3d-float-icon" alt="Minecraft 1.21.11" draggable="false" />
-                                    </div>
-                                    <div class="profile-details">
-                                        <div class="profile-title-line">
-                                            <span class="p-name">Minecraft 1.21.11</span>
-                                        </div>
-                                        <div class="p-meta">1.21.11 • Zatím nehráno</div>
-                                    </div>
-                                    <div class="profile-actions">
-                                        <button class="mc-btn mc-btn-primary btn-launch-profile"
-                                            data-profile-id="minecraft-1.21.11">
-                                            <span>
-                                                <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
-                                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                                    <polyline points="7 10 12 15 17 10"></polyline>
-                                                    <line x1="12" y1="15" x2="12" y2="1"></line>
-                                                </svg>
-                                                Stáhnout
-                                            </span>
-                                        </button>
-                                        <button class="mc-btn mc-btn-secondary btn-profile-settings"
-                                            title="Nastavení profilu">
-                                            <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
-                                                <circle cx="12" cy="12" r="3"></circle>
-                                                <path
-                                                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
-                                                </path>
-                                            </svg>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Right Area: Featured Server Banner & Quick Play Tracker -->
-                    <div class="dash-right">
-                        <!-- Featured Big Server Banner: MYCHAL SMP -->
-                        <div class="server-banner-card">
-                            <div class="server-banner-header">
-                                <img src="assets/server-icon.png" alt="Server Icon" class="banner-server-icon">
-                                <div class="banner-server-info">
-                                    <div class="banner-server-title">MYCHAL <span>SMP</span></div>
-                                    <div class="banner-server-ip">mychalsmp.xyz</div>
-                                </div>
-                            </div>
-                            <div class="banner-telemetry-row">
-                                <div class="banner-stat">
-                                    <span class="stat-lbl">HRÁČI</span>
-                                    <span class="stat-val stat-green" id="serverPlayersCount">-- / 100</span>
-                                </div>
-                                <div class="banner-stat">
-                                    <span class="stat-lbl">ODEZVA</span>
-                                    <span class="stat-val" id="serverPingVal">-- ms</span>
-                                </div>
-                                <div class="banner-stat">
-                                    <span class="stat-lbl">VERZE</span>
-                                    <span class="stat-val stat-blue">26.2</span>
-                                </div>
-                            </div>
-                            <button class="mc-btn mc-btn-quickplay" id="btnQuickPlayMychal">
-                                <span>
-                                    <svg class="ui-icon-svg ui-icon-svg--sm btn-quickplay-icon" viewBox="0 0 24 24"
-                                        fill="currentColor">
-                                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                                    </svg>
-                                    PŘIPOJIT SE
+                        <div class="stage-caption">
+                            <div class="voldex-stage-topline">
+                                <span class="studio-pill">VOLDEX STUDIOS</span>
+                                <span class="profile-active-pill" id="heroStatActiveProfile">
+                                    Profil: <strong id="heroActiveProfileName">Minecraft 26.2</strong>
                                 </span>
-                            </button>
+                                <span class="playtime-active-pill" id="heroStatPlaytime">
+                                    Odehráno: <strong id="heroTotalPlaytimeVal">Zatím nehráno</strong>
+                                </span>
+                            </div>
+
+                            <h1 class="stage-title">VÍTEJ, <span id="heroPlayerNick">Hráč</span></h1>
+                            <p class="stage-subtitle" id="heroPlayerSubtitle">Oficiální vysokovýkonný klient pro server VoldexSMP (voldex.zasemazi.cz) s předinstalovaným Faithful 64x.</p>
+
+                            <!-- Primary Launch & VoldexSMP Quick-Join Action Bar -->
+                            <div class="voldex-launch-bar">
+                                <button type="button" class="mc-btn mc-btn-voldex-hero" id="btnHeroMasterPlay">
+                                    <span class="hero-play-btn-inner">
+                                        <svg class="ui-icon-svg ui-icon-svg--md" viewBox="0 0 24 24" fill="currentColor">
+                                            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                                        </svg>
+                                        <span class="hero-play-btn-text" id="heroMasterPlayText">SPUSTIT HRU</span>
+                                    </span>
+                                </button>
+
+                                <button type="button" class="mc-btn mc-btn-quickplay" id="btnQuickPlayVoldex" title="Okamžitě spustit hru a připojit se na voldex.zasemazi.cz">
+                                    <span>
+                                        <svg class="ui-icon-svg ui-icon-svg--sm btn-quickplay-icon" viewBox="0 0 24 24" fill="currentColor">
+                                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                                        </svg>
+                                        PŘIPOJIT NA VOLDEXSMP
+                                    </span>
+                                </button>
+                            </div>
+
+                            <!-- Integrated Auto-Connect & Faithful 64x Quick Toggles -->
+                            <div class="voldex-quick-options-bar">
+                                <label class="voldex-quick-toggle" title="Po kliknutí na Hrát tě klient rovnou připojí na server voldex.zasemazi.cz">
+                                    <input type="checkbox" id="quickAutoConnectToggle">
+                                    <span class="v-toggle-track"><span class="v-toggle-thumb"></span></span>
+                                    <span class="v-toggle-text">Automaticky připojit na <strong>voldex.zasemazi.cz</strong></span>
+                                </label>
+
+                                <label class="voldex-quick-toggle" title="Automaticky stáhne a zapne resource pack Faithful 64x ve všech profilech">
+                                    <input type="checkbox" id="quickFaithfulToggle" checked>
+                                    <span class="v-toggle-track"><span class="v-toggle-thumb"></span></span>
+                                    <span class="v-toggle-text"><strong>Faithful 64x</strong> automaticky aktivní</span>
+                                </label>
+                            </div>
+
+                            <!-- Warden Alert if prohibited mods are detected -->
                             <div id="wardenBlockedAlert" class="warden-blocked-banner" style="display: none;">
                                 <div class="warden-banner-content">
                                     <span class="warden-banner-icon">
@@ -492,7 +210,7 @@
                                         </svg>
                                     </span>
                                     <div class="warden-banner-text">
-                                        <strong>Quick Play zablokován</strong>
+                                        <strong>Připojení na VoldexSMP zablokováno</strong>
                                         <span id="wardenBlockedCountText">V profilu jsou nepovolené módy</span>
                                     </div>
                                 </div>
@@ -500,42 +218,282 @@
                             </div>
                         </div>
 
-                        <!-- Server Tracker / History List -->
-                        <div class="tracker-card">
-                            <div class="tracker-header">
-                                <span>Moje servery</span>
-                                <button class="btn-text-action" id="btnAddCustomServer">
+                        <!-- Right Side of Stage: Interactive 3D Character -->
+                        <div class="stage-character">
+                            <div class="stage-skin-wrapper" id="heroSkinWrapper" title="3D náhled postavy – táhni myší pro otáčení">
+                                <canvas id="heroSkinCanvas3D" class="hero-3d-canvas" width="220" height="280"></canvas>
+                                <img src="assets/default_steve.png" alt="Skin" id="heroSkinImg" class="stage-skin">
+                                <div class="hero-pedestal-platform" aria-hidden="true">
+                                    <div class="pedestal-shadow-soft"></div>
+                                    <div class="pedestal-glass-disc">
+                                        <div class="pedestal-glass-glow"></div>
+                                    </div>
+                                    <div class="pedestal-contact-shadow"></div>
+                                </div>
+                            </div>
+                            <div class="stage-nick-pill" id="stageNickPill">
+                                <span class="nick-pill-gem">◆</span>
+                                <span id="heroNickLabel">Hráč</span>
+                                <button class="stage-edit-btn" id="btnEditNickFromHero" title="Změnit postavu">
                                     <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
-                                        <line x1="12" y1="5" x2="12" y2="19"></line>
-                                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                                        <path d="M12 20h9"></path>
+                                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
                                     </svg>
-                                    Přidat
                                 </button>
                             </div>
+                        </div>
+                    </div>
 
-                            <div class="tracked-servers-list" id="trackedServersList">
-                                <!-- Official Server -->
-                                <div class="tracked-server-item">
-                                    <img src="assets/server-icon.png" class="item-server-icon">
-                                    <div class="item-info">
-                                        <div class="item-name-row">
-                                            <span class="item-name">MYCHAL SMP</span>
-                                        </div>
-                                        <div class="item-ip">mychalsmp.xyz</div>
-                                    </div>
-                                    <div class="tracked-server-actions">
-                                        <button class="btn-quick-join" data-server="mychalsmp.xyz" title="Připojit se">
-                                            <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"
-                                                fill="currentColor">
-                                                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    <!-- Launch / Download Progress Bar -->
+                    <div class="progress-container" id="progressContainer" style="display: none;">
+                        <div class="progress-info">
+                            <span class="progress-status" id="progressText">Příprava herních souborů...</span>
+                            <div class="progress-right-side">
+                                <span class="progress-percent" id="progressPercent">0%</span>
+                                <button class="btn-cancel-progress" id="btnCancelDownload" title="Zrušit stahování / spuštění">
+                                    <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
+                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                    </svg>
+                                    Zrušit
+                                </button>
+                            </div>
+                        </div>
+                        <div class="progress-track">
+                            <div class="progress-bar" id="progressBar"></div>
+                        </div>
+                    </div>
+
+                    <!-- LOWER WORKSPACE: Clean 2-Column Split (Profiles Grid + VoldexSMP Server Card) -->
+                    <div class="dashboard-split">
+                        <!-- Left Column: Profiles Grid & Compact Utility Bar -->
+                        <div class="dash-left">
+                            <div class="profiles-section">
+                                <div class="section-title-row">
+                                    <div class="section-heading" id="profilesSectionHeading">
+                                        <span class="clock-icon" id="profilesSectionIcon">
+                                            <svg class="ui-icon-svg" viewBox="0 0 24 24">
+                                                <rect x="2" y="6" width="20" height="12" rx="4"></rect>
+                                                <line x1="6" y1="12" x2="10" y2="12"></line>
+                                                <line x1="8" y1="10" x2="8" y2="14"></line>
+                                                <line x1="15" y1="13" x2="15.01" y2="13"></line>
+                                                <line x1="18" y1="11" x2="18.01" y2="11"></line>
                                             </svg>
-                                            Hrát
+                                        </span>
+                                        <span id="profilesSectionTitle">HERNÍ PROFILY</span>
+                                    </div>
+                                    <div class="section-header-actions" id="dashQuickActions">
+                                        <button type="button" class="voldex-tool-btn" id="btnQuickMods" title="Správa módů, shaderů a Faithful 64x">
+                                            <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
+                                                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                                            </svg>
+                                            <span>Doplňky</span>
                                         </button>
+                                        <button type="button" class="voldex-tool-btn" id="btnOpenScreenshotsModal" title="Galerie screenshotů">
+                                            <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
+                                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                                <circle cx="8.5" cy="8.5" r="1.5" />
+                                                <polyline points="21 15 16 10 5 21" />
+                                            </svg>
+                                            <span>Snímky</span>
+                                        </button>
+                                        <button type="button" class="voldex-tool-btn" id="btnOpenKeybindEditor" title="Editor kláves">
+                                            <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
+                                                <rect x="2" y="4" width="20" height="16" rx="2.5" ry="2.5" />
+                                                <line x1="7" y1="16" x2="17" y2="16" />
+                                            </svg>
+                                            <span>Klávesy</span>
+                                        </button>
+                                        <button type="button" class="voldex-tool-btn" id="btnImportProfileModalOpen" title="Importovat profil">
+                                            <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
+                                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                                <polyline points="7 10 12 15 17 10"></polyline>
+                                                <line x1="12" y1="15" x2="12" y2="1"></line>
+                                            </svg>
+                                            <span>Import</span>
+                                        </button>
+                                        <button type="button" class="btn-create-profile-main" id="btnOpenCreateProfileModal">
+                                            <span>
+                                                <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
+                                                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                                                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                                                </svg>
+                                                Nový profil
+                                            </span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="profile-cards-list" id="profileCardsList">
+                                    <!-- Profile Card 1: Minecraft 26.3 -->
+                                    <div class="profile-row-card" data-profile-id="minecraft-26.3">
+                                        <div class="profile-card-keyart-bg" style="background-image: url('assets/keyarts/card-26.3.jpg');"></div>
+                                        <div class="profile-card-keyart-overlay"></div>
+                                        <div class="profile-icon-box">
+                                            <img src="assets/icons/newest.png" class="profile-3d-float-icon" alt="Minecraft 26.3" draggable="false" />
+                                        </div>
+                                        <div class="profile-details">
+                                            <div class="profile-title-line">
+                                                <span class="p-name">Minecraft 26.3</span>
+                                            </div>
+                                            <div class="p-meta">26.3 • Zatím nehráno</div>
+                                        </div>
+                                        <div class="profile-actions">
+                                            <button class="mc-btn mc-btn-primary btn-launch-profile" data-profile-id="minecraft-26.3">
+                                                <span>Hrát</span>
+                                            </button>
+                                            <button class="mc-btn mc-btn-secondary btn-profile-settings" title="Nastavení profilu">
+                                                <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
+                                                    <circle cx="12" cy="12" r="3"></circle>
+                                                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Profile Card 2: Minecraft 26.2 -->
+                                    <div class="profile-row-card active-profile" data-profile-id="minecraft-26.2">
+                                        <div class="profile-card-keyart-bg" style="background-image: url('assets/keyarts/card-26.2.jpg');"></div>
+                                        <div class="profile-card-keyart-overlay"></div>
+                                        <div class="profile-icon-box">
+                                            <img src="assets/icons/mostplayed.png" class="profile-3d-float-icon" alt="Minecraft 26.2" draggable="false" />
+                                        </div>
+                                        <div class="profile-details">
+                                            <div class="profile-title-line">
+                                                <span class="p-name">Minecraft 26.2</span>
+                                            </div>
+                                            <div class="p-meta">26.2 • Zatím nehráno</div>
+                                        </div>
+                                        <div class="profile-actions">
+                                            <button class="mc-btn mc-btn-primary btn-launch-profile" data-profile-id="minecraft-26.2">
+                                                <span>Hrát</span>
+                                            </button>
+                                            <button class="mc-btn mc-btn-secondary btn-profile-settings" title="Nastavení profilu">
+                                                <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
+                                                    <circle cx="12" cy="12" r="3"></circle>
+                                                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Profile Card 3: Minecraft 26.1.2 -->
+                                    <div class="profile-row-card" data-profile-id="minecraft-26.1.2">
+                                        <div class="profile-card-keyart-bg" style="background-image: url('assets/keyarts/card-26.1.jpg');"></div>
+                                        <div class="profile-card-keyart-overlay"></div>
+                                        <div class="profile-icon-box">
+                                            <img src="assets/icons/old.png" class="profile-3d-float-icon" alt="Minecraft 26.1.2" draggable="false" />
+                                        </div>
+                                        <div class="profile-details">
+                                            <div class="profile-title-line">
+                                                <span class="p-name">Minecraft 26.1.2</span>
+                                            </div>
+                                            <div class="p-meta">26.1.2 • Zatím nehráno</div>
+                                        </div>
+                                        <div class="profile-actions">
+                                            <button class="mc-btn mc-btn-primary btn-launch-profile" data-profile-id="minecraft-26.1.2">
+                                                <span>Hrát</span>
+                                            </button>
+                                            <button class="mc-btn mc-btn-secondary btn-profile-settings" title="Nastavení profilu">
+                                                <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
+                                                    <circle cx="12" cy="12" r="3"></circle>
+                                                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Profile Card 4: Minecraft 1.21.11 -->
+                                    <div class="profile-row-card" data-profile-id="minecraft-1.21.11">
+                                        <div class="profile-card-keyart-bg" style="background-image: url('assets/keyarts/card-1.21.11.jpg');"></div>
+                                        <div class="profile-card-keyart-overlay"></div>
+                                        <div class="profile-icon-box">
+                                            <img src="assets/icons/old.png" class="profile-3d-float-icon" alt="Minecraft 1.21.11" draggable="false" />
+                                        </div>
+                                        <div class="profile-details">
+                                            <div class="profile-title-line">
+                                                <span class="p-name">Minecraft 1.21.11</span>
+                                            </div>
+                                            <div class="p-meta">1.21.11 • Zatím nehráno</div>
+                                        </div>
+                                        <div class="profile-actions">
+                                            <button class="mc-btn mc-btn-primary btn-launch-profile" data-profile-id="minecraft-1.21.11">
+                                                <span>Hrát</span>
+                                            </button>
+                                            <button class="mc-btn mc-btn-secondary btn-profile-settings" title="Nastavení profilu">
+                                                <svg class="ui-icon-svg ui-icon-svg--sm" viewBox="0 0 24 24">
+                                                    <circle cx="12" cy="12" r="3"></circle>
+                                                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Column: VoldexSMP Server Hub & Quick Server List -->
+                        <div class="dash-right">
+                            <div class="server-banner-card">
+                                <div class="server-banner-header">
+                                    <img src="assets/server-icon.png" alt="VoldexSMP" class="banner-server-icon">
+                                    <div class="banner-server-info">
+                                        <div class="banner-server-title">VOLDEX<span>SMP</span></div>
+                                        <div class="banner-server-ip" id="btnCopyVoldexIp" title="Klikni pro zkopírování IP adresy">voldex.zasemazi.cz</div>
+                                    </div>
+                                    <span class="voldex-online-pulse-pill"><span class="online-mini-dot"></span>ONLINE</span>
+                                </div>
+                                <div class="banner-telemetry-row">
+                                    <div class="banner-stat">
+                                        <span class="stat-lbl">HRÁČI</span>
+                                        <span class="stat-val stat-green" id="serverPlayersCount">-- / 100</span>
+                                    </div>
+                                    <div class="banner-stat">
+                                        <span class="stat-lbl">PING</span>
+                                        <span class="stat-val stat-turq" id="serverPingVal">-- ms</span>
+                                    </div>
+                                    <div class="banner-stat">
+                                        <span class="stat-lbl">PACK</span>
+                                        <span class="stat-val stat-blue">Faithful 64x</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="tracker-card">
+                                <div class="tracker-header">
+                                    <span>SERVERY</span>
+                                    <button class="btn-text-action" id="btnAddCustomServer">
+                                        <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24">
+                                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                        </svg>
+                                        Přidat server
+                                    </button>
+                                </div>
+
+                                <div class="tracked-servers-list" id="trackedServersList">
+                                    <div class="tracked-server-item">
+                                        <img src="assets/server-icon.png" class="item-server-icon">
+                                        <div class="item-info">
+                                            <div class="item-name-row">
+                                                <span class="item-name">VoldexSMP</span>
+                                            </div>
+                                            <div class="item-ip">voldex.zasemazi.cz</div>
+                                        </div>
+                                        <div class="tracked-server-actions">
+                                            <button class="btn-quick-join" data-server="voldex.zasemazi.cz" title="Připojit se">
+                                                <svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" fill="currentColor">
+                                                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                                                </svg>
+                                                Hrát
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
+
                 </div>
             </section>
 
@@ -1305,19 +1263,35 @@
                         </div>
 
                         <div class="perf-settings-grid" id="universalPerfGroup">
+                            <label class="perf-toggle-card perf-toggle-card--highlight">
+                                <input type="checkbox" id="checkAutoJoinVoldex">
+                                <div class="perf-toggle-info">
+                                    <span class="perf-toggle-title">Automatické připojení na VoldexSMP (voldex.zasemazi.cz)</span>
+                                    <span class="perf-toggle-desc">Po spuštění hry tě Voldex Client rovnou připojí na server voldex.zasemazi.cz bez nutnosti klikat v menu Multiplayer.</span>
+                                </div>
+                            </label>
+
+                            <label class="perf-toggle-card perf-toggle-card--highlight">
+                                <input type="checkbox" id="checkAutoFaithful64" checked>
+                                <div class="perf-toggle-info">
+                                    <span class="perf-toggle-title">Automatický Faithful 64x Resource Pack</span>
+                                    <span class="perf-toggle-desc">Automaticky stáhne a aktivuje detailní 64×64 textury Faithful 64x v každém herním profilu.</span>
+                                </div>
+                            </label>
+
                             <label class="perf-toggle-card">
                                 <input type="checkbox" id="checkAutoUpdateMods" checked>
                                 <div class="perf-toggle-info">
-                                    <span class="perf-toggle-title">Automatická aktualizace módů</span>
-                                    <span class="perf-toggle-desc">Při spuštění hry zkontrolovat a stáhnout novější verze módů pro server.</span>
+                                    <span class="perf-toggle-title">Automatická aktualizace módů a optimalizací</span>
+                                    <span class="perf-toggle-desc">Při spuštění hry zkontrolovat a stáhnout nejnovější verze klientských optimalizací (Sodium, Lithium, Iris).</span>
                                 </div>
                             </label>
 
                             <label class="perf-toggle-card">
                                 <input type="checkbox" id="checkDiscordRpc" checked>
                                 <div class="perf-toggle-info">
-                                    <span class="perf-toggle-title">Discord Rich Presence</span>
-                                    <span class="perf-toggle-desc">Zobrazovat přátelům na Discordu, že právě hraješ na serveru MYCHAL SMP.</span>
+                                    <span class="perf-toggle-title">Discord Rich Presence (Voldex Studios)</span>
+                                    <span class="perf-toggle-desc">Zobrazovat přátelům na Discordu, že právě hraješ na VoldexSMP přes Voldex Client.</span>
                                 </div>
                             </label>
 
@@ -1325,7 +1299,7 @@
                                 <input type="checkbox" id="checkScreenshotClipboard" checked>
                                 <div class="perf-toggle-info">
                                     <span class="perf-toggle-title">Screenshot do schránky (Ctrl+V)</span>
-                                    <span class="perf-toggle-desc">Po stisku F2 ve hře se snímek automaticky zkopíruje do schránky pro vložení na Discord.</span>
+                                    <span class="perf-toggle-desc">Po stisku F2 ve hře se snímek automaticky zkopíruje do schránky pro okamžité vložení na Discord.</span>
                                 </div>
                             </label>
                         </div>
@@ -1340,8 +1314,8 @@
                                 </svg>
                             </span>
                             <div>
-                                <h3 class="settings-group-title">Správa a údržba launcheru</h3>
-                                <p class="settings-group-desc">Aktualizace na nejnovější verzi a uvolnění místa na pevném disku.</p>
+                                <h3 class="settings-group-title">Správa a údržba klienta</h3>
+                                <p class="settings-group-desc">Voldex Client by Voldex Studios – aktualizace a správa mezipaměti.</p>
                             </div>
                         </div>
 
@@ -1357,8 +1331,8 @@
                                         </svg>
                                     </span>
                                     <div>
-                                        <strong class="tool-card-title">Aktualizace aplikace</strong>
-                                        <p class="tool-card-desc" id="launcherVersionStatus">Verze: <strong>v1.5.2</strong>
+                                        <strong class="tool-card-title">Aktualizace Voldex Clientu</strong>
+                                        <p class="tool-card-desc" id="launcherVersionStatus">Verze: <strong>v3.0.0</strong>
                                         </p>
                                     </div>
                                 </div>
@@ -2326,7 +2300,7 @@
                 <p class="modal-desc">
                     Vytvoří profil na novější verzi se zachováním tvého nastavení, módů a balíčků.
                 </p>
-                <div class="upgrade-source-badge" id="upgradeSourceProfileName">Zdrojový profil: MYCHAL SMP 26.2
+                <div class="upgrade-source-badge" id="upgradeSourceProfileName">Zdrojový profil: Voldex Client 26.2
                 </div>
 
                 <div class="form-group" style="margin-top: 14px;">
@@ -2640,7 +2614,7 @@
                                 </div>
                                 <div>
                                     <div class="first-launch-name">Optimalizovaný</div>
-                                    <div class="first-launch-sub">Konfigurace pro MYCHAL SMP</div>
+                                    <div class="first-launch-sub">Voldex Client Turbo Konfigurace</div>
                                 </div>
                             </div>
                         </div>
@@ -2650,7 +2624,7 @@
                                     vysoký výkon a plynulost</span></li>
                             <li><span class="feat-check">✓</span> <span><strong>Iris Shaders</strong> s balíčkem
                                     Complementary</span></li>
-                            <li><span class="feat-check">✓</span> <span>Vyladěné herní nastavení pro MYCHAL SMP</span>
+                            <li><span class="feat-check">✓</span> <span>Vyladěné herní nastavení pro Voldex Client</span>
                             </li>
                         </ul>
 
@@ -2667,7 +2641,7 @@
                                 <div class="progress-track"
                                     style="height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 4px; overflow: hidden;">
                                     <div id="firstLaunchOptProgressBarFill" class="progress-bar"
-                                        style="height: 100%; width: 0%; background: linear-gradient(90deg, #0a67e5, #21DE00); border-radius: 4px;">
+                                        style="height: 100%; width: 0%; background: linear-gradient(90deg, #00e5ff, #00f59b); border-radius: 4px;">
                                     </div>
                                 </div>
                             </div>
@@ -2723,7 +2697,7 @@
                     </span>
                     <div>
                         <h3>Nepovolené módy</h3>
-                        <p class="modal-subtitle">Pravidla serveru mychalsmp.xyz</p>
+                        <p class="modal-subtitle">Pravidla serveru voldex.zasemazi.cz</p>
                     </div>
                 </div>
                 <button class="modal-close-x" id="btnCloseWardenModal">
@@ -2735,7 +2709,7 @@
             </div>
             <div class="modal-body">
                 <div class="warden-warning-notice">
-                    <p>Profil obsahuje módy, které nejsou na síti MYCHAL SMP povoleny.</p>
+                    <p>Profil obsahuje módy, které nejsou na síti VoldexSMP povoleny.</p>
                     <p class="warden-allowed-hint"><svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--gold"
                             viewBox="0 0 24 24">
                             <circle cx="12" cy="12" r="10"></circle>
@@ -2759,7 +2733,7 @@
                             <line x1="15" y1="11" x2="15.01" y2="11"></line>
                             <line x1="18" y1="13" x2="18.01" y2="13"></line>
                         </svg>
-                        Hrát mimo MYCHAL SMP
+                        Hrát mimo VoldexSMP
                     </span>
                 </button>
                 <button class="mc-btn mc-btn-green" id="btnCleanIllegalMods">
@@ -2768,7 +2742,7 @@
                             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
                             <polyline points="9 12 11 14 15 10"></polyline>
                         </svg>
-                        Deaktivovat pro MYCHAL SMP
+                        Deaktivovat pro VoldexSMP
                     </span>
                 </button>
             </div>
@@ -2807,7 +2781,7 @@
                 <div class="form-group">
                     <label>IP adresa / Doména serveru</label>
                     <input type="text" class="text-input" id="newServerIpInput"
-                        placeholder="Např. mc.example.com nebo 130.61.89.37:25565">
+                        placeholder="Např. mc.example.com nebo voldex.zasemazi.cz:25565">
                 </div>
                 <!-- Live Ping Preview & Icon Detection -->
                 <div class="form-group" style="margin-top: 14px;">
@@ -3149,7 +3123,7 @@
     <div class="toast-container" id="toastContainer"></div>
 
     <script src="js/lib/skinview3d.bundle.js"></script>
-    <script src="js/app.js?v=1.5.2"></script>
+    <script src="js/app.js?v=2.0.0"></script>
 </body>
 
 </html>

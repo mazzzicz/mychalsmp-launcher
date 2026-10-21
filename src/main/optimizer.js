@@ -1,7 +1,8 @@
 /**
- * MYCHAL SMP Launcher - Performance & Profile Optimizer
+ * Voldex Client (Voldex Studios) - Performance & Profile Optimizer
  * Manages essential Fabric mods (Sodium, Lithium, Iris, Fabric API),
- * shaders (Complementary Reimagined), Minecraft GUI scale, and servers.dat.
+ * shaders (Complementary Reimagined), Faithful 64x resource pack,
+ * Minecraft GUI scale, and servers.dat for voldex.zasemazi.cz (VoldexSMP).
  */
 
 const fs = require('fs');
@@ -32,7 +33,7 @@ function ensureOptionsGuiScale(gameDir, scale = 2) {
         const scaleRegex = /^guiScale:\s*\d+/m;
         const currentMatch = content.match(scaleRegex);
         if (currentMatch && currentMatch[0] === `guiScale:${scale}`) {
-            return true; // Již nastaveno, ušetříme synchronní diskový zápis
+            return true;
         }
         if (currentMatch) {
             content = content.replace(scaleRegex, `guiScale:${scale}`);
@@ -46,6 +47,186 @@ function ensureOptionsGuiScale(gameDir, scale = 2) {
         console.warn('[OPTIMIZER] Nepodařilo se zapsat guiScale do options.txt:', e.message);
         return false;
     }
+}
+
+/**
+ * Ensures Faithful 64x is enabled inside Minecraft's options.txt resourcePacks list.
+ */
+function enableResourcePackInOptions(gameDir, packFilename) {
+    if (!gameDir || !packFilename) return false;
+    try {
+        if (!fs.existsSync(gameDir)) {
+            fs.mkdirSync(gameDir, { recursive: true });
+        }
+        const optionsPath = path.join(gameDir, 'options.txt');
+        let content = '';
+        if (fs.existsSync(optionsPath)) {
+            content = fs.readFileSync(optionsPath, 'utf8');
+        }
+
+        const entry = `file/${packFilename}`;
+        const rpRegex = /^resourcePacks:\[(.*)\]/m;
+        const match = content.match(rpRegex);
+
+        if (match) {
+            let packs = [];
+            try {
+                packs = JSON.parse(`[${match[1]}]`);
+            } catch (_) {
+                packs = match[1]
+                    .split(',')
+                    .map(s => s.trim().replace(/^"|"$/g, ''))
+                    .filter(Boolean);
+            }
+            if (!packs.includes('vanilla')) packs.unshift('vanilla');
+            if (!packs.includes('fabric')) {
+                const vIdx = packs.indexOf('vanilla');
+                packs.splice(vIdx + 1, 0, 'fabric');
+            }
+            if (!packs.some(p => p.toLowerCase().includes('faithful'))) {
+                packs.push(entry);
+                const updatedLine = `resourcePacks:[${packs.map(p => JSON.stringify(p)).join(',')}]`;
+                content = content.replace(rpRegex, updatedLine);
+                fs.writeFileSync(optionsPath, content, 'utf8');
+            }
+        } else {
+            const defaultPacks = ['vanilla', 'fabric', entry];
+            const newLine = `resourcePacks:[${defaultPacks.map(p => JSON.stringify(p)).join(',')}]`;
+            content = (content ? content.trimEnd() + '\n' : '') + `${newLine}\n`;
+            fs.writeFileSync(optionsPath, content, 'utf8');
+        }
+        return true;
+    } catch (err) {
+        console.warn('[OPTIMIZER] Nepodařilo se aktivovat Faithful 64x v options.txt:', err.message);
+        return false;
+    }
+}
+
+/**
+ * Finds an installed Faithful 64x pack in resourcepacks/ if present.
+ */
+function findInstalledFaithful64(gameDir) {
+    const rpDir = path.join(gameDir, 'resourcepacks');
+    if (!fs.existsSync(rpDir)) return null;
+    try {
+        const entries = fs.readdirSync(rpDir);
+        for (const e of entries) {
+            const lower = e.toLowerCase();
+            if (lower.endsWith('.disabled') || lower === '.mod_meta.json') continue;
+            if (lower.includes('faithful') && (lower.includes('64') || lower.endsWith('.zip') || fs.statSync(path.join(rpDir, e)).isDirectory())) {
+                return e;
+            }
+        }
+    } catch (_) {}
+    return null;
+}
+
+/**
+ * Automatically downloads and enables Faithful 64x in gameDir/resourcepacks.
+ * Uses Modrinth API first, with automatic fallback to official Faithful-Resource-Pack/Faithful-64x-Java GitHub repository.
+ */
+async function ensureFaithful64Installed(gameDir, version = '26.2', onLog = console.log, onProgress = null) {
+    if (!gameDir) return { success: false };
+    const existing = findInstalledFaithful64(gameDir);
+    if (existing) {
+        enableResourcePackInOptions(gameDir, existing);
+        return { success: true, filename: existing, alreadyInstalled: true };
+    }
+
+    const rpDir = path.join(gameDir, 'resourcepacks');
+    fs.mkdirSync(rpDir, { recursive: true });
+
+    if (typeof onLog === 'function') {
+        onLog('[FAITHFUL 64x] 🎨 Automaticky stahuji resource pack Faithful 64x...');
+    }
+
+    // 1. Try Modrinth API ('faithful-64x')
+    const modrinthCandidates = ['faithful-64x', 'w0TnApzs'];
+    for (const slug of modrinthCandidates) {
+        try {
+            const res = await downloadModOrPack({
+                id: slug,
+                slug: 'faithful-64x',
+                title: 'Faithful 64x',
+                projectType: 'resourcepack',
+                version: version || '26.2',
+                loader: 'fabric',
+                onProgress
+            }, gameDir);
+
+            if (res && res.success && res.filename) {
+                enableResourcePackInOptions(gameDir, res.filename);
+                if (typeof onLog === 'function') {
+                    onLog(`[FAITHFUL 64x] ✔ Faithful 64x úspěšně stažen a aktivován (${res.filename}).`);
+                }
+                return { success: true, filename: res.filename };
+            }
+        } catch (_) {}
+    }
+
+    // 2. Fallback: Official GitHub repository (Faithful-Resource-Pack/Faithful-64x-Java)
+    const branchCandidates = [];
+    const cleanVer = String(version || '26.2').trim();
+    if (cleanVer.startsWith('26.')) branchCandidates.push('26.2', '26.1');
+    if (cleanVer.startsWith('1.21')) branchCandidates.push('1.21.11', '1.21.10', '1.21.8', '1.21.4', '1.21.1');
+    branchCandidates.push('26.2', 'java-latest');
+
+    for (const branch of [...new Set(branchCandidates)]) {
+        try {
+            const zipUrl = `https://codeload.github.com/Faithful-Resource-Pack/Faithful-64x-Java/zip/refs/heads/${encodeURIComponent(branch)}`;
+            const dlRes = await fetch(zipUrl, {
+                headers: { 'User-Agent': 'VoldexStudios/voldex-client' },
+                signal: AbortSignal.timeout(25000)
+            });
+            if (!dlRes.ok) continue;
+
+            const buf = Buffer.from(await dlRes.arrayBuffer());
+            if (buf.length < 50000) continue;
+
+            const tmpZip = path.join(rpDir, `_tmp_faithful_${Date.now()}.zip`);
+            fs.writeFileSync(tmpZip, buf);
+
+            const targetPackName = 'Faithful 64x';
+            const targetPackDir = path.join(rpDir, targetPackName);
+            const tempExtractDir = path.join(rpDir, `_extract_faithful_${Date.now()}`);
+
+            try {
+                const AdmZip = require('adm-zip');
+                const zip = new AdmZip(tmpZip);
+                zip.extractAllTo(tempExtractDir, true);
+
+                const subEntries = fs.readdirSync(tempExtractDir);
+                let innerRoot = tempExtractDir;
+                for (const sub of subEntries) {
+                    const p = path.join(tempExtractDir, sub);
+                    if (fs.statSync(p).isDirectory() && fs.existsSync(path.join(p, 'pack.mcmeta'))) {
+                        innerRoot = p;
+                        break;
+                    }
+                }
+
+                if (fs.existsSync(targetPackDir)) {
+                    fs.rmSync(targetPackDir, { recursive: true, force: true });
+                }
+                fs.renameSync(innerRoot, targetPackDir);
+            } finally {
+                try { if (fs.existsSync(tmpZip)) fs.unlinkSync(tmpZip); } catch (_) {}
+                try { if (fs.existsSync(tempExtractDir)) fs.rmSync(tempExtractDir, { recursive: true, force: true }); } catch (_) {}
+            }
+
+            if (fs.existsSync(path.join(targetPackDir, 'pack.mcmeta'))) {
+                enableResourcePackInOptions(gameDir, targetPackName);
+                if (typeof onLog === 'function') {
+                    onLog(`[FAITHFUL 64x] ✔ Faithful 64x (${branch}) stažen a automaticky aktivován.`);
+                }
+                return { success: true, filename: targetPackName };
+            }
+        } catch (err) {
+            // Try next branch candidate
+        }
+    }
+
+    return { success: false };
 }
 
 /**
@@ -76,8 +257,8 @@ function buildServersDatBuffer(serverList) {
     buffers.push(listHeader);
 
     for (const srv of serverList) {
-        const srvName = srv.name || 'Minecraft Server';
-        const srvIp = srv.ip || srv.address || 'mychalsmp.xyz';
+        const srvName = srv.name || 'VoldexSMP';
+        const srvIp = srv.ip || srv.address || 'voldex.zasemazi.cz';
 
         // TAG_String name="name"
         const nameKey = Buffer.from('name', 'utf8');
@@ -190,8 +371,7 @@ function normalizeServerIp(rawIp) {
 }
 
 /**
- * Checks if two server addresses point to the same server,
- * taking aliases and default Minecraft ports into account.
+ * Checks if two server addresses point to the same server.
  */
 function isSameServerAddress(ipA, ipB) {
     const a = normalizeServerIp(ipA);
@@ -199,20 +379,15 @@ function isSameServerAddress(ipA, ipB) {
     if (!a || !b) return false;
     if (a === b) return true;
 
-    // Známé síťové aliasy a záložní IP pro MYCHAL SMP
-    const mychalAliases = ['mychalsmp.xyz', 'join.mychalsmp.xyz', '130.61.89.37'];
-    if (mychalAliases.includes(a) && mychalAliases.includes(b)) {
+    const voldexAliases = ['voldex.zasemazi.cz', 'zasemazi.cz'];
+    if (voldexAliases.includes(a) && voldexAliases.includes(b)) {
         return true;
     }
     return false;
 }
 
 /**
- * Synchronizes servers.dat in gameDir without bloating or re-injecting servers the user removed.
- * - Deduplicates servers by normalized IP address (eliminates duplicates caused by quick play or :25565).
- * - For a brand new profile without servers.dat, initializes with MYCHAL SMP so new players can join immediately.
- * - If the player explicitly removed MYCHAL SMP from their servers.dat, respects their choice and does NOT force it back.
- * - Preserves custom names, texture settings, and server order.
+ * Synchronizes servers.dat in gameDir and ensures VoldexSMP (voldex.zasemazi.cz) is present.
  */
 function syncServersDat(gameDir, additionalServers = []) {
     try {
@@ -226,14 +401,14 @@ function syncServersDat(gameDir, additionalServers = []) {
             existing = parseExistingServersDat(fs.readFileSync(srvFile));
         }
 
-        // 1. Deduplikace stávajících serverů (oprava duplicit po starých verzích / Quick Play)
         const deduplicated = [];
         for (const s of existing) {
             if (!s || !s.ip) continue;
-            const alreadyExists = deduplicated.some(d => isSameServerAddress(d.ip, s.ip));
+            const cleanIp = normalizeServerIp(s.ip);
+            // Skip any obsolete non-Voldex default placeholder IPs
+            if (cleanIp === '130.61.89.37') continue;
+            const alreadyExists = deduplicated.some(d => isSameServerAddress(d.ip, cleanIp));
             if (!alreadyExists) {
-                // Zachováme čistou adresu bez zbytečného :25565
-                const cleanIp = normalizeServerIp(s.ip);
                 deduplicated.push({
                     name: s.name || cleanIp,
                     ip: cleanIp,
@@ -242,16 +417,15 @@ function syncServersDat(gameDir, additionalServers = []) {
             }
         }
 
-        // 2. Pouze pokud soubor vůbec neexistoval (úplně nový profil), přidáme výchozí MYCHAL SMP
-        if (!fileExists) {
+        // Always ensure VoldexSMP (voldex.zasemazi.cz) is at the top of servers.dat for new profiles
+        if (!fileExists || !deduplicated.some(d => isSameServerAddress(d.ip, 'voldex.zasemazi.cz'))) {
             deduplicated.unshift({
-                name: 'MYCHAL SMP',
-                ip: 'mychalsmp.xyz',
+                name: 'VoldexSMP',
+                ip: 'voldex.zasemazi.cz',
                 acceptTextures: 1
             });
         }
 
-        // 3. Doplníme servery z konfigurace launcheru pouze v případě, že ještě nejsou v seznamu
         for (const s of (additionalServers || [])) {
             const sIp = (s.ip || s.subdomain || '').trim();
             if (!sIp) continue;
@@ -283,7 +457,7 @@ function syncServersDat(gameDir, additionalServers = []) {
 }
 
 /**
- * Checks if essential optimization mods are already present in gameDir.
+ * Checks if essential optimization mods and Faithful 64x are already present in gameDir.
  */
 function checkInstalledOptimizationMods(gameDir, version = '26.2') {
     const modsDir = path.join(gameDir, 'mods');
@@ -295,13 +469,13 @@ function checkInstalledOptimizationMods(gameDir, version = '26.2') {
         hasLithium: false,
         hasIris: false,
         hasComplementary: false,
+        hasFaithful64: Boolean(findInstalledFaithful64(gameDir)),
         oldSodiumFilename: null
     };
 
     if (fs.existsSync(modsDir)) {
         let allEntries = [];
         try { allEntries = fs.readdirSync(modsDir); } catch (_) {}
-        // Pouze aktivní .jar soubory (žádné .disabled)
         const jarFiles = allEntries.filter(f => {
             const l = f.toLowerCase();
             return l.endsWith('.jar') && !l.endsWith('.disabled');
@@ -312,7 +486,6 @@ function checkInstalledOptimizationMods(gameDir, version = '26.2') {
             return l.includes('fabric-api') || l.includes('fabric_api');
         });
 
-        // Sodium: nesmí to být deriváty (sodium-extra, rubidium, reeses options apod.)
         const sodiumFile = jarFiles.find(f => {
             const l = f.toLowerCase();
             if (l.includes('extra') || l.includes('options') || l.includes('menu')) return false;
@@ -320,7 +493,6 @@ function checkInstalledOptimizationMods(gameDir, version = '26.2') {
         });
 
         if (sodiumFile) {
-            // Pokud jsme na MC 26.2 a Iris striktně vyžaduje Sodium 0.9.x, ověříme kompatibilitu
             if (version === '26.2' || String(version).startsWith('26.')) {
                 if (sodiumFile.toLowerCase().includes('0.9')) {
                     result.hasSodium = true;
@@ -362,12 +534,11 @@ function checkInstalledOptimizationMods(gameDir, version = '26.2') {
 }
 
 /**
- * Downloads essential optimization mods and shaders for the target version and loader.
+ * Downloads essential optimization mods, shaders, and Faithful 64x resourcepack.
  */
 async function installOptimizationPack(gameDir, version = '26.2', onProgress) {
     const installed = checkInstalledOptimizationMods(gameDir, version);
 
-    // Vždy zajistíme přítomnost a aktuálnost našeho F5 nametag módu
     const bundledSelfNametag = path.join(__dirname, '../../assets/mods/selfnametag-1.0.0.jar');
     const targetSelfNametag = path.join(gameDir, 'mods', 'selfnametag-1.0.0.jar');
     if (fs.existsSync(bundledSelfNametag)) {
@@ -395,13 +566,16 @@ async function installOptimizationPack(gameDir, version = '26.2', onProgress) {
         { id: 'sodium', title: 'Sodium', projectType: 'mod', needed: !installed.hasSodium, oldFilename: installed.oldSodiumFilename },
         { id: 'lithium', title: 'Lithium', projectType: 'mod', needed: !installed.hasLithium },
         { id: 'iris', title: 'Iris Shaders', projectType: 'mod', needed: !installed.hasIris },
-        { id: 'complementary-reimagined', title: 'Complementary Reimagined', projectType: 'shader', needed: !installed.hasComplementary }
+        { id: 'complementary-reimagined', title: 'Complementary Reimagined', projectType: 'shader', needed: !installed.hasComplementary },
+        { id: 'faithful-64x', title: 'Faithful 64x', projectType: 'resourcepack', needed: !installed.hasFaithful64 }
     ];
 
     const neededItems = items.filter(i => i.needed);
     const total = neededItems.length;
 
     if (total === 0) {
+        const existingFaithful = findInstalledFaithful64(gameDir);
+        if (existingFaithful) enableResourcePackInOptions(gameDir, existingFaithful);
         if (onProgress) {
             onProgress({
                 current: 0,
@@ -409,7 +583,7 @@ async function installOptimizationPack(gameDir, version = '26.2', onProgress) {
                 percent: 100,
                 subPercent: 100,
                 itemTitle: 'Hotovo',
-                status: 'Optimalizační balíček je již nainstalován'
+                status: 'Optimalizační balíček + Faithful 64x připraven'
             });
         }
         return { success: true, installedCount: 0 };
@@ -431,14 +605,8 @@ async function installOptimizationPack(gameDir, version = '26.2', onProgress) {
                 });
             }
 
-            await downloadModOrPack({
-                id: item.id,
-                title: item.title,
-                projectType: item.projectType,
-                version: version || '26.2',
-                loader: 'fabric',
-                oldFilename: item.oldFilename,
-                onProgress: (received, totalBytes, subPercent) => {
+            if (item.id === 'faithful-64x') {
+                await ensureFaithful64Installed(gameDir, version || '26.2', null, (received, totalBytes, subPercent) => {
                     if (onProgress) {
                         const safeSub = Math.max(0, Math.min(100, subPercent || 0));
                         const overallPct = Math.min(99, Math.round(((done + (safeSub / 100)) / total) * 100));
@@ -451,8 +619,31 @@ async function installOptimizationPack(gameDir, version = '26.2', onProgress) {
                             status: safeSub > 0 ? `Stahuji ${item.title}... ${safeSub}%` : `Stahuji ${item.title}...`
                         });
                     }
-                }
-            }, gameDir);
+                });
+            } else {
+                await downloadModOrPack({
+                    id: item.id,
+                    title: item.title,
+                    projectType: item.projectType,
+                    version: version || '26.2',
+                    loader: 'fabric',
+                    oldFilename: item.oldFilename,
+                    onProgress: (received, totalBytes, subPercent) => {
+                        if (onProgress) {
+                            const safeSub = Math.max(0, Math.min(100, subPercent || 0));
+                            const overallPct = Math.min(99, Math.round(((done + (safeSub / 100)) / total) * 100));
+                            onProgress({
+                                current: done + 1,
+                                total,
+                                percent: overallPct,
+                                subPercent: safeSub,
+                                itemTitle: item.title,
+                                status: safeSub > 0 ? `Stahuji ${item.title}... ${safeSub}%` : `Stahuji ${item.title}...`
+                            });
+                        }
+                    }
+                }, gameDir);
+            }
 
             done++;
 
@@ -479,7 +670,7 @@ async function installOptimizationPack(gameDir, version = '26.2', onProgress) {
             percent: 100,
             subPercent: 100,
             itemTitle: 'Dokončeno',
-            status: 'Optimalizační balíček připraven'
+            status: 'Optimalizační balíček + Faithful 64x připraven'
         });
     }
 
@@ -488,6 +679,9 @@ async function installOptimizationPack(gameDir, version = '26.2', onProgress) {
 
 module.exports = {
     ensureOptionsGuiScale,
+    enableResourcePackInOptions,
+    findInstalledFaithful64,
+    ensureFaithful64Installed,
     syncServersDat,
     checkInstalledOptimizationMods,
     installOptimizationPack

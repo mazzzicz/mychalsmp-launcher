@@ -1,6 +1,213 @@
 /**
- * MYCHAL SMP Launcher - Compact Client Application Logic
+ * VOLDEX CLIENT 2.0 - Next-Gen Custom Minecraft Launcher Application Logic
  */
+
+// ── Browser Preview Fallback Bridge (when running outside Electron in Live Preview) ──
+if (typeof window !== 'undefined' && !window.api) {
+    const mockListeners = {};
+    const emitMock = (evt, data) => {
+        if (Array.isArray(mockListeners[evt])) {
+            mockListeners[evt].forEach(cb => {
+                try { cb(data); } catch (_) {}
+            });
+        }
+    };
+    const defaultMockConfig = {
+        username: 'VoldexPlayer',
+        offlineUsername: 'VoldexPlayer',
+        authType: 'offline',
+        microsoftAccount: null,
+        ramMin: 4,
+        ramMax: 8,
+        javaPath: '/usr/lib/jvm/java-25-openjdk/bin/java',
+        resolution: { width: 1920, height: 1080, fullscreen: false },
+        version: '26.2',
+        loader: 'fabric',
+        activeProfileId: 'minecraft-26.2',
+        profiles: [
+            { id: 'minecraft-26.3', name: 'Voldex Ultra 26.3', version: '26.3', loader: 'fabric', optimizedChosen: 'optimized', desc: 'Minecraft 26.3', icon: 'latest', lastPlayed: Date.now() - 3600000, playtimeSeconds: 18420 },
+            { id: 'minecraft-26.2', name: 'Voldex Turbo 26.2', version: '26.2', loader: 'fabric', optimizedChosen: 'optimized', desc: 'Minecraft 26.2', icon: 'sword', lastPlayed: Date.now() - 600000, playtimeSeconds: 54900 },
+            { id: 'minecraft-26.1.2', name: 'Minecraft 26.1.2', version: '26.1.2', loader: 'fabric', optimizedChosen: 'optimized', desc: 'Minecraft 26.1.2', icon: 'chest', lastPlayed: null, playtimeSeconds: 7200 },
+            { id: 'minecraft-1.21.11', name: 'PvP Arena 1.21.11', version: '1.21.11', loader: 'fabric', optimizedChosen: 'optimized', desc: 'Minecraft 1.21.11', icon: 'shield', lastPlayed: null, playtimeSeconds: 12600 }
+        ],
+        servers: [
+            { id: 'VoldexSMP', name: 'VOLDEX SMP', ip: 'voldex.zasemazi.cz', backupIp: 'voldex.zasemazi.cz', port: 25565, pinned: true, lastJoined: Date.now() }
+        ],
+        serverIp: 'voldex.zasemazi.cz',
+        serverPort: 25565,
+        customJvmArgs: '-XX:+UseZGC -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC',
+        enableGameMode: true,
+        enableDiscreteGpu: true,
+        enableDiscordRpc: true,
+        autoUpdateMods: true,
+        screenshotToClipboard: true,
+        borderlessFullscreen: false,
+        graphicsBackend: 'vulkan'
+    };
+
+    let mockCfg = { ...defaultMockConfig };
+    try {
+        const saved = localStorage.getItem('voldex_preview_config');
+        if (saved) mockCfg = { ...defaultMockConfig, ...JSON.parse(saved) };
+    } catch (_) {}
+
+    window.api = {
+        platform: 'win32',
+        getConfig: async () => mockCfg,
+        saveConfig: async (cfg) => {
+            mockCfg = { ...mockCfg, ...(cfg || {}) };
+            try { localStorage.setItem('voldex_preview_config', JSON.stringify(mockCfg)); } catch (_) {}
+            return mockCfg;
+        },
+        pingServer: async (ip = 'voldex.zasemazi.cz') => ({
+            online: true,
+            players: { online: 47, max: 100 },
+            version: '26.2 (Voldex)',
+            latency: 14,
+            motd: 'VOLDEX SMP • Tyrkysová sezóna 2.0!',
+            hostUsed: ip
+        }),
+        loginOffline: async (username) => {
+            mockCfg.username = username || 'VoldexPlayer';
+            mockCfg.offlineUsername = mockCfg.username;
+            mockCfg.authType = 'offline';
+            return { success: true, account: { name: mockCfg.username } };
+        },
+        loginMicrosoft: async () => ({ success: false, error: 'Dostupné v nativní desktopové aplikaci Voldex Client (.exe).' }),
+        launchGame: async (profileId) => {
+            let pct = 0;
+            const timer = setInterval(() => {
+                pct += 20;
+                if (pct <= 100) {
+                    emitMock('launch-progress', { type: 'download', task: pct, total: 100, percent: pct, status: pct < 50 ? 'Leštíme modpack...' : 'Spouštíme Minecraft!' });
+                } else {
+                    clearInterval(timer);
+                }
+            }, 350);
+            return { success: true, profileId };
+        },
+        killGame: async () => ({ success: true }),
+        cancelLaunch: async () => ({ success: true }),
+        isGameRunning: async () => false,
+        getActiveSession: async () => null,
+        detectJava: async () => ({ found: true, path: 'C:\\Program Files\\Eclipse Adoptium\\jre-25.0.1-hotspot\\bin\\javaw.exe', version: '25.0.1' }),
+        getAvailableJavas: async () => ([
+            { path: 'C:\\Program Files\\Eclipse Adoptium\\jre-25.0.1-hotspot\\bin\\javaw.exe', version: '25.0.1', major: 25, label: 'Java 25 (ZGC Turbo)' },
+            { path: 'C:\\Program Files\\Eclipse Adoptium\\jre-21.0.4-hotspot\\bin\\javaw.exe', version: '21.0.4', major: 21, label: 'Java 21 LTS' }
+        ]),
+        getInstalledVersions: async () => ['26.2', '26.3', '1.21.11'],
+        searchModrinth: async (query = '', version = '26.2', loader = 'fabric', category = '', projectType = 'mod') => {
+            try {
+                const facets = [[`project_type:${projectType || 'mod'}`]];
+                const url = `https://api.modrinth.com/v2/search?query=${encodeURIComponent(query || '')}&limit=12&facets=${encodeURIComponent(JSON.stringify(facets))}`;
+                const res = await fetch(url);
+                if (res.ok) {
+                    const data = await res.json();
+                    return { hits: data.hits || [], total_hits: data.total_hits || 0 };
+                }
+            } catch (_) {}
+            return {
+                hits: [
+                    { project_id: 'AANobbMI', slug: 'sodium', title: 'Sodium (Voldex Optimized)', description: 'Nejmodernější renderovací engine pro Minecraft zvyšující FPS až o 300 %.', downloads: 45200000, categories: ['optimization'], author: 'jellysquid3', icon_url: 'assets/server-icon.png' },
+                    { project_id: 'YL57xq9U', slug: 'iris', title: 'Iris Shaders', description: 'Moderní podpora shaderů plně kompatibilní se Sodium a Voldex Clientem.', downloads: 38100000, categories: ['optimization', 'shader'], author: 'coderbot', icon_url: 'assets/server-icon.png' },
+                    { project_id: 'gvQqBUqZ', slug: 'lithium', title: 'Lithium', description: 'Optimalizace herní fyziky, AI mobů a načítání chunků bez změny vanilly.', downloads: 34900000, categories: ['optimization'], author: 'jellysquid3', icon_url: 'assets/server-icon.png' },
+                    { project_id: '1eAoo2KR', slug: 'zoomify', title: 'Voldex Zoom & HUD', description: 'Plynulý optický zoom a přehledný herní HUD ve stylu Voldex Clientu.', downloads: 12400000, categories: ['utility'], author: 'isXander', icon_url: 'assets/server-icon.png' }
+                ],
+                total_hits: 4
+            };
+        },
+        downloadModOrPack: async () => ({ success: true }),
+        checkProfileModUpdates: async () => ({ updates: [] }),
+        onModDownloadProgress: (cb) => { mockListeners['mod-download-progress'] = [...(mockListeners['mod-download-progress'] || []), cb]; },
+        toggleMod: async () => ({ success: true }),
+        getProfileMods: async () => ([
+            { filename: 'sodium-fabric-0.6.5+mc26.2.jar', name: 'Sodium', version: '0.6.5', enabled: true, size: 1140200 },
+            { filename: 'iris-fabric-1.8.4+mc26.2.jar', name: 'Iris Shaders', version: '1.8.4', enabled: true, size: 2340100 },
+            { filename: 'lithium-fabric-0.14.2+mc26.2.jar', name: 'Lithium', version: '0.14.2', enabled: true, size: 840500 },
+            { filename: 'selfnametag-1.0.0.jar', name: 'Voldex SelfNametag', version: '1.0.0', enabled: true, size: 42100 }
+        ]),
+        toggleProfileMod: async () => ({ success: true }),
+        deleteProfileMod: async () => ({ success: true }),
+        discoverInstalledProfiles: async () => ([]),
+        importProfileDialog: async () => ({ canceled: true }),
+        confirmImportProfile: async () => ({ success: true }),
+        upgradeProfile: async () => ({ success: true }),
+        openProfileFolder: async () => ({ success: true }),
+        updateProfileSettings: async () => ({ success: true }),
+        deleteProfile: async () => ({ success: true }),
+        resetLauncherData: async () => ({ success: true }),
+        generateProfileSeed: async () => ({ success: true, seed: 'VOLDEX-2.0-TURQUOISE-PACK', count: 4 }),
+        importProfileSeed: async () => ({ success: true }),
+        onProfileSeedProgress: () => {},
+        onUpgradeProgress: () => {},
+        applyProfileOptimization: async () => ({ success: true }),
+        checkOptimizationStatus: async () => ({ isOptimized: true }),
+        onOptimizationProgress: () => {},
+        getKeybinds: async () => ({ binds: [], modBinds: [] }),
+        saveKeybinds: async () => ({ success: true }),
+        resetKeybindsDefault: async () => ({ success: true }),
+        getKeyarts: async () => ({}),
+        openKeyartsFolder: async () => ({}),
+        onProgress: (cb) => { mockListeners['launch-progress'] = [...(mockListeners['launch-progress'] || []), cb]; },
+        onLog: (cb) => { mockListeners['launch-log'] = [...(mockListeners['launch-log'] || []), cb]; },
+        onExit: () => {},
+        onCrash: () => {},
+        onPlaytimeUpdated: () => {},
+        onServersUpdated: () => {},
+        minimizeWindow: () => {},
+        maximizeWindow: () => { document.body.classList.toggle('is-maximized'); },
+        closeWindow: () => {},
+        isMaximized: async () => false,
+        onMaximizeChange: () => {},
+        selectSkinFile: async () => ({ canceled: true }),
+        selectCapeFile: async () => ({ canceled: true }),
+        saveOfflineSkin: async () => ({ success: true }),
+        getMojangProfile: async () => ({ success: false }),
+        uploadMojangSkin: async () => ({ success: false }),
+        resetMojangSkin: async () => ({ success: false }),
+        setMojangCape: async () => ({ success: false }),
+        checkWardenProbe: async () => ({ clean: true, blockedCount: 0, illegalMods: [] }),
+        disableIllegalMods: async () => ({ success: true }),
+        applyCrashFix: async () => ({ success: true }),
+        scanLauncherCache: async () => ({ totalBytes: 14680064, filesCount: 24 }),
+        cleanLauncherCache: async () => ({ success: true, freedBytes: 14680064 }),
+        checkForUpdates: async () => ({ hasUpdate: false, currentVersion: '2.0.0' }),
+        applyUpdate: async () => ({ success: true }),
+        restartLauncher: async () => ({ success: true }),
+        onUpdateProgress: () => {},
+        checkAudioDlc: async () => ({ installed: true }),
+        downloadAudioDlc: async () => ({ success: true }),
+        cancelAudioDlc: async () => ({ success: true }),
+        onAudioDlcProgress: () => {},
+        getSystemInfo: async () => ({
+            totalRamGb: 32,
+            recommendedRamGb: 8,
+            cpuModel: 'AMD Ryzen 7 7800X3D 8-Core Processor',
+            gpuModel: 'NVIDIA GeForce RTX 4080 SUPER (Voldex Turbo)',
+            hasDedicatedGpu: true,
+            platform: 'win32'
+        }),
+        openGameDir: () => {},
+        openUrl: (url) => { window.open(url, '_blank'); },
+        copyToClipboard: async (text) => { try { await navigator.clipboard.writeText(text); } catch (_) {} return { success: true }; },
+        getLatestGameLog: async () => '[VOLDEX ENGINE] Inicializace Voldex Client v2.0.0 (Turquoise Edition)...\n[ZGC] Generational ZGC aktivní (Alokace: 8 GB RAM)\n[SODIUM] Render pipeline: Vulkan / OpenGL Turbo připraven.',
+        onAuthStatus: () => {},
+        getProfileScreenshots: async () => ([]),
+        copyScreenshotToClipboard: async () => ({ success: true }),
+        deleteScreenshot: async () => ({ success: true }),
+        openFilePath: async () => ({ success: true }),
+        getProfilePacks: async () => ([]),
+        toggleProfilePack: async () => ({ success: true }),
+        deleteProfilePack: async () => ({ success: true }),
+        resolveModCollisions: async () => ({ success: true, removedCount: 0 }),
+        saveDraggedSkin: async () => ({ success: true }),
+        onGameStarted: () => {},
+        onGameStopped: () => {},
+        onWindowRestoredFromTray: () => {},
+        onWindowHiddenToTray: () => {},
+        preloadLaunchEnvironment: async () => ({ success: true })
+    };
+}
 
 document.addEventListener('DOMContentLoaded', async () => {
     // ── Element References ──────────────────────────────────────────────────
@@ -127,7 +334,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Right Column: Server Banner & Tracker
     const serverPlayersCount = document.getElementById('serverPlayersCount');
     const serverPingVal = document.getElementById('serverPingVal');
-    const btnQuickPlayMychal = document.getElementById('btnQuickPlayMychal');
+    const btnQuickPlayVoldex = document.getElementById('btnQuickPlayVoldex');
     const trackedServersList = document.getElementById('trackedServersList');
     const btnAddCustomServer = document.getElementById('btnAddCustomServer');
     const sideJavaBadge = document.getElementById('sideJavaBadge');
@@ -450,10 +657,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── Server Status & Telemetry ───────────────────────────────────────────
     async function updateNetworkStatus() {
         try {
-            const status = await window.api.pingServer('mychalsmp.xyz', 25565);
+            const status = await window.api.pingServer('voldex.zasemazi.cz', 25565);
             if (status && status.online) {
                 if (networkDot) networkDot.classList.remove('offline');
-                if (networkText) networkText.textContent = `mychalsmp.xyz • ${status.players.online} online`;
+                if (networkText) networkText.textContent = `voldex.zasemazi.cz • ${status.players.online} online`;
                 if (serverPlayersCount) serverPlayersCount.textContent = `${status.players.online} / ${status.players.max}`;
                 if (serverPingVal) serverPingVal.textContent = `${status.latency} ms`;
             } else {
@@ -772,7 +979,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (sidebarPlayBtn) {
                             sidebarPlayBtn.style.opacity = '1';
                             sidebarPlayBtn.style.background = '#ef4444';
-                            sidebarPlayBtn.querySelector('span').innerHTML = '<svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg> Stop';
+                            (sidebarPlayBtn.querySelector('span') || sidebarPlayBtn).innerHTML = '<svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg> Stop';
                         }
                         renderProfilesList();
                         refreshVersionStatuses();
@@ -785,7 +992,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (sidebarPlayBtn) {
                             sidebarPlayBtn.style.opacity = '1';
                             sidebarPlayBtn.style.background = '#ef4444';
-                            sidebarPlayBtn.querySelector('span').innerHTML = '<svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg> Stop';
+                            (sidebarPlayBtn.querySelector('span') || sidebarPlayBtn).innerHTML = '<svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg> Stop';
                         }
                         renderProfilesList();
                         refreshVersionStatuses();
@@ -1335,8 +1542,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (lastB !== lastA) return lastB - lastA;
 
             // 4. Výchozí fallback: Oficiální síť nahoře
-            if (a.id === 'mychalsmp' || a.ip === 'mychalsmp.xyz') return -1;
-            if (b.id === 'mychalsmp' || b.ip === 'mychalsmp.xyz') return 1;
+            if (a.id === 'VoldexSMP' || a.ip === 'voldex.zasemazi.cz') return -1;
+            if (b.id === 'VoldexSMP' || b.ip === 'voldex.zasemazi.cz') return 1;
 
             return 0;
         });
@@ -1352,9 +1559,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             const ip = (s.ip || '').toLowerCase();
             const sub = (s.subdomain || '').toLowerCase();
             const backup = (s.backupIp || '').toLowerCase();
-            const isMychal = (cleanTarget.includes('mychalsmp') || cleanTarget === '130.61.89.37') && (s.id === 'mychalsmp' || s.ip === 'mychalsmp.xyz');
+            const isVoldex = (cleanTarget.includes('VoldexSMP') || cleanTarget === 'voldex.zasemazi.cz') && (s.id === 'VoldexSMP' || s.ip === 'voldex.zasemazi.cz');
 
-            if (ip === cleanTarget || sub === cleanTarget || backup === cleanTarget || isMychal) {
+            if (ip === cleanTarget || sub === cleanTarget || backup === cleanTarget || isVoldex) {
                 s.playCount = (Number(s.playCount) || 0) + 1;
                 s.lastJoined = Date.now();
                 matched = true;
@@ -1378,9 +1585,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const servers = getSortedServers();
 
         trackedServersList.innerHTML = servers.map(s => {
-            const isMychal = s.id === 'mychalsmp' || s.ip === 'mychalsmp.xyz';
-            const iconSrc = isMychal ? 'assets/server-icon.png' : (s.icon || 'assets/server-icon.png');
-            const offlineCross = (!isMychal && s.online === false)
+            const isVoldex = s.id === 'VoldexSMP' || s.ip === 'voldex.zasemazi.cz';
+            const iconSrc = isVoldex ? 'assets/server-icon.png' : (s.icon || 'assets/server-icon.png');
+            const offlineCross = (!isVoldex && s.online === false)
                 ? '<span class="server-offline-cross-badge" title="Server neodpovídá / je offline"><svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--red" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg></span>'
                 : '';
             return `
@@ -1392,7 +1599,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <div class="item-info">
                         <div class="item-name-row">
                             <span class="item-name">${escapeHtml(s.name)}</span>
-                            ${!isMychal ? `<button class="btn-del-server" data-server-id="${escapeHtml(s.id)}" title="Odebrat server"><svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>` : ''}
+                            ${!isVoldex ? `<button class="btn-del-server" data-server-id="${escapeHtml(s.id)}" title="Odebrat server"><svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>` : ''}
                         </div>
                         <div class="item-ip">${escapeHtml(s.ip)}</div>
                     </div>
@@ -1441,13 +1648,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         const servers = getSortedServers();
 
         fullList.innerHTML = servers.map(s => {
-            const isMychal = s.id === 'mychalsmp' || s.ip === 'mychalsmp.xyz';
+            const isVoldex = s.id === 'VoldexSMP' || s.ip === 'voldex.zasemazi.cz';
             const isPinned = !!s.pinned;
             const port = s.port || 25565;
-            const iconSrc = isMychal ? 'assets/server-icon.png' : (s.icon || 'assets/server-icon.png');
-            const statusHtml = (!isMychal && s.online === false)
+            const iconSrc = isVoldex ? 'assets/server-icon.png' : (s.icon || 'assets/server-icon.png');
+            const statusHtml = (!isVoldex && s.online === false)
                 ? '<span class="server-status-pill offline"><span class="status-dot offline"></span> Offline</span>'
-                : (isMychal
+                : (isVoldex
                     ? '<span class="server-status-pill official">Oficiální síť</span>'
                     : (s.online ? '<span class="server-status-pill online"><span class="status-dot online"></span> Online</span>' : ''));
             const playCount = Number(s.playCount) || 0;
@@ -1457,13 +1664,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="server-full-card">
                     <div style="position: relative; flex-shrink: 0;">
                         <img src="${escapeHtml(iconSrc)}" class="server-full-icon" onerror="this.src='assets/server-icon.png'">
-                        ${(!isMychal && s.online === false) ? '<span class="server-offline-cross-badge"><svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--red" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg></span>' : ''}
+                        ${(!isVoldex && s.online === false) ? '<span class="server-offline-cross-badge"><svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--red" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg></span>' : ''}
                     </div>
                     <div class="server-full-info">
                         <div class="server-full-name-row">
                             <span class="server-full-name">${escapeHtml(s.name)}</span>
                             ${statusHtml}
-                            ${!isMychal ? `<button class="btn-del-server btn-del-server--inline" data-server-id="${escapeHtml(s.id)}" title="Odstranit server"><svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>` : ''}
+                            ${!isVoldex ? `<button class="btn-del-server btn-del-server--inline" data-server-id="${escapeHtml(s.id)}" title="Odstranit server"><svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>` : ''}
                         </div>
                         <div class="server-full-ip">${escapeHtml(s.ip)} ${playMeta}</div>
                     </div>
@@ -1510,7 +1717,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const servers = currentConfig.servers || [];
         let hasChanges = false;
         for (const s of servers) {
-            if (s.id === 'mychalsmp' || s.ip === 'mychalsmp.xyz') continue;
+            if (s.id === 'VoldexSMP' || s.ip === 'voldex.zasemazi.cz') continue;
             try {
                 const res = await window.api.pingServer(s.ip, s.port || 25565);
                 if (res && res.online) {
@@ -1656,11 +1863,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (newServerOfflineCross) newServerOfflineCross.style.display = 'none';
                         if (newServerStatusDot) {
                             newServerStatusDot.className = 'status-dot';
-                            newServerStatusDot.style.background = '#21DE00';
+                            newServerStatusDot.style.background = '#00f59b';
                         }
                         if (newServerStatusBadge) {
                             newServerStatusBadge.innerHTML = `<svg class="ui-icon-svg ui-icon-svg--xs ui-icon-svg--green" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg> Online (${status.latency} ms) • ${status.players.online}/${status.players.max} hráčů`;
-                            newServerStatusBadge.style.color = '#21DE00';
+                            newServerStatusBadge.style.color = '#00f59b';
                         }
                         if (newServerPingDetails) {
                             newServerPingDetails.textContent = status.motd ? status.motd.split('\n')[0].replace(/§./g, '').trim() : `${cleanIp}:${port}`;
@@ -1748,7 +1955,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function checkWardenProbe() {
         const banner = document.getElementById('wardenBlockedAlert');
         const countText = document.getElementById('wardenBlockedCountText');
-        const btnQuick = document.getElementById('btnQuickPlayMychal');
+        const btnQuick = document.getElementById('btnQuickPlayVoldex');
 
         try {
             const scan = await window.api.checkWardenProbe(currentConfig.activeProfileId);
@@ -1767,7 +1974,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (banner) banner.style.display = 'none';
                 if (btnQuick) {
                     btnQuick.classList.remove('mc-btn-blocked');
-                    btnQuick.title = 'Rychlé připojení na MYCHAL SMP';
+                    btnQuick.title = 'Rychlé připojení na VoldexSMP';
                 }
             }
         } catch (e) {
@@ -1841,7 +2048,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
             closeWardenModal();
-            appendLog('[PROFIL] Spouštím hru bez připojení k serveru MYCHAL SMP (módy povoleny pro singleplayer a jiné servery)...');
+            appendLog('[PROFIL] Spouštím hru bez připojení k serveru VoldexSMP (módy povoleny pro singleplayer a jiné servery)...');
             showToast('Spouštím hru bez připojení k SMP – módy povoleny.', 'info');
             const targetProfileId = resolveLaunchProfileId(currentConfig.activeProfileId);
             startLaunch(targetProfileId, null);
@@ -1868,15 +2075,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // ── Quick Play MYCHAL SMP Banner ────────────────────────────────────────
-    if (btnQuickPlayMychal) {
-        btnQuickPlayMychal.addEventListener('pointerenter', () => {
+    // ── Quick Play VoldexSMP Banner ────────────────────────────────────────
+    if (btnQuickPlayVoldex) {
+        btnQuickPlayVoldex.addEventListener('pointerenter', () => {
             if (!isRunning && !isLaunching && typeof prewarmLaunchEnvironment === 'function') {
                 prewarmLaunchEnvironment();
             }
         }, { passive: true });
 
-        btnQuickPlayMychal.addEventListener('click', async () => {
+        btnQuickPlayVoldex.addEventListener('click', async () => {
             if (isRunning) {
                 showToast('Hra již běží. Před připojením k serveru nejprve ukonči běžící instanci.', 'error');
                 return;
@@ -1891,12 +2098,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             const scan = await window.api.checkWardenProbe(targetProfileId);
             if (scan && !scan.clean) {
                 currentIllegalMods = scan.illegalMods || [];
-                showToast('Quick Play zablokován: V profilu jsou nepovolené módy pro MYCHAL SMP.', 'error');
+                showToast('Quick Play zablokován: V profilu jsou nepovolené módy pro VoldexSMP.', 'error');
                 openWardenModal();
                 return;
             }
-            recordServerJoin('mychalsmp.xyz');
-            startLaunch(targetProfileId, 'mychalsmp.xyz');
+            recordServerJoin('voldex.zasemazi.cz');
+            startLaunch(targetProfileId, 'voldex.zasemazi.cz');
         });
     }
 
@@ -2332,9 +2539,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (mostRecentPlayed) return mostRecentPlayed.id;
         }
 
-        // 4. Defaultní serverový profil MYCHALSMP, pokud existuje
-        const foundMychal = profiles.find(p => p.id === 'mychalsmp-26.2' || p.id === 'mychalsmp');
-        if (foundMychal) return foundMychal.id;
+        // 4. Defaultní serverový profil VoldexSMP, pokud existuje
+        const foundVoldex = profiles.find(p => p.id === 'VoldexSMP-26.2' || p.id === 'VoldexSMP');
+        if (foundVoldex) return foundVoldex.id;
 
         if (currentConfig.activeProfileId) {
             const activeProf = profiles.find(p => p.id === currentConfig.activeProfileId);
@@ -2575,9 +2782,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             const loaderTag = (activeProfile.loader && activeProfile.loader !== 'vanilla') ? ` (${activeProfile.loader})` : '';
             heroActiveProfileEl.textContent = `${activeProfile.name}${loaderTag}`;
         }
-        if (btnQuickPlayMychal && activeProfile) {
+        if (btnQuickPlayVoldex && activeProfile) {
             const loaderTag = (activeProfile.loader && activeProfile.loader !== 'vanilla') ? ` • ${activeProfile.loader}` : '';
-            btnQuickPlayMychal.title = `Rychlé připojení na MYCHAL SMP (${activeProfile.name}${loaderTag})`;
+            btnQuickPlayVoldex.title = `Rychlé připojení na VoldexSMP (${activeProfile.name}${loaderTag})`;
         }
 
         updateHeroKeyart(activeProfile ? activeProfile.version : currentConfig.version);
@@ -2610,8 +2817,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const topPlayed = [...playedProfiles].sort((a, b) => (b.playtimeSeconds || 0) - (a.playtimeSeconds || 0))[0];
             singleMostPlayedId = topPlayed ? topPlayed.id : null;
         } else {
-            const mychalProf = sortedProfiles.find(p => p.id === 'mychalsmp-26.2' || p.id === 'mychalsmp' || (p.name && p.name.toUpperCase().includes('MYCHALSMP')));
-            singleMostPlayedId = mychalProf ? mychalProf.id : (activeId || (sortedProfiles[0] ? sortedProfiles[0].id : null));
+            const voldexProf = sortedProfiles.find(p => p.id === 'VoldexSMP-26.2' || p.id === 'VoldexSMP' || (p.name && p.name.toUpperCase().includes('VoldexSMP')));
+            singleMostPlayedId = voldexProf ? voldexProf.id : (activeId || (sortedProfiles[0] ? sortedProfiles[0].id : null));
         }
 
         let singleNewestId = null;
@@ -2844,9 +3051,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 void heroActiveProfileEl.offsetWidth;
                 heroActiveProfileEl.classList.add('val-pulse');
             }
-            if (btnQuickPlayMychal) {
+            if (btnQuickPlayVoldex) {
                 const loaderTag = (p.loader && p.loader !== 'vanilla') ? ` • ${p.loader}` : '';
-                btnQuickPlayMychal.title = `Rychlé připojení na MYCHAL SMP (${p.name}${loaderTag})`;
+                btnQuickPlayVoldex.title = `Rychlé připojení na VoldexSMP (${p.name}${loaderTag})`;
             }
             const isInst = Array.isArray(installedVersions) && installedVersions.includes(p.version);
             if (sideConsoleStatus && !isRunning && !isLaunching) {
@@ -3096,14 +3303,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderProfilesList();
         refreshVersionStatuses();
 
-        // ── Kontrola nepovolených módů (Warden Probe) při připojení na MYCHAL SMP ──
-        const isMychalServer = serverIp && (
-            serverIp.toLowerCase().includes('mychalsmp.xyz') ||
-            serverIp.toLowerCase().includes('mychalsmp') ||
-            serverIp === '130.61.89.37'
+        // ── Kontrola nepovolených módů (Warden Probe) při připojení na VoldexSMP ──
+        const isVoldexServer = serverIp && (
+            serverIp.toLowerCase().includes('voldex.zasemazi.cz') ||
+            serverIp.toLowerCase().includes('VoldexSMP') ||
+            serverIp === 'voldex.zasemazi.cz'
         );
 
-        if (isMychalServer) {
+        if (isVoldexServer) {
             try {
                 const wardenScan = await window.api.checkWardenProbe(targetPid);
                 if (wardenScan && !wardenScan.clean) {
@@ -3111,9 +3318,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const banner = document.getElementById('wardenBlockedAlert');
                     const countText = document.getElementById('wardenBlockedCountText');
                     if (banner) banner.style.display = 'flex';
-                    if (countText) countText.textContent = `${wardenScan.blockedCount} nepovolených módů pro MYCHAL SMP`;
-                    showToast(`Připojení k MYCHAL SMP zablokováno: V profilu je ${wardenScan.blockedCount} nepovolených módů.`, 'error');
-                    appendLog(`[BEZPEČNOST] Připojení k MYCHAL SMP zablokováno systémem Warden. Nalezeny nepovolené modifikace (${wardenScan.blockedCount}).`);
+                    if (countText) countText.textContent = `${wardenScan.blockedCount} nepovolených módů pro VoldexSMP`;
+                    showToast(`Připojení k VoldexSMP zablokováno: V profilu je ${wardenScan.blockedCount} nepovolených módů.`, 'error');
+                    appendLog(`[BEZPEČNOST] Připojení k VoldexSMP zablokováno systémem Warden. Nalezeny nepovolené modifikace (${wardenScan.blockedCount}).`);
                     resetPlayState();
                     renderProfilesList();
                     openWardenModal();
@@ -3280,7 +3487,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             : `[LAUNCHER] Zahajuji stahování a instalaci verze ${targetProf?.version || ''}...`);
         if (sideConsoleStatus) sideConsoleStatus.textContent = isAlreadyInstalled ? 'Připravuji herní data a knihovny...' : 'Stahuji verzi a herní data...';
 
-        const actualServerIp = serverIp;
+        const actualServerIp = serverIp || (currentConfig && currentConfig.autoJoinSmp ? (currentConfig.autoConnectTarget || 'voldex.zasemazi.cz') : null);
 
         try {
             const res = await window.api.launchGame(targetPid, actualServerIp);
@@ -3309,7 +3516,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (sidebarPlayBtn) {
                     sidebarPlayBtn.style.opacity = '1';
                     sidebarPlayBtn.style.background = '#ef4444';
-                    sidebarPlayBtn.querySelector('span').innerHTML = '<svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg> Stop';
+                    const spSpan = sidebarPlayBtn.querySelector('span') || sidebarPlayBtn;
+                    spSpan.innerHTML = '<svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg> STOP';
                 }
                 const activeCard = document.querySelector(`.profile-row-card[data-profile-id="${targetPid}"]`);
                 if (activeCard) {
@@ -3482,8 +3690,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (sidebarPlayBtn) {
             sidebarPlayBtn.style.opacity = '1';
-            sidebarPlayBtn.style.background = 'var(--brand-blue)';
-            sidebarPlayBtn.querySelector('span').innerHTML = '<svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
+            sidebarPlayBtn.style.background = '';
+            const spSpan = sidebarPlayBtn.querySelector('span') || sidebarPlayBtn;
+            spSpan.innerHTML = '<svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> HRÁT';
         }
         document.querySelectorAll('.btn-launch-profile').forEach(btn => {
             btn.disabled = false;
@@ -3604,7 +3813,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (profileSeedProgressBox) profileSeedProgressBox.style.display = 'none';
             if (profileSeedProgressBarFill) {
                 profileSeedProgressBarFill.style.width = '0%';
-                profileSeedProgressBarFill.style.background = 'linear-gradient(90deg, #0a67e5, #21DE00)';
+                profileSeedProgressBarFill.style.background = 'linear-gradient(90deg, #00e5ff, #00f59b)';
             }
 
             try {
@@ -3648,7 +3857,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const pct = calculatePerceptualProgress(rawPct);
             if (profileSeedProgressBarFill) {
                 profileSeedProgressBarFill.style.width = `${pct}%`;
-                profileSeedProgressBarFill.style.background = 'linear-gradient(90deg, #0a67e5, #21DE00)';
+                profileSeedProgressBarFill.style.background = 'linear-gradient(90deg, #00e5ff, #00f59b)';
             }
             if (profileSeedProgressPercent) {
                 profileSeedProgressPercent.textContent = `${pct}%`;
@@ -3710,7 +3919,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (profileSeedProgressBox) profileSeedProgressBox.style.display = 'block';
             if (profileSeedProgressBarFill) {
                 profileSeedProgressBarFill.style.width = '2%';
-                profileSeedProgressBarFill.style.background = 'linear-gradient(90deg, #0a67e5, #21DE00)';
+                profileSeedProgressBarFill.style.background = 'linear-gradient(90deg, #00e5ff, #00f59b)';
             }
             if (profileSeedProgressPercent) profileSeedProgressPercent.textContent = '0%';
             if (profileSeedProgressText) profileSeedProgressText.textContent = 'Příprava stahování...';
@@ -3721,7 +3930,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     showToast('Balíček stažen.', 'success');
                     if (profileSeedProgressBarFill) {
                         profileSeedProgressBarFill.style.width = '100%';
-                        profileSeedProgressBarFill.style.background = '#21DE00';
+                        profileSeedProgressBarFill.style.background = '#00f59b';
                     }
                     if (profileSeedProgressPercent) profileSeedProgressPercent.textContent = '100%';
                     if (profileSeedProgressText) profileSeedProgressText.textContent = 'Hotovo';
@@ -3729,7 +3938,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (res.failedCount > 0) {
                             profileSeedImportStatus.innerHTML = `<span style="color: #f59e0b;">Staženo: ${res.installedCount}, selhalo: ${res.failedCount}</span>`;
                         } else {
-                            profileSeedImportStatus.innerHTML = '<span style="color: #21DE00;">Všechny mody byly nainstalovány</span>';
+                            profileSeedImportStatus.innerHTML = '<span style="color: #00f59b;">Všechny mody byly nainstalovány</span>';
                             setTimeout(() => {
                                 closeProfileSeedModal();
                             }, 3000);
@@ -3854,7 +4063,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const activeCount = currentProfileModsList.filter(m => m.enabled).length;
                 const pObj = (currentConfig.profiles || []).find(p => p.id === profId);
                 const ldr = pObj && pObj.loader && pObj.loader !== 'vanilla' ? pObj.loader.toUpperCase() : 'VANILLA';
-                const ldrColor = ldr === 'VANILLA' ? '#94a3b8' : '#0a67e5';
+                const ldrColor = ldr === 'VANILLA' ? '#94a3b8' : '#00e5ff';
                 summaryEl.innerHTML = `Profil: <strong>${escapeHtml(res.profileName || profId)}</strong> • Zavaděč: <strong style="color: ${ldrColor};">${ldr}</strong> • Aktivních: <strong>${activeCount}/${currentProfileModsList.length}</strong>`;
             }
 
@@ -4995,7 +5204,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         renderModCards(lastLoadedCatalogMods);
                         await checkWardenProbe();
                         if (currentIllegalMods && currentIllegalMods.length > 0) {
-                            showToast('Tento mód je stažen, ale je zakázán na serveru MYCHAL SMP.', 'warning');
+                            showToast('Tento mód je stažen, ale je zakázán na serveru VoldexSMP.', 'warning');
                         }
                     } else {
                         if (avatarBox) {
@@ -5233,7 +5442,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const normY = Math.max(-1, Math.min(1, dy / (winH * 0.45)));
 
             // 1. Zvláštní chování pro tlačítka "Hrát" a postavičku (organický jemný náklon hlavy)
-            const playBtn = e.target?.closest?.('.btn-launch-profile, #sidebarPlayBtn, #btnQuickPlayMychal, .btn-install-v');
+            const playBtn = e.target?.closest?.('.btn-launch-profile, #sidebarPlayBtn, #btnQuickPlayVoldex, .btn-install-v');
             const heroCanvas = e.target?.closest?.('#heroSkinWrapper, #heroSkinCanvas3D, #stageNickPill');
 
             if (playBtn) {
@@ -5269,7 +5478,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Okamžitá reakce na najetí myši na tlačítko Hrát nebo postavičku i bez pohybu myši (jemné, decentní)
         document.addEventListener('pointerover', (e) => {
-            const playBtn = e.target?.closest?.('.btn-launch-profile, #sidebarPlayBtn, #btnQuickPlayMychal, .btn-install-v');
+            const playBtn = e.target?.closest?.('.btn-launch-profile, #sidebarPlayBtn, #btnQuickPlayVoldex, .btn-install-v');
             if (playBtn) {
                 const canvas = document.getElementById('heroSkinCanvas3D');
                 if (canvas) {
@@ -5285,7 +5494,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }, { passive: true });
 
         document.addEventListener('pointerout', (e) => {
-            if (e.target?.closest?.('.btn-launch-profile, #sidebarPlayBtn, #btnQuickPlayMychal, .btn-install-v, #heroSkinWrapper, #heroSkinCanvas3D, #stageNickPill')) {
+            if (e.target?.closest?.('.btn-launch-profile, #sidebarPlayBtn, #btnQuickPlayVoldex, .btn-install-v, #heroSkinWrapper, #heroSkinCanvas3D, #stageNickPill')) {
                 targetHeroCuriosityTilt = 0;
             }
         }, { passive: true });
@@ -6269,7 +6478,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             canvas.width = 80;
             canvas.height = 128;
             ctx.imageSmoothingEnabled = false;
-            ctx.fillStyle = '#0a67e5';
+            ctx.fillStyle = '#00e5ff';
             ctx.fillRect(0, 0, 80, 128);
         };
         img.src = imgSrc;
@@ -7140,7 +7349,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const a = document.createElement('a');
                 a.href = url;
                 const dateStr = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-                a.download = `mychalsmp-log-${dateStr}.txt`;
+                a.download = `VoldexSMP-log-${dateStr}.txt`;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
@@ -7266,7 +7475,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const ip = (s.ip || '').toLowerCase();
                     const sub = (s.subdomain || '').toLowerCase();
                     const backup = (s.backupIp || '').toLowerCase();
-                    const isM = (cleanSrv.includes('mychalsmp') || cleanSrv === '130.61.89.37') && (s.id === 'mychalsmp' || s.ip === 'mychalsmp.xyz');
+                    const isM = (cleanSrv.includes('VoldexSMP') || cleanSrv === 'voldex.zasemazi.cz') && (s.id === 'VoldexSMP' || s.ip === 'voldex.zasemazi.cz');
                     return ip === cleanSrv || sub === cleanSrv || backup === cleanSrv || isM;
                 });
                 if (matchedSrv) {
@@ -7308,7 +7517,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (sidebarPlayBtn) {
                 sidebarPlayBtn.style.opacity = '1';
                 sidebarPlayBtn.style.background = '#ef4444';
-                sidebarPlayBtn.querySelector('span').innerHTML = '<svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg> Stop';
+                (sidebarPlayBtn.querySelector('span') || sidebarPlayBtn).innerHTML = '<svg class="ui-icon-svg ui-icon-svg--xs" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg> Stop';
             }
             renderProfilesList();
             refreshVersionStatuses();
@@ -7490,7 +7699,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ═════════════════════════════════════════════════════════════════════════
-    // ⌨️ KEYBIND EDITOR & VISUAL KEYBOARD CONTROLLER (MYCHAL SMP STANDARDS)
+    // ⌨️ KEYBIND EDITOR & VISUAL KEYBOARD CONTROLLER (VoldexSMP STANDARDS)
     // ═════════════════════════════════════════════════════════════════════════
     const modalKeybindEditor = document.getElementById('modalKeybindEditor');
     const btnCloseKeybindEditorModal = document.getElementById('btnCloseKeybindEditorModal');
@@ -8492,7 +8701,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (titleElem) {
                 titleElem.textContent = crashData.title || (isAutoFixed ? 'Hra opravena' : 'Pád hry');
-                titleElem.style.color = isAutoFixed ? '#21DE00' : '#f51515';
+                titleElem.style.color = isAutoFixed ? '#00f59b' : '#f51515';
             }
             if (subElem) {
                 subElem.textContent = isAutoFixed
@@ -8501,12 +8710,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             if (badgeElem) {
                 badgeElem.textContent = isAutoFixed ? 'Opraveno' : `Kód ${crashData.exitCode || 1}`;
-                badgeElem.style.background = isAutoFixed ? '#21DE00' : '#f51515';
+                badgeElem.style.background = isAutoFixed ? '#00f59b' : '#f51515';
                 badgeElem.style.color = isAutoFixed ? '#0a0b0e' : '#ffffff';
             }
             if (headElem) {
                 headElem.textContent = isAutoFixed ? `Řešení: ${crashData.title || 'Vyřešeno'}` : `Příčina: ${crashData.title || 'Neznámá chyba'}`;
-                headElem.style.color = isAutoFixed ? '#21DE00' : '#f87171';
+                headElem.style.color = isAutoFixed ? '#00f59b' : '#f87171';
             }
             if (descElem) descElem.textContent = crashData.description || '';
             if (recElem) recElem.textContent = crashData.recommendation || '';
@@ -9590,8 +9799,122 @@ document.addEventListener('DOMContentLoaded', async () => {
             .replace(/'/g, '&#039;');
     }
 
+    // ── Voldex Client 3.0 (Voldex Studios) — VoldexSMP Auto-Connect & Faithful 64x Controls ──
+    const btnHeroMasterPlay = document.getElementById('btnHeroMasterPlay');
+    const sidebarVoldexCrest = document.getElementById('sidebarVoldexCrest');
+    const quickAutoConnectToggle = document.getElementById('quickAutoConnectToggle');
+    const quickFaithfulToggle = document.getElementById('quickFaithfulToggle');
+    const checkAutoJoinVoldex = document.getElementById('checkAutoJoinVoldex');
+    const checkAutoFaithful64 = document.getElementById('checkAutoFaithful64');
+    const btnCopyVoldexIp = document.getElementById('btnCopyVoldexIp');
+    const heroMasterPlayText = document.getElementById('heroMasterPlayText');
+
+    function syncVoldexQuickTogglesFromConfig() {
+        const autoJoin = !!(currentConfig && currentConfig.autoJoinSmp);
+        const autoFaithful = !(currentConfig && currentConfig.autoFaithful64 === false);
+
+        if (quickAutoConnectToggle) quickAutoConnectToggle.checked = autoJoin;
+        if (checkAutoJoinVoldex) checkAutoJoinVoldex.checked = autoJoin;
+        if (quickFaithfulToggle) quickFaithfulToggle.checked = autoFaithful;
+        if (checkAutoFaithful64) checkAutoFaithful64.checked = autoFaithful;
+
+        if (heroMasterPlayText) {
+            heroMasterPlayText.textContent = autoJoin
+                ? 'HRÁT (AUTO-JOIN VOLDEXSMP)'
+                : 'SPUSTIT HRU';
+        }
+    }
+
+    async function setAutoJoinVoldexState(enabled, notify = true) {
+        if (!currentConfig) currentConfig = {};
+        currentConfig.autoJoinSmp = !!enabled;
+        currentConfig.autoConnectTarget = 'voldex.zasemazi.cz';
+        syncVoldexQuickTogglesFromConfig();
+        try {
+            if (window.api && window.api.saveConfig) {
+                await window.api.saveConfig({
+                    autoJoinSmp: !!enabled,
+                    autoConnectTarget: 'voldex.zasemazi.cz'
+                });
+            }
+        } catch (_) {}
+        if (notify && typeof showToast === 'function') {
+            showToast(
+                enabled
+                    ? 'Automatické připojení na voldex.zasemazi.cz zapnuto.'
+                    : 'Automatické připojení při startu vypnuto.',
+                'info'
+            );
+        }
+    }
+
+    async function setAutoFaithful64State(enabled, notify = true) {
+        if (!currentConfig) currentConfig = {};
+        currentConfig.autoFaithful64 = !!enabled;
+        syncVoldexQuickTogglesFromConfig();
+        try {
+            if (window.api && window.api.saveConfig) {
+                await window.api.saveConfig({ autoFaithful64: !!enabled });
+            }
+        } catch (_) {}
+        if (notify && typeof showToast === 'function') {
+            showToast(
+                enabled
+                    ? 'Faithful 64x bude automaticky stažen a aktivován.'
+                    : 'Automatická aktivace Faithful 64x vypnuta.',
+                'info'
+            );
+        }
+    }
+
+    if (quickAutoConnectToggle) {
+        quickAutoConnectToggle.addEventListener('change', (e) => {
+            setAutoJoinVoldexState(e.target.checked, true);
+        });
+    }
+    if (checkAutoJoinVoldex) {
+        checkAutoJoinVoldex.addEventListener('change', (e) => {
+            setAutoJoinVoldexState(e.target.checked, true);
+        });
+    }
+    if (quickFaithfulToggle) {
+        quickFaithfulToggle.addEventListener('change', (e) => {
+            setAutoFaithful64State(e.target.checked, true);
+        });
+    }
+    if (checkAutoFaithful64) {
+        checkAutoFaithful64.addEventListener('change', (e) => {
+            setAutoFaithful64State(e.target.checked, true);
+        });
+    }
+
+    if (btnCopyVoldexIp) {
+        btnCopyVoldexIp.addEventListener('click', () => {
+            try {
+                navigator.clipboard.writeText('voldex.zasemazi.cz');
+                if (typeof showToast === 'function') {
+                    showToast('IP adresa voldex.zasemazi.cz zkopírována do schránky!', 'success');
+                }
+            } catch (_) {}
+        });
+    }
+
+    if (btnHeroMasterPlay) {
+        btnHeroMasterPlay.addEventListener('click', () => {
+            startLaunch(null);
+        });
+    }
+
+    if (sidebarVoldexCrest) {
+        sidebarVoldexCrest.addEventListener('click', () => {
+            const playNav = document.querySelector('.nav-icon-btn[data-tab="play"]');
+            if (playNav) playNav.click();
+        });
+    }
+
     // Initialize
     await loadConfiguration();
+    syncVoldexQuickTogglesFromConfig();
 
     // Ujistíme se, že okno, 3D model i stav sítě jsou po startu v aktivním stavu
     setTimeout(() => {

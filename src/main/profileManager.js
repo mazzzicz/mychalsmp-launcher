@@ -166,7 +166,7 @@ function scanInstanceDirectory(dirPath) {
 }
 
 /**
- * Imports an external instance into MYCHAL SMP Launcher.
+ * Imports an external instance into Voldex Client.
  */
 async function importInstanceProfile(data, baseDir) {
     const { sourceDir, effectiveDir, name, version, loader } = data;
@@ -283,7 +283,7 @@ async function findModrinthVersionForTarget(slug, targetVersion, loader = 'fabri
     try {
         // Direct project versions endpoint
         const directUrl = `https://api.modrinth.com/v2/project/${encodeURIComponent(slug)}/version?game_versions=${encodeURIComponent(JSON.stringify([targetVersion]))}&loaders=${encodeURIComponent(JSON.stringify([loader]))}`;
-        const resp = await fetch(directUrl, { headers: { 'User-Agent': 'mychalVidea/mychalsmp-launcher' } });
+        const resp = await fetch(directUrl, { headers: { 'User-Agent': 'VoldexStudios/voldex-client' } });
         if (resp.ok) {
             const versions = await resp.json();
             if (Array.isArray(versions) && versions.length > 0) {
@@ -300,13 +300,13 @@ async function findModrinthVersionForTarget(slug, targetVersion, loader = 'fabri
 
         // Fallback: search Modrinth by query
         const searchUrl = `https://api.modrinth.com/v2/search?query=${encodeURIComponent(slug)}&limit=3`;
-        const sResp = await fetch(searchUrl, { headers: { 'User-Agent': 'mychalVidea/mychalsmp-launcher' } });
+        const sResp = await fetch(searchUrl, { headers: { 'User-Agent': 'VoldexStudios/voldex-client' } });
         if (sResp.ok) {
             const sData = await sResp.json();
             if (sData.hits && sData.hits.length > 0) {
                 const projectSlug = sData.hits[0].slug;
                 const vUrl = `https://api.modrinth.com/v2/project/${encodeURIComponent(projectSlug)}/version?game_versions=${encodeURIComponent(JSON.stringify([targetVersion]))}&loaders=${encodeURIComponent(JSON.stringify([loader]))}`;
-                const vResp = await fetch(vUrl, { headers: { 'User-Agent': 'mychalVidea/mychalsmp-launcher' } });
+                const vResp = await fetch(vUrl, { headers: { 'User-Agent': 'VoldexStudios/voldex-client' } });
                 if (vResp.ok) {
                     const vList = await vResp.json();
                     if (Array.isArray(vList) && vList.length > 0) {
@@ -338,7 +338,7 @@ async function downloadFile(url, destPath) {
             return;
         } catch (_) {}
     }
-    const res = await fetch(url, { headers: { 'User-Agent': 'mychalVidea/mychalsmp-launcher' } });
+    const res = await fetch(url, { headers: { 'User-Agent': 'VoldexStudios/voldex-client' } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const buffer = await res.arrayBuffer();
     fs.writeFileSync(destPath, Buffer.from(buffer));

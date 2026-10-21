@@ -3,7 +3,7 @@ const path = require('path');
 const nativeLoader = require('./nativeLoader');
 
 /**
- * Cache and Storage Cleaner for MYCHAL SMP Launcher
+ * Cache and Storage Cleaner for Voldex Client
  * Automatically detects and cleans old compressed logs (.log.gz), crash reports
  * older than 30 days, temporary files, old native extractions, and unused Java cached jars.
  */

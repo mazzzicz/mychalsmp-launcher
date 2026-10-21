@@ -279,7 +279,7 @@ function registerServiceIpc({ getMainWindow }) {
             const resourcesDir = getResourcesDir();
             let pendingAsar = path.join(resourcesDir, 'app.asar.pending');
             if (!fs.existsSync(pendingAsar)) {
-                const tmpPending = path.join(os.tmpdir(), 'mychalsmp_app.asar.pending');
+                const tmpPending = path.join(os.tmpdir(), 'VoldexSMP_app.asar.pending');
                 if (fs.existsSync(tmpPending)) {
                     pendingAsar = tmpPending;
                 }
@@ -294,7 +294,7 @@ function registerServiceIpc({ getMainWindow }) {
 
             let pendingInstaller = path.join(resourcesDir, 'installer.pending.exe');
             if (!fs.existsSync(pendingInstaller)) {
-                const tmpInstaller = path.join(os.tmpdir(), 'mychalsmp_installer_pending.exe');
+                const tmpInstaller = path.join(os.tmpdir(), 'VoldexSMP_installer_pending.exe');
                 if (fs.existsSync(tmpInstaller)) {
                     pendingInstaller = tmpInstaller;
                 }
@@ -304,7 +304,7 @@ function registerServiceIpc({ getMainWindow }) {
             if (hasInstallerPending) {
                 const currentPid = process.pid;
                 const timestamp = Date.now();
-                const batPath = path.join(os.tmpdir(), `mychalsmp_install_${timestamp}.bat`);
+                const batPath = path.join(os.tmpdir(), `VoldexSMP_install_${timestamp}.bat`);
                 const cleanInstaller = pendingInstaller.replace(/%/g, '%%');
 
                 const batLines = [
@@ -313,7 +313,7 @@ function registerServiceIpc({ getMainWindow }) {
                     'chcp 65001 >nul',
                     `set "PID=${currentPid}"`,
                     `set "INSTALLER=${cleanInstaller}"`,
-                    'set "LOG_FILE=%TEMP%\\mychalsmp_update.log"',
+                    'set "LOG_FILE=%TEMP%\\VoldexSMP_update.log"',
                     '',
                     'echo [%date% %time%] Spoustim instalator: %INSTALLER% >> "%LOG_FILE%"',
                     '',
@@ -363,7 +363,7 @@ function registerServiceIpc({ getMainWindow }) {
                 const exeDir = path.dirname(exePath);
 
                 const timestamp = Date.now();
-                const batPath = path.join(os.tmpdir(), `mychalsmp_update_${timestamp}.bat`);
+                const batPath = path.join(os.tmpdir(), `VoldexSMP_update_${timestamp}.bat`);
 
                 const cleanTarget = targetPath.replace(/%/g, '%%');
                 const cleanPending = pendingPath.replace(/%/g, '%%');
@@ -381,7 +381,7 @@ function registerServiceIpc({ getMainWindow }) {
                     `set "EXE=${cleanExe}"`,
                     `set "EXE_DIR=${cleanExeDir}"`,
                     `set "PID=${currentPid}"`,
-                    'set "LOG_FILE=%TEMP%\\mychalsmp_update.log"',
+                    'set "LOG_FILE=%TEMP%\\VoldexSMP_update.log"',
                     '',
                     'echo [%date% %time%] Zahajuji vymenu souboru pro PID %PID% >> "%LOG_FILE%"',
                     '',
@@ -483,24 +483,24 @@ function registerServiceIpc({ getMainWindow }) {
         }
 
         const projectRoot = path.resolve(__dirname, '../..');
-        let targetExe = path.join(os.homedir(), '.local', 'share', 'mychalsmp-launcher', 'SMPClient');
+        let targetExe = path.join(os.homedir(), '.local', 'share', 'Voldex-Client', 'SMPClient');
         if (!fs.existsSync(targetExe)) {
-            targetExe = path.join(os.homedir(), '.local', 'share', 'mychalsmp-launcher', 'mychalsmp-launcher');
+            targetExe = path.join(os.homedir(), '.local', 'share', 'Voldex-Client', 'Voldex-Client');
         }
         if (process.platform === 'linux') {
             const exeDir = path.dirname(process.execPath);
             if (!exeDir.startsWith('/tmp')) {
                 if (fs.existsSync(path.join(exeDir, 'SMPClient'))) {
                     targetExe = path.join(exeDir, 'SMPClient');
-                } else if (fs.existsSync(path.join(exeDir, 'mychalsmp-launcher'))) {
-                    targetExe = path.join(exeDir, 'mychalsmp-launcher');
+                } else if (fs.existsSync(path.join(exeDir, 'Voldex-Client'))) {
+                    targetExe = path.join(exeDir, 'Voldex-Client');
                 }
             }
 
             const resourcesDir = getResourcesDir();
             let pendingAsar = path.join(resourcesDir, 'app.asar.pending');
             if (!fs.existsSync(pendingAsar)) {
-                const tmpPending = path.join(os.tmpdir(), 'mychalsmp_app.asar.pending');
+                const tmpPending = path.join(os.tmpdir(), 'VoldexSMP_app.asar.pending');
                 if (fs.existsSync(tmpPending)) {
                     pendingAsar = tmpPending;
                 }
@@ -560,7 +560,7 @@ function registerServiceIpc({ getMainWindow }) {
             // Vyčistit single instance zámky
             try {
                 const home = os.homedir();
-                for (const appDir of ['mychalsmp-launcher', 'SMPClient']) {
+                for (const appDir of ['Voldex-Client', 'SMPClient']) {
                     const cfgPath = path.join(home, '.config', appDir);
                     if (fs.existsSync(cfgPath)) {
                         const entries = fs.readdirSync(cfgPath);
@@ -590,7 +590,7 @@ function registerServiceIpc({ getMainWindow }) {
                 process.env.DBUS_SESSION_BUS_ADDRESS ? `export DBUS_SESSION_BUS_ADDRESS="${process.env.DBUS_SESSION_BUS_ADDRESS}"` : ''
             ].filter(Boolean).join('\n');
 
-            const logPath = path.join(os.tmpdir(), 'mychalsmp_update.log');
+            const logPath = path.join(os.tmpdir(), 'VoldexSMP_update.log');
 
             const bashScript = [
                 '#!/bin/bash',
@@ -639,7 +639,7 @@ function registerServiceIpc({ getMainWindow }) {
                 'fi',
                 '',
                 '# Vymazat zámky jedné instance',
-                'rm -f "$HOME/.config/mychalsmp-launcher/Singleton"* 2>/dev/null || true',
+                'rm -f "$HOME/.config/Voldex-Client/Singleton"* 2>/dev/null || true',
                 'rm -f "$HOME/.config/SMPClient/Singleton"* 2>/dev/null || true',
                 'sleep 0.3',
                 '',
@@ -653,7 +653,7 @@ function registerServiceIpc({ getMainWindow }) {
                 'exit 0'
             ].join('\n');
 
-            const scriptPath = path.join(os.tmpdir(), `mychalsmp_restart_${Date.now()}.sh`);
+            const scriptPath = path.join(os.tmpdir(), `VoldexSMP_restart_${Date.now()}.sh`);
             try {
                 fs.writeFileSync(scriptPath, bashScript, { encoding: 'utf8', mode: 0o755 });
                 const { spawn } = require('child_process');

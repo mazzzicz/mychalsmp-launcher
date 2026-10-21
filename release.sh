@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# MYCHAL SMP Launcher - Interaktivní Release & Verze Skript
+# Voldex Client - Interaktivní Release & Verze Skript
 # ==============================================================================
 
 set -e
@@ -24,7 +24,7 @@ NEXT_MINOR="${MAJOR:-1}.$(( ${MINOR:-0} + 1 )).0"
 
 echo ""
 echo "=================================================================="
-echo "⚡ [MYCHAL SMP Launcher] Vydání nové verze a automatický build"
+echo "⚡ [Voldex Client] Vydání nové verze a automatický build"
 echo "=================================================================="
 echo "Aktuální verze: $CURRENT_VERSION"
 echo "Doporučené možnosti: "
@@ -98,6 +98,6 @@ echo "=================================================================="
 echo "✅ HOTOVO! Verze v$NEW_VERSION byla odeslána na GitHub."
 echo "🤖 GitHub Actions právě zahajuje automatický build (Windows & Linux)."
 echo "📦 Jakmile doběhne, v launcheru hráči uvidí aktualizaci na v$NEW_VERSION!"
-echo "🔗 Sledovat průběh můžeš zde: https://github.com/mychalVidea/mychalsmp-launcher/actions"
+echo "🔗 Sledovat průběh můžeš zde: https://github.com/VoldexStudios/voldex-client/actions"
 echo "=================================================================="
 echo ""

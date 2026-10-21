@@ -487,7 +487,7 @@ pub fn fast_download_file(url: String, dest_path: String) -> Result<String> {
     }
 
     let client = reqwest::blocking::Client::builder()
-        .user_agent("mychalVidea/mychalsmp-launcher")
+        .user_agent("VoldexStudios/voldex-client")
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| Error::new(Status::GenericFailure, format!("Nelze vytvořit HTTP klienta: {}", e)))?;
@@ -560,7 +560,7 @@ pub fn fast_download_batch(batch_json: String) -> Result<String> {
     let total = items.len();
 
     let client = reqwest::blocking::Client::builder()
-        .user_agent("mychalVidea/mychalsmp-launcher")
+        .user_agent("VoldexStudios/voldex-client")
         .timeout(std::time::Duration::from_secs(45))
         .build()
         .map_err(|e| Error::new(Status::GenericFailure, format!("Chyba klienta: {}", e)))?;
@@ -1451,8 +1451,8 @@ pub fn fast_build_servers_dat(servers_json: String, dest_path: String) -> Result
     buf.extend_from_slice(&(servers.len() as i32).to_be_bytes());
 
     for srv in servers {
-        let srv_name = srv.name.unwrap_or_else(|| "Minecraft Server".to_string());
-        let srv_ip = srv.ip.or(srv.address).unwrap_or_else(|| "mychalsmp.xyz".to_string());
+        let srv_name = srv.name.unwrap_or_else(|| "VoldexSMP".to_string());
+        let srv_ip = srv.ip.or(srv.address).unwrap_or_else(|| "voldex.zasemazi.cz".to_string());
 
         // TAG_String "name"
         let key_name = b"name";

@@ -89,8 +89,7 @@ function registerGameIpc({ getMainWindow, setupTray, updateTrayMenu }) {
 
     ipcMain.handle('preload-launch-environment', async (event, profileId) => {
         try {
-            dns.lookup('mychalsmp.xyz', { all: false }, () => {});
-            dns.lookup('join.mychalsmp.xyz', { all: false }, () => {});
+            dns.lookup('voldex.zasemazi.cz', { all: false }, () => {});
             detectJavaPath(false).catch(() => {});
             const config = loadConfig();
             const pid = profileId || config.activeProfileId || 'minecraft-26.2';
@@ -201,9 +200,8 @@ function registerGameIpc({ getMainWindow, setupTray, updateTrayMenu }) {
             updatedServers = updatedServers.map(s => {
                 const ip = (s.ip || '').toLowerCase();
                 const sub = (s.subdomain || '').toLowerCase();
-                const backup = (s.backupIp || '').toLowerCase();
-                const isMychal = (cleanTarget.includes('mychalsmp') || cleanTarget === '130.61.89.37') && (s.id === 'mychalsmp' || s.ip === 'mychalsmp.xyz');
-                if (ip === cleanTarget || sub === cleanTarget || backup === cleanTarget || isMychal) {
+                const isVoldex = cleanTarget.includes('voldex') && (s.id === 'voldexsmp' || s.ip === 'voldex.zasemazi.cz');
+                if (ip === cleanTarget || sub === cleanTarget || isVoldex) {
                     return {
                         ...s,
                         lastJoined: Date.now(),
@@ -245,13 +243,12 @@ function registerGameIpc({ getMainWindow, setupTray, updateTrayMenu }) {
             })
         ]);
 
-        const isMychalServer = serverIp && (
-            serverIp.toLowerCase().includes('mychalsmp.xyz') ||
-            serverIp.toLowerCase().includes('mychalsmp') ||
-            serverIp === '130.61.89.37'
+        const isVoldexServer = serverIp && (
+            serverIp.toLowerCase().includes('voldex.zasemazi.cz') ||
+            serverIp.toLowerCase().includes('voldex')
         );
 
-        if (isMychalServer) {
+        if (isVoldexServer) {
             const probeScan = scanProfileForBlacklistedMods(launchConfig.baseDir);
             if (!probeScan.clean) {
                 isLaunchingProcess = false;
@@ -259,7 +256,7 @@ function registerGameIpc({ getMainWindow, setupTray, updateTrayMenu }) {
                     success: false,
                     blockedByWarden: true,
                     illegalMods: probeScan.illegalMods,
-                    error: `Přístup na MYCHAL SMP byl zablokován bezpečnostním systémem Warden. V profilu byly nalezeny nepovolené módy (${probeScan.blockedCount}). Pro hraní na síti MYCHAL SMP je nutné tyto módy deaktivovat.`
+                    error: `Přístup na VoldexSMP byl zablokován bezpečnostním systémem Warden. V profilu byly nalezeny nepovolené módy (${probeScan.blockedCount}). Pro hraní na serveru VoldexSMP je nutné tyto módy deaktivovat.`
                 };
             }
         }
@@ -272,7 +269,7 @@ function registerGameIpc({ getMainWindow, setupTray, updateTrayMenu }) {
                 const currentCfg = loadConfig();
                 if (currentCfg.enableDiscordRpc !== false) {
                     const initialServer = serverIp
-                        ? (serverIp.toLowerCase().includes('mychalsmp') || serverIp === '130.61.89.37' ? 'mychalsmp.xyz' : serverIp)
+                        ? (serverIp.toLowerCase().includes('voldex') ? 'voldex.zasemazi.cz' : serverIp)
                         : 'menu';
                     discordRpc.updateActivity({
                         username: authData?.name || currentCfg.username || 'Hráč',
@@ -326,9 +323,9 @@ function registerGameIpc({ getMainWindow, setupTray, updateTrayMenu }) {
                         const detectedPort = logEvent.port || 25565;
 
                         if (isValidServerHost(detectedHost) && detectedPort !== 24454 && detectedPort !== 9050 && !detectedHost.toLowerCase().startsWith('voice.')) {
-                            const isMychal = (detectedHost.toLowerCase().includes('mychalsmp') || detectedHost === '130.61.89.37');
-                            const serverLabel = isMychal
-                                ? 'mychalsmp.xyz'
+                            const isVoldex = detectedHost.toLowerCase().includes('voldex') || detectedHost.toLowerCase().includes('zasemazi');
+                            const serverLabel = isVoldex
+                                ? 'voldex.zasemazi.cz'
                                 : (detectedPort && detectedPort !== 25565 ? `${detectedHost}:${detectedPort}` : detectedHost);
 
                             const currentSession = getActiveSessionData();
@@ -355,9 +352,8 @@ function registerGameIpc({ getMainWindow, setupTray, updateTrayMenu }) {
                                 const srvList = (curCfg.servers || []).map(s => {
                                     const ip = (s.ip || '').toLowerCase();
                                     const sub = (s.subdomain || '').toLowerCase();
-                                    const backup = (s.backupIp || '').toLowerCase();
                                     const checkHost = detectedHost.toLowerCase();
-                                    if (ip === checkHost || sub === checkHost || backup === checkHost || (isMychal && (s.id === 'mychalsmp' || s.ip === 'mychalsmp.xyz'))) {
+                                    if (ip === checkHost || sub === checkHost || (isVoldex && (s.id === 'voldexsmp' || s.ip === 'voldex.zasemazi.cz'))) {
                                         srvChanged = true;
                                         return {
                                             ...s,

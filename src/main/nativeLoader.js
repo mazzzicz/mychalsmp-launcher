@@ -3,7 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 /**
- * Native Rust Module Loader for MYCHAL SMP Launcher
+ * Native Rust Module Loader for Voldex Client (Voldex Studios)
  * Provides zero-cost abstraction with automatic high-speed Rust bridge
  * and transparent JavaScript fallback if native binary is unavailable.
  */
@@ -13,12 +13,12 @@ let isLoaded = false;
 
 // Candidate locations for the compiled native module (.node)
 const candidatePaths = [
-    path.join(__dirname, 'mychalsmp_native.node'),
-    path.join(__dirname.replace('app.asar', 'app.asar.unpacked'), 'mychalsmp_native.node'),
-    path.join(process.resourcesPath || '', 'app.asar.unpacked', 'src', 'main', 'mychalsmp_native.node'),
-    path.join(process.resourcesPath || '', 'app.asar.unpacked', 'mychalsmp_native.node'),
-    path.join(__dirname, '..', '..', 'native', 'mychalsmp_native.node'),
-    path.join(__dirname, '..', '..', 'native', 'target', 'release', 'mychalsmp_native.node')
+    path.join(__dirname, 'voldex_native.node'),
+    path.join(__dirname.replace('app.asar', 'app.asar.unpacked'), 'voldex_native.node'),
+    path.join(process.resourcesPath || '', 'app.asar.unpacked', 'src', 'main', 'voldex_native.node'),
+    path.join(process.resourcesPath || '', 'app.asar.unpacked', 'voldex_native.node'),
+    path.join(__dirname, '..', '..', 'native', 'voldex_native.node'),
+    path.join(__dirname, '..', '..', 'native', 'target', 'release', 'voldex_native.node')
 ];
 
 for (const p of candidatePaths) {
@@ -245,7 +245,7 @@ async function fastDownloadFile(url, destPath) {
         fs.mkdirSync(destDir, { recursive: true });
     }
 
-    const res = await fetch(url, { headers: { 'User-Agent': 'mychalVidea/mychalsmp-launcher' } });
+    const res = await fetch(url, { headers: { 'User-Agent': 'VoldexStudios/voldex-client' } });
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
 
     const buffer = Buffer.from(await res.arrayBuffer());

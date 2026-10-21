@@ -4,11 +4,12 @@ on:
   push:
     branches:
       - main
+      - 'arena/**'
     tags:
   workflow_dispatch:
     inputs:
       custom_version:
-        description: 'Vlastní verze k vydání (např. 1.0.1 nebo 1.2.0, prázdné = verze z package.json)'
+        description: 'Vlastní verze k vydání (např. 2.0.0, prázdné = verze z package.json)'
         required: false
         default: ''
 
@@ -45,7 +46,7 @@ jobs:
         run: |
           cd native
           cargo build --release
-          cp target/release/mychalsmp_native.dll ../src/main/mychalsmp_native.node
+          cp target/release/voldex_native.dll ../src/main/voldex_native.node
 
       - name: Ensure Build Resources
         shell: bash
@@ -94,7 +95,7 @@ jobs:
         run: |
           cd native
           cargo build --release
-          cp target/release/libmychalsmp_native.so ../src/main/mychalsmp_native.node
+          cp target/release/libvoldex_native.so ../src/main/voldex_native.node
 
       - name: Ensure Build Resources
         shell: bash
@@ -152,12 +153,12 @@ jobs:
           # Vytvořit neměnné univerzální soubory pro přímé stahování z webu
           SETUP_EXE=$(ls *Setup*.exe 2>/dev/null | head -n 1)
           if [ -n "$SETUP_EXE" ]; then
-            cp "$SETUP_EXE" "mychalsmp-launcher-setup.exe"
+            cp "$SETUP_EXE" "voldex-client-setup.exe"
           fi
           
           LINUX_TAR=$(ls *.tar.gz 2>/dev/null | head -n 1)
           if [ -n "$LINUX_TAR" ]; then
-            cp "$LINUX_TAR" "mychalsmp-launcher.tar.gz"
+            cp "$LINUX_TAR" "voldex-client.tar.gz"
           fi
 
           # Připravit bleskový delta balíček pro všechny generace launcheru (v3, v2 i starší)
@@ -201,7 +202,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.pkg_version.outputs.version }}
-          name: "MYCHAL SMP Launcher v${{ steps.pkg_version.outputs.version }}"
+          name: "Voldex Client v${{ steps.pkg_version.outputs.version }}"
           body_path: release_notes.txt
           draft: false
           prerelease: false

@@ -3,17 +3,12 @@ const path = require('path');
 const fs = require('fs');
 
 /**
- * Native Zero-Dependency Discord Rich Presence (RPC) Client
+ * Native Zero-Dependency Discord Rich Presence (RPC) Client for Voldex Client (Voldex Studios)
  * Connects directly to Discord local IPC socket on Linux, Windows, and macOS.
- * Shows player username, server mychalsmp.xyz, active profile, and live elapsed playtime.
- * 
- * TODO: Dodělat / doladit Discord RPC:
- * - Prověřit nahrání assetů (mychalsmp_logo, minecraft) v Discord Developer Portalu pro App ID 1415597133855326318
- * - Doplnit případná interaktivní tlačítka (Web: mychalsmp.xyz, Připojit se)
- * - Doladit chování při uspání/probuzení PC a startu bez běžícího Discord klienta
+ * Shows player username, server voldex.zasemazi.cz (VoldexSMP), active profile, and live elapsed playtime.
  */
 
-const DEFAULT_CLIENT_ID = '1557874962956550154'; // SMPClient Official Discord App
+const DEFAULT_CLIENT_ID = '1557874962956550154'; // Voldex Client Official Discord App
 
 const OPCODES = {
     HANDSHAKE: 0,
@@ -208,7 +203,7 @@ class DiscordRpcClient {
      * Updates Discord Rich Presence state
      * @param {Object} options
      * @param {string} options.username Player username
-     * @param {string} options.server Name or IP of server (e.g. 'mychalsmp.xyz', 'mc.hypixel.net', 'Singleplayer', 'menu')
+     * @param {string} options.server Name or IP of server (e.g. 'voldex.zasemazi.cz', 'mc.hypixel.net', 'Singleplayer', 'menu')
      * @param {string} [options.serverIcon] Optional explicit URL to server favicon
      * @param {string} options.profileName Active profile name (e.g. 'Minecraft 26.2')
      * @param {boolean} options.isPlaying Whether the game is actively running
@@ -217,7 +212,7 @@ class DiscordRpcClient {
     updateActivity(options = {}) {
         const {
             username = 'Hráč',
-            server = 'mychalsmp.xyz',
+            server = 'voldex.zasemazi.cz',
             serverIcon = null,
             profileName = 'Minecraft 26.2',
             isPlaying = false,
@@ -239,8 +234,8 @@ class DiscordRpcClient {
             return false;
         };
 
-        const MYCHAL_ICON = 'https://raw.githubusercontent.com/mychalVidea/mychalsmp-launcher/main/src/renderer/assets/server-icon.png';
-        const LOGO_ICON = 'https://raw.githubusercontent.com/mychalVidea/mychalsmp-launcher/main/src/renderer/assets/logo.png';
+        const VOLDEX_ICON = 'https://api.mcstatus.io/v2/icon/voldex.zasemazi.cz';
+        const LOGO_ICON = 'https://api.mcstatus.io/v2/icon/voldex.zasemazi.cz';
 
         let sRaw = (server || '').toString().trim();
         let sLower = sRaw.toLowerCase();
@@ -256,45 +251,40 @@ class DiscordRpcClient {
 
         const isSingleplayer = sLower === 'singleplayer' || sLower === 'režim jednoho hráče' || sLower === 'sp';
         const isMenu = !sRaw || sLower === 'menu' || sLower === 'main_menu';
-        const isMychal = !isSingleplayer && !isMenu && (sLower.includes('mychalsmp') || sLower === '130.61.89.37');
+        const isVoldex = !isSingleplayer && !isMenu && (sLower.includes('voldex') || sLower.includes('zasemazi'));
 
         let activity = null;
 
         if (isPlaying) {
             let detailsText = '';
             let largeImageUrl = LOGO_ICON;
-            let largeImageText = `SMPClient (${profileName})`;
+            let largeImageText = `Voldex Client (${profileName})`;
             let smallImageUrl = LOGO_ICON;
-            let smallImageText = `SMPClient (${profileName})`;
+            let smallImageText = `Voldex Client (${profileName})`;
 
-            if (isMychal) {
-                const sLabel = 'mychalsmp.xyz';
+            if (isVoldex) {
+                const sLabel = 'voldex.zasemazi.cz';
                 detailsText = `Hraje na: ${sLabel}`;
-                largeImageUrl = MYCHAL_ICON;
-                largeImageText = `MYCHAL SMP (${sLabel})`;
+                largeImageUrl = VOLDEX_ICON;
+                largeImageText = `VoldexSMP (${sLabel})`;
                 smallImageUrl = LOGO_ICON;
-                smallImageText = `SMPClient (${profileName})`;
+                smallImageText = `Voldex Client (${profileName})`;
             } else if (isSingleplayer) {
                 detailsText = 'Hraje: Singleplayer';
                 largeImageUrl = LOGO_ICON;
                 largeImageText = `Singleplayer (${profileName})`;
-                smallImageUrl = MYCHAL_ICON;
-                smallImageText = 'MYCHAL SMP';
+                smallImageUrl = VOLDEX_ICON;
+                smallImageText = 'VoldexSMP';
             } else if (isMenu) {
                 detailsText = 'V hlavním menu hry';
                 largeImageUrl = LOGO_ICON;
-                largeImageText = `SMPClient (${profileName})`;
-                smallImageUrl = MYCHAL_ICON;
-                smallImageText = 'MYCHAL SMP';
+                largeImageText = `Voldex Client (${profileName})`;
+                smallImageUrl = VOLDEX_ICON;
+                smallImageText = 'VoldexSMP';
             } else {
-                // Hraní na libovolném jiném Minecraft serveru (Hypixel, DonutSMP, CubeCraft, atd.)
                 detailsText = `Hraje na: ${sRaw}`;
                 largeImageText = `Server: ${sRaw}`;
 
-                // Pokusíme se načíst reálnou ikonu serveru:
-                // 1) Explicitní ikona předaná přes options
-                // 2) Pokud server není na lokální/LAN síti, použijeme ověřený mcstatus.io CDN endpoint pro favicon
-                // 3) Pro LAN/offline fallbackujeme na launcher logo
                 if (serverIcon && typeof serverIcon === 'string' && serverIcon.startsWith('http')) {
                     largeImageUrl = serverIcon;
                 } else if (!isLocalOrPrivate(sRaw)) {
@@ -304,7 +294,7 @@ class DiscordRpcClient {
                 }
 
                 smallImageUrl = LOGO_ICON;
-                smallImageText = `SMPClient (${profileName})`;
+                smallImageText = `Voldex Client (${profileName})`;
             }
 
             activity = {
@@ -319,30 +309,25 @@ class DiscordRpcClient {
                     small_image: smallImageUrl,
                     small_text: safeStr(smallImageText)
                 },
-                buttons: isMychal ? [
-                    { label: '🎮 Jak se připojit', url: 'https://join.mychalsmp.xyz/howto' },
-                    { label: '🌐 Oficiální web', url: 'https://mychalsmp.xyz' }
-                ] : [
-                    { label: '🌐 Oficiální web', url: 'https://mychalsmp.xyz' },
-                    { label: '🎮 Jak se připojit', url: 'https://join.mychalsmp.xyz/howto' }
+                buttons: [
+                    { label: '🎮 VoldexSMP', url: 'https://voldex.zasemazi.cz' }
                 ]
             };
         } else {
             const assets = {
                 large_image: LOGO_ICON,
-                large_text: `SMPClient (${profileName})`,
-                small_image: MYCHAL_ICON,
-                small_text: 'MYCHAL SMP (mychalsmp.xyz)'
+                large_text: `Voldex Client (${profileName})`,
+                small_image: VOLDEX_ICON,
+                small_text: 'VoldexSMP (voldex.zasemazi.cz)'
             };
 
             const userPart = username && username !== 'Hráč' ? `Hráč: ${username} • ` : '';
             activity = {
-                details: 'V launcheru',
+                details: 'Voldex Client • Voldex Studios',
                 state: safeStr(`${userPart}${profileName}`),
                 assets,
                 buttons: [
-                    { label: '🌐 Oficiální web', url: 'https://mychalsmp.xyz' },
-                    { label: '🎮 Jak se připojit', url: 'https://join.mychalsmp.xyz/howto' }
+                    { label: '🎮 VoldexSMP', url: 'https://voldex.zasemazi.cz' }
                 ]
             };
         }

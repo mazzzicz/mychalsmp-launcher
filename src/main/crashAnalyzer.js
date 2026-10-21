@@ -7,7 +7,7 @@ const { isJarFileValid } = require('./launcher');
 const nativeLoader = require('./nativeLoader');
 
 /**
- * Intelligent Crash Analyzer for MYCHAL SMP Launcher
+ * Intelligent Crash Analyzer for Voldex Client
  * Analyzes Minecraft crashes (exit code 1 or non-zero), extracts the root cause
  * from crash-reports and latest.log, explains it in clean Czech, and provides
  * 1-click automatic fixes.
@@ -1402,7 +1402,7 @@ function downloadFile(url, destPath) {
         const file = fs.createWriteStream(destPath);
         const req = https.get(url, {
             headers: {
-                'User-Agent': 'mychalsmp-launcher/1.0 (admin@mychalsmp.xyz)'
+                'User-Agent': 'Voldex-Client/1.0 (info@zasemazi.cz)'
             }
         }, (res) => {
             if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
@@ -1523,7 +1523,7 @@ async function executeCrashFix(autoFix, gameDir, config, saveConfigFn, detectJav
                 const apiUrl = `https://api.modrinth.com/v2/project/fabric-api/version?game_versions=["${encodeURIComponent(version)}"]&loaders=["fabric"]`;
                 const data = await new Promise((resolve, reject) => {
                     https.get(apiUrl, {
-                        headers: { 'User-Agent': 'mychalsmp-launcher/1.0 (admin@mychalsmp.xyz)' }
+                        headers: { 'User-Agent': 'Voldex-Client/1.0 (info@zasemazi.cz)' }
                     }, (res) => {
                         let body = '';
                         res.on('data', chunk => body += chunk);

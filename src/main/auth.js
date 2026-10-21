@@ -115,7 +115,7 @@ async function loginMicrosoft(parentWindow) {
                 height: 700,
                 parent: parentWindow || undefined,
                 modal: !!parentWindow,
-                title: "Přihlášení k Microsoft účtu – MYCHAL SMP",
+                title: "Přihlášení k Microsoft účtu – VoldexSMP",
                 backgroundColor: '#1b1b2f',
                 autoHideMenuBar: true,
                 webPreferences: {
